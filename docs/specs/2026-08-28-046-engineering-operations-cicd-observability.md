@@ -10,7 +10,7 @@
 
 ## 1. Problem statement
 
-**Today:** Spec 001 established the monorepo/local dev loop but not a CI/CD pipeline, and no
+**Today:** Spec 001 established the single-application/local dev loop but not a CI/CD pipeline, and no
 structured observability (logging, tracing, alerting, backup/DR) exists despite every prior spec
 referencing "monitored," "alerted," or "audited" as if these mechanisms already work end to end.
 Master spec §114 requires a full CI pipeline (lint, typecheck, unit, integration, MCP, security/
@@ -63,7 +63,7 @@ AI request trace fully instrumented; backups are automated and recovery-tested;
 ### Request and response types
 
 ```typescript
-// packages/types/src/ops.ts
+// lib/types/ops.ts
 export interface DetailedHealthDto {
   status: 'healthy' | 'degraded' | 'down';
   dependencies: Array<{ name: string; status: 'up' | 'down' | 'degraded'; latencyMs?: number }>;
@@ -122,8 +122,8 @@ engineering-internal artifacts, not part of the product UI.
 | Level | What it covers | Where |
 |---|---|---|
 | **Pipeline** | the CI pipeline itself is tested by deliberately introducing a failing lint/type/test case in a throwaway branch and confirming the gate blocks merge | manual verification during implementation |
-| **Integration** | health-check accuracy under a simulated dependency outage | `apps/api/ops/health.integration.test.ts` |
-| **Background job** | retry/backoff/dead-letter behavior under simulated repeated failure | `apps/worker/job-reliability.test.ts` |
+| **Integration** | health-check accuracy under a simulated dependency outage | `app/api/v1/ops/health.integration.test.ts` |
+| **Background job** | retry/backoff/dead-letter behavior under simulated repeated failure | `app/api/v1/cron/job-reliability.test.ts` |
 | **DR** | documented, executed recovery drill against a backup, verifying data integrity post-restore | recovery drill runbook + its recorded results |
 
 **Traceability**
@@ -131,9 +131,9 @@ engineering-internal artifacts, not part of the product UI.
 | AC | Test |
 |---|---|
 | AC-1 | CI configuration itself + a verification branch demonstrating each gate blocks on failure |
-| AC-5 | `apps/worker/job-reliability.test.ts::dead-letters after max retries` |
+| AC-5 | `app/api/v1/cron/job-reliability.test.ts::dead-letters after max retries` |
 | AC-6 | recovery-drill documentation (evidence, not a unit test) |
-| AC-8 | `apps/api/ops/health.integration.test.ts::reflects real dependency status` |
+| AC-8 | `app/api/v1/ops/health.integration.test.ts::reflects real dependency status` |
 
 **Coverage:** N/A in the usual sense — this spec's "coverage" is pipeline-gate completeness
 (AC-1's full checklist) and DR-drill execution, not a code-coverage percentage.
@@ -155,7 +155,7 @@ operational practice, not a one-time MVP acceptance criterion).
 
 | # | Risk / question | Owner | Resolution |
 |---|---|---|---|
-| 1 | Hosting/infrastructure provider selection (affects backup/DR mechanics specifics) | — | Open |
+| 1 | Hosting/infrastructure provider selection (affects backup/DR mechanics specifics) | — | Open — application hosting is constrained to Vercel (or a Vercel Cron-compatible equivalent) by spec 001 §8's background-job decision; database/backup/DR provider selection remains open |
 | 2 | Error-tracking and log-aggregation tool selection (e.g. Sentry + a log platform) | — | Open |
 | 3 | Cadence of DR-drill re-verification (one-time vs. periodic) | — | Open — recommend at minimum before production launch and after any major infra change |
 
