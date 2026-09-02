@@ -22,3 +22,32 @@ body {
   font-size: var(--text-base);
   line-height: var(--leading-normal);
 }
+
+/* Standard visually-hidden pattern — components/Skeleton (ui/components/core/Skeleton.jsx)
+   relies on this exact class name for its "Loading" text announced to assistive tech only. */
+.apr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Spec 002 AC-5: every components primitive's transition/animation is disabled or reduced under
+   prefers-reduced-motion. Several ui/ components already guard their own @keyframes inline
+   (e.g. Skeleton); this is the site-wide backstop so the guarantee holds regardless of how a
+   future primitive implements its motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

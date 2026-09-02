@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Badge } from '@/ui/components/core/Badge';
-import { Icon } from '@/ui/components/core/Icon';
+import { Badge, Icon } from '@/components';
+import { branding } from '@/lib/config/branding';
 
 interface HealthResponse {
   status: string;
@@ -60,7 +60,7 @@ export default function HomePage() {
             color: 'var(--text-heading)',
           }}
         >
-          Apuriva
+          {branding.appName}
         </h1>
         <div
           aria-hidden
@@ -79,7 +79,7 @@ export default function HomePage() {
             fontSize: 'var(--text-xl)',
           }}
         >
-          Get the right help. Get it done.
+          {branding.tagline}
         </p>
       </section>
 

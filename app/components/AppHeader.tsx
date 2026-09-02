@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { branding } from '@/lib/config/branding';
 import apurivaLogo from '@/ui/assets/apuriva-logo-full.jpeg';
 
 /**
@@ -30,11 +31,11 @@ export function AppHeader() {
         boxShadow: 'var(--shadow-sm)',
       }}
     >
-      <Link href="/" aria-label="Apuriva home" style={{ display: 'inline-flex' }}>
+      <Link href="/" aria-label={`${branding.appName} home`} style={{ display: 'inline-flex' }}>
         <div style={{ position: 'relative', width: 50, height: 40, overflow: 'hidden' }}>
           <Image
             src={apurivaLogo}
-            alt="Apuriva"
+            alt={branding.appName}
             fill
             sizes="50px"
             style={{ objectFit: 'cover', objectPosition: 'top' }}

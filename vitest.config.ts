@@ -12,7 +12,11 @@ export default defineConfig({
     },
   },
   test: {
+    // 'forks' (the default) times out spawning workers in this sandboxed environment;
+    // 'threads' (worker_threads) starts reliably.
+    pool: 'threads',
     environment: 'node',
+    setupFiles: ['./test/setup.ts'],
     include: ['**/*.test.{ts,tsx}'],
     exclude: ['node_modules', '.next', 'drizzle'],
   },
