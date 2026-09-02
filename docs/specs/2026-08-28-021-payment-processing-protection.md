@@ -1,7 +1,7 @@
 # Spec: Payment Processing & Protection
 
 **File:** `docs/specs/2026-08-28-021-payment-processing-protection.md`
-**Status:** Draft
+**Status:** Approved
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §46–§47, §132.7, §132.22, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §8, [docs/workflow.md](../workflow.md)
@@ -38,6 +38,9 @@ explicit customer approval before an additional charge.
 | AC-3 | **Given** a deposit-based service **When** booked **Then** the deposit is charged first and the remainder is charged only after explicit customer approval at the appropriate later point |
 | AC-4 | **Given** a final price adjustment (e.g. extra parts/time) **When** proposed by the provider **Then** the customer must explicitly approve it before any additional charge occurs — no silent charge |
 | AC-5 | **Given** a captured payment **When** the booking has not yet reached the appropriate completion/protection state **Then** provider payout is not finalized (feeds spec 024) |
+| AC-5a | **Given** a booking transitions to `Completed` **When** the transition is recorded, regardless of whether the customer or the provider marked it complete **Then** the payment-protection window starts at that moment, using the payment/service model's configured duration (default 48 hours) |
+| AC-5b | **Given** a booking's payment-protection window elapses **When** no dispute was opened during that window **Then** the protection is released and the provider becomes eligible for payout (spec 024 executes the actual payout) |
+| AC-5c | **Given** a dispute is opened against a booking **When** the dispute is opened before the protection window elapses **Then** provider payout remains blocked until the dispute is resolved, even after the window would otherwise have elapsed |
 | AC-6 | **Given** a payment attempt **When** it fails **Then** the customer sees a clear "Payment wasn't completed, no charge was confirmed" message with retry/change-method options, and no booking is confirmed on a failed payment |
 | AC-7 | **Given** a duplicate payment-authorization request (retry) **When** using the same idempotency key **Then** the payment provider's idempotency prevents a duplicate charge |
 | AC-8 | **Given** the AI assistant **When** it reports a payment outcome **Then** it only ever reports what the backend/payment-provider actually confirmed, never an assumed success (master spec §132.7) |
@@ -59,7 +62,7 @@ explicit customer approval before an additional charge.
 ### Request and response types
 
 ```typescript
-// packages/types/src/payments.ts
+// lib/types/payments.ts
 export interface PaymentDto {
   id: string;
   bookingId: string;
@@ -67,6 +70,8 @@ export interface PaymentDto {
   amountMinorUnits: number;
   currencyCode: string;
   protectionState: 'held' | 'released' | 'disputed';
+  protectionWindowStartedAt: string | null; // set when the booking reaches Completed, regardless of who marked it complete
+  protectionWindowHours: number; // default 48; the payment/service model may configure a different duration
   providerReference: string; // opaque reference into the real payment provider, never a fabricated ID
 }
 
@@ -100,13 +105,27 @@ export interface PriceAdjustmentDto {
 
 | Entity | Change | Fields |
 |---|---|---|
-| `Payment` | new | `id uuid pk`, `booking_id uuid fk->Booking`, `status text`, `amount_minor_units integer`, `currency_code text`, `protection_state text`, `provider_reference text`, `idempotency_key text unique`, `created_at`, `updated_at`, `version` |
+| `Payment` | new | `id uuid pk`, `booking_id uuid fk->Booking`, `status text`, `amount_minor_units integer`, `currency_code text`, `protection_state text`, `protection_window_started_at timestamptz nullable`, `protection_window_hours integer default 48`, `provider_reference text`, `idempotency_key text unique`, `created_at`, `updated_at`, `version` |
 | `PaymentAttempt` | new | `id uuid pk`, `payment_id uuid fk->Payment`, `status text`, `failure_reason text nullable`, `attempted_at timestamptz` |
 | `PaymentAuthorization` | new | `id uuid pk`, `payment_id uuid fk->Payment`, `authorized_amount_minor_units integer`, `authorized_at timestamptz`, `captured_at timestamptz nullable` |
 | `PriceAdjustment` | new | `id uuid pk`, `booking_id uuid fk->Booking`, `additional_amount_minor_units integer`, `currency_code text`, `reason text`, `status text`, `approved_at timestamptz nullable` |
 
-`packages/payments` is the only module permitted to hold payment-provider credentials; all
+`lib/payments` is the only module permitted to hold payment-provider credentials; all
 other modules interact through its abstraction, never calling the vendor SDK directly.
+
+### Payment protection window
+
+- The protection window default is **48 hours**. A given payment/service model may configure a
+  different duration explicitly; absent that configuration, 48 hours applies.
+- The window starts when the booking transitions to `Completed`, regardless of whether the
+  customer or the provider triggered that completion (spec 020's completion endpoint, detailed
+  further by spec 028).
+- If no dispute is opened before the window elapses, `protection_state` transitions
+  `held → released` and the provider becomes eligible for payout; spec 024 owns executing the
+  actual payout once eligible.
+- If a dispute is opened before the window elapses, `protection_state` transitions
+  `held → disputed` and provider payout stays blocked regardless of how much of the window
+  remains, until the dispute is resolved (spec 031).
 
 ### Migration
 
@@ -136,8 +155,8 @@ records retained regardless of account deletion (spec 008), per legal/audit requ
 Price-adjustment approval is a structured, high-risk confirmation UI (master spec §90) showing
 exact amount/currency before the customer approves.
 
-**Route(s):** `apps/web/app/bookings/[id]/payment`
-**Shared components used/added:** `packages/ui` `PaymentForm` (wraps the payment provider's
+**Route(s):** `app/bookings/[id]/payment`
+**Shared components used/added:** `components` `PaymentForm` (wraps the payment provider's
 hosted/embedded UI component), `ConfirmDialog`
 
 ---
@@ -146,20 +165,23 @@ hosted/embedded UI component), `ConfirmDialog`
 
 | Level | What it covers | Where |
 |---|---|---|
-| **Unit** | payment-timing-model routing logic, protection-state transitions | `packages/payments/**/*.test.ts` |
-| **Integration** | authorize/capture/fail flows against the payment provider's sandbox; idempotent retry; price-adjustment approval gate | `apps/api/payments/*.integration.test.ts` |
-| **Financial** | success, failure, pending, duplicate-attempt, idempotency scenarios per master spec §113 | `apps/api/payments/financial.integration.test.ts` |
-| **E2E** | customer completes payment in sandbox, sees confirmed booking; failed payment shows correct error and no booking confirmation | `apps/web-e2e/payment.spec.ts` |
+| **Unit** | payment-timing-model routing logic, protection-state transitions, protection-window default/override duration resolution | `lib/payments/**/*.test.ts` |
+| **Integration** | authorize/capture/fail flows against the payment provider's sandbox; idempotent retry; price-adjustment approval gate; protection window starts on `Completed` regardless of who completed it; window release with no dispute; window blocked by an in-window dispute | `app/api/v1/payments/*.integration.test.ts` |
+| **Financial** | success, failure, pending, duplicate-attempt, idempotency scenarios per master spec §113 | `app/api/v1/payments/financial.integration.test.ts` |
+| **E2E** | customer completes payment in sandbox, sees confirmed booking; failed payment shows correct error and no booking confirmation | `e2e/payment.spec.ts` |
 
 **Traceability**
 
 | AC | Test |
 |---|---|
-| AC-1 | `apps/api/payments/authorize.integration.test.ts::real sandbox call, no fabricated success` |
-| AC-4 | `apps/api/payments/price-adjustment.integration.test.ts::requires explicit approval before charge` |
-| AC-6 | `apps/web-e2e/payment.spec.ts::failed payment shows correct message, no booking` |
-| AC-7 | `apps/api/payments/idempotency.integration.test.ts::duplicate request does not double-charge` |
-| AC-8 | `packages/ai/payment-reporting.test.ts::never claims success without backend confirmation` |
+| AC-1 | `app/api/v1/payments/authorize.integration.test.ts::real sandbox call, no fabricated success` |
+| AC-4 | `app/api/v1/payments/price-adjustment.integration.test.ts::requires explicit approval before charge` |
+| AC-5a | `lib/payments/protection-window.test.ts::window starts on Completed regardless of who completed it, uses configured or default 48h duration` |
+| AC-5b | `app/api/v1/payments/protection-window.integration.test.ts::window elapses with no dispute, releases protection, provider payout-eligible` |
+| AC-5c | `app/api/v1/payments/protection-window.integration.test.ts::dispute opened in-window keeps payout blocked past window elapse` |
+| AC-6 | `e2e/payment.spec.ts::failed payment shows correct message, no booking` |
+| AC-7 | `app/api/v1/payments/idempotency.integration.test.ts::duplicate request does not double-charge` |
+| AC-8 | `lib/ai/payment-reporting.test.ts::never claims success without backend confirmation` |
 
 **Coverage:** ≥80% on new code; financial-flow tests (§113 list) are mandatory, not optional.
 
@@ -188,7 +210,7 @@ exposes (covered by the provider's own certification, not re-tested here).
 ## 9. Rollout
 
 - **Feature flag:** none — payments are core, not optional; but the specific *provider adapter*
-  is swappable via `packages/payments` configuration.
+  is swappable via `lib/payments` configuration.
 - **Migration order:** schema ships with code; production payment-provider credentials
   provisioned separately from code deploy.
 - **Rollback:** revert deploy; in-flight payments' state is provider-authoritative and
