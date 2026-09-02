@@ -1,0 +1,293 @@
+/**
+ * APURIVA Design System tokens — generated verbatim from ui/_ds_manifest.json (the design
+ * system's own source of truth), which is authored/maintained outside this app.
+ *
+ * Do not hand-edit token values here; regenerate from the manifest instead so this file never
+ * drifts from ui/. --font-display / --font-sans / --font-mono / --font-urdu are intentionally
+ * excluded — they're supplied by next/font/google in app/fonts.ts (self-hosted, no CDN link).
+ */
+
+/* ---- Colors ---- */
+:root {
+  --teal-900: #073B3A;
+  --teal-800: #075E5B;
+  --teal-700: #087F7A;
+  --teal-600: #0A918C;
+  --teal-500: #16A6A0;
+  --teal-400: #43BBB5;
+  --teal-300: #7AD2CD;
+  --teal-100: #DDF5F3;
+  --teal-50: #EFFBFA;
+  --navy-950: #071A2B;
+  --navy-900: #0A2338;
+  --navy-800: #10334D;
+  --navy-700: #174564;
+  --navy-600: #275B78;
+  --navy-100: #E6EEF3;
+  --navy-50: #F2F6F8;
+  --amber-700: #A85D00;
+  --amber-600: #C87500;
+  --amber-500: #E08A00;
+  --amber-400: #F0A83A;
+  --amber-100: #FFF0D4;
+  --amber-50: #FFF8EB;
+  --white: #FFFFFF;
+  --gray-50: #F8FAFB;
+  --gray-100: #F1F4F5;
+  --gray-200: #E2E7E9;
+  --gray-300: #CBD3D6;
+  --gray-400: #98A4A8;
+  --gray-500: #6B777B;
+  --gray-600: #4F5B5F;
+  --gray-700: #354044;
+  --gray-800: #202A2D;
+  --gray-900: #11191C;
+  --success-600: #168A5B;
+  --success-50: #E8F7F0;
+  --warning-600: #B86B00;
+  --warning-50: #FFF3DC;
+  --error-600: #C43D45;
+  --error-50: #FDEBEC;
+  --info-600: #256D9B;
+  --info-50: #EAF4FB;
+}
+[data-theme="dark"] {
+  --dm-background: #071A2B;
+  --dm-surface: #0D2638;
+  --dm-elevated: #123349;
+  --dm-primary: #43BBB5;
+  --dm-accent: #F0A83A;
+  --dm-text: #F4F8F9;
+  --dm-text-secondary: #B7C6CB;
+  --dm-border: #284353;
+}
+
+/* ---- Typography ---- */
+:root {
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 38px;
+  --text-5xl: 48px;
+  --text-6xl: 60px;
+  --leading-tight: 1.15;
+  --leading-snug: 1.3;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+  --tracking-tight: -0.02em;
+  --tracking-snug: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+}
+[lang="ur"] {
+  --font-sans: var(--font-urdu);
+  --font-display: var(--font-urdu);
+  --leading-normal: 1.9;
+  --leading-snug: 1.7;
+}
+
+/* ---- Spacing ---- */
+:root {
+  --space-0: 0px;
+  --space-05: 2px;
+  --space-1: 4px;
+  --space-15: 6px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  --density-row-y: 12px;
+  --density-row-x: 16px;
+  --density-gap: 16px;
+  --density-card-pad: 20px;
+  --density-control-h: 40px;
+}
+[data-density="spacious"] {
+  --density-row-y: 20px;
+  --density-row-x: 24px;
+  --density-gap: 24px;
+  --density-card-pad: 32px;
+  --density-control-h: 48px;
+}
+[data-density="comfortable"] {
+  --density-row-y: 12px;
+  --density-row-x: 16px;
+  --density-gap: 16px;
+  --density-card-pad: 20px;
+  --density-control-h: 40px;
+}
+[data-density="moderate"] {
+  --density-row-y: 10px;
+  --density-row-x: 14px;
+  --density-gap: 12px;
+  --density-card-pad: 16px;
+  --density-control-h: 36px;
+}
+[data-density="dense"] {
+  --density-row-y: 6px;
+  --density-row-x: 10px;
+  --density-gap: 8px;
+  --density-card-pad: 12px;
+  --density-control-h: 32px;
+}
+
+/* ---- Radius ---- */
+:root {
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+}
+
+/* ---- Elevation ---- */
+:root {
+  --shadow-none: none;
+  --shadow-xs: 0 1px 2px rgba(7,26,43,.05);
+  --shadow-sm: 0 1px 3px rgba(7,26,43,.07), 0 1px 2px rgba(7,26,43,.04);
+  --shadow-md: 0 4px 12px rgba(7,26,43,.08);
+  --shadow-lg: 0 12px 28px rgba(7,26,43,.10);
+  --shadow-overlay: 0 24px 60px rgba(7,26,43,.18);
+  --ring-focus: 0 0 0 3px rgba(10,145,140,.35);
+  --ring-error: 0 0 0 3px rgba(196,61,69,.28);
+}
+
+/* ---- Motion ---- */
+:root {
+  --duration-instant: 1ms;
+  --duration-fast: 1ms;
+  --duration-normal: 1ms;
+  --duration-slow: 1ms;
+  --duration-slower: 1ms;
+  --ease-standard: cubic-bezier(.2,0,0,1);
+  --ease-out: cubic-bezier(.16,1,.3,1);
+  --ease-in: cubic-bezier(.7,0,.84,0);
+  --ease-emphasis: cubic-bezier(.34,1.3,.64,1);
+}
+
+/* ---- Layout ---- */
+:root {
+  --bp-mobile: 480px;
+  --bp-large-mobile: 640px;
+  --bp-tablet: 834px;
+  --bp-desktop: 1200px;
+  --bp-wide: 1536px;
+  --container-narrow: 640px;
+  --container-content: 960px;
+  --container-wide: 1280px;
+  --container-max: 1440px;
+  --touch-target-min: 44px;
+  --nav-side-w: 248px;
+  --nav-side-w-collapsed: 72px;
+  --nav-top-h: 64px;
+  --nav-bottom-h: 60px;
+  --z-base: 0;
+  --z-sticky: 100;
+  --z-nav: 200;
+  --z-drawer: 300;
+  --z-overlay: 400;
+  --z-dialog: 500;
+  --z-toast: 600;
+}
+
+/* ---- Semantic aliases ---- */
+:root {
+  --text-heading: var(--navy-900);
+  --text-body: var(--gray-700);
+  --text-muted: var(--gray-500);
+  --text-subtle: var(--gray-400);
+  --text-inverse: var(--white);
+  --text-brand: var(--teal-700);
+  --text-link: var(--teal-700);
+  --text-link-hover: var(--teal-800);
+  --text-on-brand: var(--white);
+  --text-on-accent: var(--white);
+  --text-price: var(--navy-900);
+  --surface-page: var(--gray-50);
+  --surface-card: var(--white);
+  --surface-raised: var(--white);
+  --surface-sunken: var(--gray-100);
+  --surface-inverse: var(--navy-900);
+  --surface-brand-subtle: var(--teal-50);
+  --surface-accent-subtle: var(--amber-50);
+  --surface-nav: var(--white);
+  --surface-nav-inverse: var(--navy-900);
+  --surface-overlay-scrim: rgba(7,26,43,.55);
+  --border-subtle: var(--gray-200);
+  --border-default: var(--gray-300);
+  --border-strong: var(--gray-400);
+  --border-brand: var(--teal-600);
+  --border-inverse: var(--navy-700);
+  --action-primary-bg: var(--teal-600);
+  --action-primary-bg-hover: var(--teal-700);
+  --action-primary-bg-active: var(--teal-800);
+  --action-primary-fg: var(--white);
+  --action-secondary-bg: var(--white);
+  --action-secondary-bg-hover: var(--teal-50);
+  --action-secondary-fg: var(--teal-700);
+  --action-secondary-border: var(--teal-600);
+  --action-ghost-fg: var(--navy-800);
+  --action-ghost-bg-hover: var(--gray-100);
+  --action-accent-bg: var(--amber-600);
+  --action-accent-bg-hover: var(--amber-700);
+  --action-accent-fg: var(--white);
+  --action-danger-bg: var(--error-600);
+  --action-danger-bg-hover: #A62F36;
+  --action-danger-fg: var(--white);
+  --action-disabled-bg: var(--gray-200);
+  --action-disabled-fg: var(--gray-400);
+  --field-bg: var(--white);
+  --field-bg-disabled: var(--gray-100);
+  --field-border: var(--gray-300);
+  --field-border-hover: var(--gray-400);
+  --field-border-focus: var(--teal-600);
+  --field-border-error: var(--error-600);
+  --field-placeholder: var(--gray-400);
+  --field-label: var(--navy-800);
+  --field-help: var(--gray-500);
+  --status-success-fg: var(--success-600);
+  --status-success-bg: var(--success-50);
+  --status-warning-fg: var(--warning-600);
+  --status-warning-bg: var(--warning-50);
+  --status-error-fg: var(--error-600);
+  --status-error-bg: var(--error-50);
+  --status-info-fg: var(--info-600);
+  --status-info-bg: var(--info-50);
+  --status-neutral-fg: var(--gray-600);
+  --status-neutral-bg: var(--gray-100);
+  --status-brand-fg: var(--teal-700);
+  --status-brand-bg: var(--teal-50);
+  --status-accent-fg: var(--amber-700);
+  --status-accent-bg: var(--amber-50);
+  --ai-surface: var(--teal-50);
+  --ai-border: var(--teal-300);
+  --ai-accent: var(--teal-600);
+  --ai-bubble-user: var(--navy-900);
+  --ai-bubble-user-fg: var(--white);
+  --ai-bubble-assistant: var(--white);
+  --rating-star: var(--amber-500);
+  --rating-star-empty: var(--gray-300);
+  --timer-urgent: var(--error-600);
+  --verified: var(--teal-600);
+  --top-match: var(--amber-600);
+}

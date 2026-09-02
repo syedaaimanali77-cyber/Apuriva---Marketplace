@@ -1,0 +1,24 @@
+/*
+ * Minimal reset, built on the APURIVA Design System tokens (app/styles/apuriva-tokens.css) —
+ * no separate design system or component library is introduced here.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--surface-page);
+  color: var(--text-body);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
