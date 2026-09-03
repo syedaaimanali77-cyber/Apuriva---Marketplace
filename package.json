@@ -14,8 +14,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:env": "tsx scripts/check-env-parity.ts",
+    "check:schema-checksum": "tsx scripts/check-schema-checksum.ts",
+    "check:schema-money-lint": "tsx scripts/check-schema-money-lint.ts",
+    "check:schema-baseline": "npm run check:schema-checksum && npm run check:schema-money-lint",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx lib/db/migrate.ts"
+    "db:migrate": "tsx lib/db/migrate.ts",
+    "db:rollback": "tsx lib/db/rollback.ts"
   },
   "dependencies": {
     "next": "^16.3.4",
