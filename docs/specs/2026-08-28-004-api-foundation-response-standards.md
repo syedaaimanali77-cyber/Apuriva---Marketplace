@@ -1,7 +1,7 @@
 # Spec: API Foundation & Response Standards
 
 **File:** `docs/specs/2026-08-28-004-api-foundation-response-standards.md`
-**Status:** Draft
+**Status:** Approved
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §98–§101, §126, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §6, [docs/workflow.md](../workflow.md)
@@ -16,7 +16,7 @@ so that 40+ future endpoints don't each invent their own conventions, which woul
 future OpenAPI spec and any mobile client integration (master spec §98) inconsistent and
 error-prone.
 
-**Who is affected:** Every API consumer: `apps/web`, the future mobile app, MCP tools, and any
+**Who is affected:** Every API consumer: the application, the future mobile app, MCP tools, and any
 integration partner reading the OpenAPI doc.
 
 **Why it matters now:** Foundational (Milestone 1); every domain spec's §3 "API contract"
@@ -57,7 +57,7 @@ use — it does not itself introduce domain endpoints beyond health/docs.
 ### Request and response types
 
 ```typescript
-// packages/types/src/api.ts
+// lib/types/api.ts
 export interface ApiResponse<T> {
   data: T;
   correlationId: string;
@@ -129,8 +129,8 @@ screens don't hand-roll error-message strings per status code.
 
 | Level | What it covers | Where |
 |---|---|---|
-| **Unit** | envelope serialization, error-code mapping, pagination math | `apps/api/**/*.test.ts` |
-| **Integration** | `/api/v1/health` returns `200`; a deliberately invalid request returns `400 VALIDATION_ERROR`; rate limit returns `429` after threshold | `apps/api/api-foundation.integration.test.ts` |
+| **Unit** | envelope serialization, error-code mapping, pagination math | `app/api/v1/**/*.test.ts` |
+| **Integration** | `/api/v1/health` returns `200`; a deliberately invalid request returns `400 VALIDATION_ERROR`; rate limit returns `429` after threshold | `app/api/v1/api-foundation.integration.test.ts` |
 | **Architecture** | CI diff check: generated OpenAPI doc matches route definitions | CI script |
 | **E2E** | N/A directly | — |
 
@@ -138,9 +138,9 @@ screens don't hand-roll error-message strings per status code.
 
 | AC | Test |
 |---|---|
-| AC-1 | `apps/api/envelope.test.ts::wraps success responses` |
-| AC-3 | `apps/api/validation.integration.test.ts::400 on bad input` |
-| AC-5 | `apps/api/rate-limit.integration.test.ts::429 after threshold` |
+| AC-1 | `app/api/v1/envelope.test.ts::wraps success responses` |
+| AC-3 | `app/api/v1/validation.integration.test.ts::400 on bad input` |
+| AC-5 | `app/api/v1/rate-limit.integration.test.ts::429 after threshold` |
 | AC-7 | CI `openapi-drift-check` |
 
 **Coverage:** ≥80% on new code.
@@ -163,8 +163,8 @@ screens don't hand-roll error-message strings per status code.
 
 | # | Risk / question | Owner | Resolution |
 |---|---|---|---|
-| 1 | Exact rate-limit thresholds per domain — master spec says "admin-configurable," not fixed values | — | Open — ship sane defaults, expose via `docs/specs/2026-08-28-041-feature-flags-platform-configuration.md`'s configuration surface |
-| 2 | HTTP framework choice (Fastify, Express, Nest, Hono) | — | Open — any is compatible with this contract; recommend one with first-class OpenAPI generation support |
+| 1 | Exact rate-limit thresholds per domain — master spec says "admin-configurable," not fixed values | — | Remains Open — exact per-domain thresholds are not fixed by this spec; ship sane defaults initially, made configurable through `docs/specs/2026-08-28-041-feature-flags-platform-configuration.md`'s configuration surface |
+| 2 | HTTP framework choice | — | Decided — Next.js Route Handlers (`app/api/v1/**/route.ts`) are the HTTP framework for this contract; no separate framework (Fastify, Express, Nest, Hono) is introduced |
 
 ---
 
