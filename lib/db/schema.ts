@@ -205,9 +205,140 @@ export const adminProfiles = pgTable(
   (t) => [index('admin_profiles_user_id_idx').on(t.userId)],
 );
 
-export const roles = pgTable('roles', { ...baseColumns() });
+/** Spec 009 §4.1, master spec §69: the seven canonical admin roles — seeded exactly once
+ * (drizzle/0005_add_spec_009_admin_rbac.sql), never created ad hoc by application code. */
+export const ADMIN_ROLES = [
+  'super_admin',
+  'operations_admin',
+  'support_admin',
+  'finance_admin',
+  'trust_safety_admin',
+  'content_admin',
+  'analytics_admin',
+] as const;
 
-export const permissions = pgTable('permissions', { ...baseColumns() });
+export const RISK_TIERS = ['low', 'medium', 'high', 'critical'] as const;
+
+export const roles = pgTable(
+  'roles',
+  {
+    ...baseColumns(),
+    name: text('name', { enum: ADMIN_ROLES }).notNull().unique(),
+  },
+  (t) => [check('roles_name_ck', sql`${t.name} in ('super_admin','operations_admin','support_admin','finance_admin','trust_safety_admin','content_admin','analytics_admin')`)],
+);
+
+/** Spec 009 §4/§4.3: a role's `(resource, action)` grant and the risk tier that action carries.
+ * Deliberately starts empty — each domain spec (022 refunds, 038 moderation, ...) owns and inserts
+ * its own rows here; this spec owns only the shape and the resolution contract (§3.1) that reads
+ * it, never an exhaustive business mapping. */
+export const permissions = pgTable(
+  'permissions',
+  {
+    ...baseColumns(),
+    roleId: uuid('role_id')
+      .notNull()
+      .references(() => roles.id, { onDelete: 'restrict' }),
+    resource: text('resource').notNull(),
+    action: text('action').notNull(),
+    riskTier: text('risk_tier', { enum: RISK_TIERS }).notNull(),
+  },
+  (t) => [
+    index('permissions_role_id_idx').on(t.roleId),
+    uniqueIndex('permissions_role_resource_action_uq').on(t.roleId, t.resource, t.action),
+    check('permissions_risk_tier_ck', sql`${t.riskTier} in ('low','medium','high','critical')`),
+  ],
+);
+
+/** Spec 009 §4: many-to-many — "an admin account is assigned one or more of the seven roles"
+ * (master spec §69). Not itself in master spec §124's minimum entity list; added because §69's
+ * requirement has no other structural home. */
+export const adminRoleAssignments = pgTable(
+  'admin_role_assignments',
+  {
+    ...baseColumns(),
+    adminProfileId: uuid('admin_profile_id')
+      .notNull()
+      .references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    roleId: uuid('role_id')
+      .notNull()
+      .references(() => roles.id, { onDelete: 'restrict' }),
+  },
+  (t) => [
+    index('admin_role_assignments_admin_profile_id_idx').on(t.adminProfileId),
+    index('admin_role_assignments_role_id_idx').on(t.roleId),
+    uniqueIndex('admin_role_assignments_admin_profile_role_uq').on(t.adminProfileId, t.roleId),
+  ],
+);
+
+/** Spec 009 §4/§4.1/§4.2: the risk-tiered approval workflow record. Only ever created for a
+ * `high`/`critical` action (§3.1) — a `low`/`medium` action proceeds without one. Not in master
+ * spec §124's minimum entity list; spec 009 (§69/§70) is the entity's sole owner. */
+export const ADMIN_ACTION_STATUSES = [
+  'Pending',
+  'Approved',
+  'Rejected',
+  'Executed',
+  'PostActionReviewRequired',
+  'PostActionReviewed',
+] as const;
+
+export const adminActions = pgTable(
+  'admin_actions',
+  {
+    ...baseColumns(),
+    /** The initiating admin. */
+    adminId: uuid('admin_id')
+      .notNull()
+      .references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    resource: text('resource').notNull(),
+    actionType: text('action_type').notNull(),
+    riskTier: text('risk_tier', { enum: ['high', 'critical'] as const }).notNull(),
+    status: text('status', { enum: ADMIN_ACTION_STATUSES }).notNull().default('Pending'),
+    reason: text('reason').notNull(),
+    targetType: text('target_type').notNull(),
+    targetId: text('target_id').notNull(),
+    /** §3.2: set only for an action created via the emergency-bypass path. */
+    isEmergencyBypass: boolean('is_emergency_bypass').notNull().default(false),
+    /** §3.2/AC-3: mandatory post-action review outcome for an emergency-bypass action — null until
+     * `PostActionReviewRequired` transitions to `PostActionReviewed`. */
+    postActionReviewByAdminId: uuid('post_action_review_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    postActionReviewedAt: timestamp('post_action_reviewed_at', { withTimezone: true }),
+    postActionReviewNotes: text('post_action_review_notes'),
+  },
+  (t) => [
+    index('admin_actions_admin_id_idx').on(t.adminId),
+    index('admin_actions_post_action_review_by_admin_id_idx').on(t.postActionReviewByAdminId),
+    check('admin_actions_risk_tier_ck', sql`${t.riskTier} in ('high','critical')`),
+    check(
+      'admin_actions_status_ck',
+      sql`${t.status} in ('Pending','Approved','Rejected','Executed','PostActionReviewRequired','PostActionReviewed')`,
+    ),
+  ],
+);
+
+/** Spec 009 §4/§7: at most one decision per `AdminAction` (the unique index below) — the second,
+ * distinct admin's approve/reject call. */
+export const adminActionApprovals = pgTable(
+  'admin_action_approvals',
+  {
+    ...baseColumns(),
+    adminActionId: uuid('admin_action_id')
+      .notNull()
+      .references(() => adminActions.id, { onDelete: 'restrict' }),
+    approverAdminId: uuid('approver_admin_id')
+      .notNull()
+      .references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    decision: text('decision', { enum: ['approved', 'rejected'] as const }).notNull(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('admin_action_approvals_admin_action_id_idx').on(t.adminActionId),
+    index('admin_action_approvals_approver_admin_id_idx').on(t.approverAdminId),
+    uniqueIndex('admin_action_approvals_admin_action_uq').on(t.adminActionId),
+    check('admin_action_approvals_decision_ck', sql`${t.decision} in ('approved','rejected')`),
+  ],
+);
 
 // ---------------------------------------------------------------------------
 // Catalog

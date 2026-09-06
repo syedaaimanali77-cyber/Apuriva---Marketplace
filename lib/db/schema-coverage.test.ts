@@ -5,7 +5,9 @@ import * as schema from './schema';
 
 /**
  * Spec 003 AC-4: every entity in master spec §124, plus the five status-history and five
- * status-transition tables, exists as a baseline table.
+ * status-transition tables, exists as a baseline table — plus, from spec 009 onward, any table a
+ * later spec's own data model legitimately adds beyond §124's minimum list (§124: "design entities
+ * for, at minimum").
  */
 const EXPECTED_TABLES = [
   // Identity & access
@@ -15,6 +17,11 @@ const EXPECTED_TABLES = [
   'admin_profiles',
   'roles',
   'permissions',
+  // Spec 009 §4: not in master spec §124's minimum list — added for the RBAC approval framework
+  // (admin/role many-to-many, and the risk-tiered approval workflow record + its decisions).
+  'admin_role_assignments',
+  'admin_actions',
+  'admin_action_approvals',
   // Catalog
   'categories',
   'subcategories',

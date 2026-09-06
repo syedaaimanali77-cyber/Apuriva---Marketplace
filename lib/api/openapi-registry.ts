@@ -95,4 +95,47 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Toggle the Security Center MFA on/off control; requires step-up',
     tags: ['privacy'],
   },
+  { method: 'GET', path: '/admin/roles', summary: 'List the seven canonical admin roles; Super Admin only', tags: ['admin-rbac'] },
+  {
+    method: 'POST',
+    path: '/admin/users/{userId}/roles',
+    summary: 'Assign an admin role to a user; Super Admin only, audited',
+    tags: ['admin-rbac'],
+  },
+  {
+    method: 'DELETE',
+    path: '/admin/users/{userId}/roles/{role}',
+    summary: 'Revoke an admin role from a user; Super Admin only, blocks the last remaining super_admin',
+    tags: ['admin-rbac'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/approvals/{actionId}/approve',
+    summary: 'Approve a pending high/critical-risk AdminAction (second, distinct, authorized admin)',
+    tags: ['admin-rbac'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/approvals/{actionId}/reject',
+    summary: 'Reject a pending high/critical-risk AdminAction',
+    tags: ['admin-rbac'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/approvals/pending',
+    summary: "Pending AdminActions the caller is authorized to decide, scoped to their role(s)",
+    tags: ['admin-rbac'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/actions/{actionId}/post-action-review',
+    summary: 'Record the mandatory post-action review for an emergency-bypassed AdminAction',
+    tags: ['admin-rbac'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/actions/pending-review',
+    summary: 'AdminActions awaiting mandatory post-action review, scoped to the caller',
+    tags: ['admin-rbac'],
+  },
 ];

@@ -17,11 +17,15 @@ describe.skipIf(!dbReachable)('0001_baseline_schema migration (integration)', ()
     await pool.end();
   });
 
-  it('creates all 77 baseline tables', async () => {
+  // 77 from 0001_baseline_schema (spec 003 §124's minimum list) + 3 from spec 009
+  // (0005_add_spec_009_admin_rbac.sql: admin_role_assignments, admin_actions,
+  // admin_action_approvals — see lib/db/schema-coverage.test.ts for why those three are legitimate
+  // additions beyond §124's minimum, not baseline drift).
+  it('creates all 80 tables (77 baseline + spec 009\'s 3 RBAC tables)', async () => {
     const { rows } = await pool.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
     );
-    expect(rows.length).toBe(77);
+    expect(rows.length).toBe(80);
   });
 
   it('spot-checks a structural FK exists and defaults to RESTRICT', async () => {
