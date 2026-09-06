@@ -17,4 +17,17 @@ export interface OpenApiRouteEntry {
 export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
   { method: 'GET', path: '/health', summary: 'Liveness/readiness check', tags: ['foundation'] },
   { method: 'GET', path: '/openapi.json', summary: 'Generated OpenAPI 3.x document', tags: ['foundation'] },
+  { method: 'GET', path: '/users/me', summary: 'Current user: profiles and session active mode', tags: ['users'] },
+  {
+    method: 'POST',
+    path: '/users/me/provider-profile',
+    summary: 'Become a provider (idempotent; does not switch mode)',
+    tags: ['users'],
+  },
+  {
+    method: 'PATCH',
+    path: '/users/me/active-mode',
+    summary: 'Switch the current session between customer/provider mode',
+    tags: ['users'],
+  },
 ];

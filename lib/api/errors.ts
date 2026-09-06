@@ -20,23 +20,29 @@ export type ApiErrorCode = keyof typeof API_ERROR_CODES;
  * Thrown by route handler logic and caught by `withApiRoute` (lib/api/handler.ts), which
  * converts it into the standard `ApiError` envelope. Lets a handler `throw` at the point of
  * failure instead of threading an early-return response object through nested logic.
+ *
+ * `code` also accepts a domain-specific code a later spec adds to this table in its own §3 (spec
+ * 004 §3: "extends this table ... following the same SCREAMING_SNAKE_CASE and stability rule") —
+ * e.g. spec 005's `MFA_REQUIRED`/`CSRF_TOKEN_INVALID`/`OTP_ALREADY_USED`/`OTP_EXPIRED`. Since
+ * those aren't in the shared `API_ERROR_CODES` map, pass `options.status` explicitly for those;
+ * it's ignored (the map wins) for the 8 baseline codes, so every existing call site is unaffected.
  */
 export class ApiRouteError extends Error {
-  readonly code: ApiErrorCode;
+  readonly code: string;
   readonly status: number;
   readonly errors?: { field: string; message: string }[];
   /** Only set for RATE_LIMITED — seconds until the caller may retry. */
   readonly retryAfterSeconds?: number;
 
   constructor(
-    code: ApiErrorCode,
+    code: ApiErrorCode | (string & {}),
     message: string,
-    options?: { errors?: { field: string; message: string }[]; retryAfterSeconds?: number },
+    options?: { errors?: { field: string; message: string }[]; retryAfterSeconds?: number; status?: number },
   ) {
     super(message);
     this.name = 'ApiRouteError';
     this.code = code;
-    this.status = API_ERROR_CODES[code];
+    this.status = options?.status ?? API_ERROR_CODES[code as ApiErrorCode];
     this.errors = options?.errors;
     this.retryAfterSeconds = options?.retryAfterSeconds;
   }

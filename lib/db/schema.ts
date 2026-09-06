@@ -128,6 +128,17 @@ export const customerProfiles = pgTable(
   (t) => [index('customer_profiles_user_id_idx').on(t.userId)],
 );
 
+/** Spec 006 §4 (Entities table), master spec §66. */
+export const PROVIDER_PROFILE_LIFECYCLE_STATUSES = [
+  'draft',
+  'pending_verification',
+  'active',
+  'paused',
+  'restricted',
+  'suspended',
+  'banned',
+] as const;
+
 export const providerProfiles = pgTable(
   'provider_profiles',
   {
@@ -136,8 +147,15 @@ export const providerProfiles = pgTable(
       .notNull()
       .unique()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 006 §4. */
+    businessName: text('business_name'),
+    /** Spec 006 §4/retention: transitions (e.g. Suspended, Banned) are audited (spec 039). */
+    lifecycleStatus: text('lifecycle_status', { enum: PROVIDER_PROFILE_LIFECYCLE_STATUSES }).notNull().default('draft'),
   },
-  (t) => [index('provider_profiles_user_id_idx').on(t.userId)],
+  (t) => [
+    index('provider_profiles_user_id_idx').on(t.userId),
+    check('provider_profiles_lifecycle_status_ck', sql`${t.lifecycleStatus} in ('draft','pending_verification','active','paused','restricted','suspended','banned')`),
+  ],
 );
 
 /** Spec 005 §4/§8 risk #2: adds admin TOTP-MFA columns to this spec 003 baseline table. */
@@ -1069,8 +1087,13 @@ export const sessions = pgTable(
     deviceLabel: text('device_label'),
     ipHash: text('ip_hash'),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    /** Spec 006 §4: the CURRENT SESSION's active mode — never a global `User` preference. */
+    activeMode: text('active_mode', { enum: ['customer', 'provider'] }).notNull().default('customer'),
   },
-  (t) => [index('sessions_user_id_idx').on(t.userId)],
+  (t) => [
+    index('sessions_user_id_idx').on(t.userId),
+    check('sessions_active_mode_ck', sql`${t.activeMode} in ('customer','provider')`),
+  ],
 );
 
 /** Spec 005 §4/AC-2: adds the columns needed to actually record a security event. */

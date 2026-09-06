@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { branding } from '@/lib/config/branding';
 import apurivaLogo from '@/ui/assets/apuriva-logo-full.jpeg';
+import { AccountMenu } from '@/app/account/_components/AccountMenu';
 
 /**
  * Global top bar — every page gets this, so it intentionally carries no tagline (that's
@@ -26,6 +27,7 @@ export function AppHeader() {
         height: 'var(--nav-top-h)',
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'space-between',
         padding: '0 var(--space-6)',
         background: 'var(--surface-nav)',
         boxShadow: 'var(--shadow-sm)',
@@ -42,6 +44,9 @@ export function AppHeader() {
           />
         </div>
       </Link>
+
+      {/* Spec 006 §5: mode switch is reachable via account menu, available globally. */}
+      <AccountMenu />
     </header>
   );
 }

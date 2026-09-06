@@ -1,0 +1,94 @@
+/*
+ * Presentation-only styling for the spec 006 account menu. Built entirely on the APURIVA Design
+ * System's own tokens (app/styles/apuriva-tokens.css) — the design system has no `Menu` primitive
+ * yet (see components/index.ts), so this is a small, self-contained dropdown built from existing
+ * tokens, the same way app/(auth)/auth.module.css builds the auth shell. Scoped via CSS Modules.
+ */
+
+.wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: var(--z-drawer);
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-subtle);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.items {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-body);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.item:hover:not(:disabled) {
+  background: var(--surface-sunken);
+}
+
+.item:disabled {
+  cursor: default;
+  color: var(--text-subtle);
+}
+
+.item:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+.itemCurrent {
+  color: var(--text-brand);
+  font-weight: var(--weight-semibold);
+}
+
+.error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--status-error-fg);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

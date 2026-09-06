@@ -32,6 +32,7 @@ export function withApiRoute(
         return apiError(err.code, err.message, correlationId, {
           errors: err.errors,
           retryAfterSeconds: err.retryAfterSeconds,
+          status: err.status,
         });
       }
 

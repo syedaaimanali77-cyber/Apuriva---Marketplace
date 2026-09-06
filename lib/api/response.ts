@@ -30,12 +30,12 @@ export function apiPaged<T>(
 }
 
 export function apiError(
-  code: ApiErrorCode,
+  code: ApiErrorCode | (string & {}),
   message: string,
   correlationId: string,
-  options?: { errors?: { field: string; message: string }[]; retryAfterSeconds?: number },
+  options?: { errors?: { field: string; message: string }[]; retryAfterSeconds?: number; status?: number },
 ): NextResponse {
-  const status = API_ERROR_CODES[code];
+  const status = options?.status ?? API_ERROR_CODES[code as ApiErrorCode];
   const body: ApiError = { status, code, message, errors: options?.errors, correlationId };
   const res = NextResponse.json(body, { status });
   if (options?.retryAfterSeconds !== undefined) {

@@ -15,6 +15,13 @@
       "when": 1788414387815,
       "tag": "0002_add_auth_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788648579187,
+      "tag": "0003_add_profiles_and_session_mode",
+      "breakpoints": true
     }
   ]
 }
