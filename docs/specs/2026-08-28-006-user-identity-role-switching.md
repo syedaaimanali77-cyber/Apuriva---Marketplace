@@ -1,7 +1,7 @@
 # Spec: User Identity & Role Switching
 
 **File:** `docs/specs/2026-08-28-006-user-identity-role-switching.md`
-**Status:** Draft
+**Status:** Approved
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §9.2–§9.3, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §4, [docs/workflow.md](../workflow.md)
