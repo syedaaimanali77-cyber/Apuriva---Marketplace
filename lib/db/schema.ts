@@ -23,7 +23,7 @@
  *   - Every FK below is `onDelete: 'restrict'` and has its own covering index, per AC-4.
  */
 import { sql } from 'drizzle-orm';
-import { check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 // ---------------------------------------------------------------------------
 // Shared conventions
@@ -99,7 +99,22 @@ export function scheduledTimeColumns<Base extends string>(base: Base) {
 // Identity & access
 // ---------------------------------------------------------------------------
 
-export const users = pgTable('users', { ...baseColumns() });
+/**
+ * Spec 005 §4: extends this spec 003 baseline table with authentication identity columns —
+ * no new table. `phone_number`/`email` are nullable+unique (a user may sign up via either path;
+ * Postgres UNIQUE allows multiple NULLs, so email-only and phone-only rows coexist).
+ */
+export const users = pgTable(
+  'users',
+  {
+    ...baseColumns(),
+    phoneNumber: text('phone_number').unique(),
+    email: text('email').unique(),
+    passwordHash: text('password_hash'),
+    phoneVerifiedAt: timestamp('phone_verified_at', { withTimezone: true }),
+    emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
+  },
+);
 
 export const customerProfiles = pgTable(
   'customer_profiles',
@@ -125,6 +140,7 @@ export const providerProfiles = pgTable(
   (t) => [index('provider_profiles_user_id_idx').on(t.userId)],
 );
 
+/** Spec 005 §4/§8 risk #2: adds admin TOTP-MFA columns to this spec 003 baseline table. */
 export const adminProfiles = pgTable(
   'admin_profiles',
   {
@@ -133,6 +149,10 @@ export const adminProfiles = pgTable(
       .notNull()
       .unique()
       .references(() => users.id, { onDelete: 'restrict' }),
+    // AES-256-GCM ciphertext (lib/auth/totp-secret-crypto.ts) — the raw TOTP secret is never
+    // stored in plaintext.
+    totpSecretEncrypted: text('totp_secret_encrypted'),
+    mfaEnrolledAt: timestamp('mfa_enrolled_at', { withTimezone: true }),
   },
   (t) => [index('admin_profiles_user_id_idx').on(t.userId)],
 );
@@ -1035,6 +1055,7 @@ export const policyAcceptances = pgTable(
 // Security, files, location, analytics
 // ---------------------------------------------------------------------------
 
+/** Spec 005 §4/§8 risk #3: adds lifetime/refresh/revocation columns to this spec 003 baseline table. */
 export const sessions = pgTable(
   'sessions',
   {
@@ -1042,15 +1063,25 @@ export const sessions = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    mfaSatisfied: boolean('mfa_satisfied').notNull().default(false),
+    deviceLabel: text('device_label'),
+    ipHash: text('ip_hash'),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
   },
   (t) => [index('sessions_user_id_idx').on(t.userId)],
 );
 
+/** Spec 005 §4/AC-2: adds the columns needed to actually record a security event. */
 export const securityEvents = pgTable(
   'security_events',
   {
     ...baseColumns(),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'restrict' }),
+    eventType: text('event_type').notNull(),
+    severity: text('severity').notNull(),
+    metadata: jsonb('metadata'),
   },
   (t) => [index('security_events_user_id_idx').on(t.userId)],
 );
