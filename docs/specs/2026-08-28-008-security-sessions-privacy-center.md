@@ -196,7 +196,7 @@ dialog's destructive intent, and loading/error/success transitions).
 | AC-3 | `app/api/v1/privacy/export.integration.test.ts::excludes other users data and internal signals` |
 | AC-4 | `app/api/v1/privacy/deletion.integration.test.ts::retains financial records after anonymization` and `deletion.integration.test.ts::blocks deletion with active booking` |
 | AC-5 | `app/api/v1/privacy/step-up.integration.test.ts::blocks without fresh reauth` |
-| AC-6 | `app/api/v1/privacy/export.integration.test.ts::rejects access to another users export` (admin-access auditing itself is verified in spec 039's test suite) |
+| AC-6 | No test in this spec's own suite — AC-6 is specifically about *admin* access to another user's export/deletion request, and spec 008 exposes no admin-facing endpoint for that (§7 Out of scope). A user-vs-user ownership test (e.g. export/deletion `404` for another user's id) exercises this spec's own access control, not AC-6. Admin access to those records, and the audit event it must produce, is defined and tested entirely by spec 039's own test suite. |
 
 **Coverage:** ≥80% on new code.
 

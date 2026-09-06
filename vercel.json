@@ -4,6 +4,14 @@
     {
       "path": "/api/v1/cron/sample",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/v1/cron/data-export-sweep",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/cron/account-deletion-sweep",
+      "schedule": "0 * * * *"
     }
   ]
 }
