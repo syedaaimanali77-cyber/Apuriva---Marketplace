@@ -1,7 +1,7 @@
 # Spec: Security Sessions & Privacy Center
 
 **File:** `docs/specs/2026-08-28-008-security-sessions-privacy-center.md`
-**Status:** Draft
+**Status:** Approved
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §74–§77, §132.12, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §9.5, [docs/workflow.md](../workflow.md)
