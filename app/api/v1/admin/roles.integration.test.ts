@@ -81,6 +81,21 @@ describe.skipIf(!dbReachable)('admin role assignment (spec 009 AC-5, integration
     expect((await res.json()).code).toBe('VALIDATION_ERROR');
   });
 
+  it('rejects a non-UUID userId with 400 VALIDATION_ERROR, not a raw Postgres 22P02/500', async () => {
+    resetRateLimitState();
+    const superAdmin = await registerAdmin();
+    await grantRole(superAdmin, 'super_admin');
+
+    const res = await ASSIGN_ROLE(
+      authenticatedRequest('http://localhost/api/v1/admin/users/not-a-uuid/roles', superAdmin.sessionId, superAdmin.csrfToken, {
+        method: 'POST',
+        body: { role: 'support_admin' },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('VALIDATION_ERROR');
+  });
+
   it('AC-5: Super Admin revokes a non-super_admin role — 204', async () => {
     resetRateLimitState();
     const superAdmin = await registerAdmin();
@@ -94,6 +109,20 @@ describe.skipIf(!dbReachable)('admin role assignment (spec 009 AC-5, integration
       }),
     );
     expect(res.status).toBe(204);
+  });
+
+  it('revoke rejects a non-UUID userId with 400 VALIDATION_ERROR, not a raw Postgres 22P02/500', async () => {
+    resetRateLimitState();
+    const superAdmin = await registerAdmin();
+    await grantRole(superAdmin, 'super_admin');
+
+    const res = await REVOKE_ROLE(
+      authenticatedRequest('http://localhost/api/v1/admin/users/not-a-uuid/roles/support_admin', superAdmin.sessionId, superAdmin.csrfToken, {
+        method: 'DELETE',
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('VALIDATION_ERROR');
   });
 
   it('revoking a role the target does not hold returns 404 NOT_FOUND', async () => {

@@ -144,7 +144,7 @@ export default function AdminRolesPage() {
     );
   }
 
-  const columns: TableColumn<AdminRoleDto['name']>[] = [{ key: 'name', header: 'Role' }];
+  const columns: TableColumn<AdminRoleDto['name']>[] = [{ key: 'name', header: 'Role', render: (name) => name }];
 
   return (
     <main className={styles.page}>

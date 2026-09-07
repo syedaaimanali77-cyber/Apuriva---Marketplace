@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { ADMIN_ROLES, adminProfiles, adminRoleAssignments, roles } from '@/lib/db/schema';
 import { recordAdminAuditEvent } from './audit';
-import { adminForbiddenError, invalidRoleError, lastSuperAdminError, roleNotAssignedError, unknownAdminError } from './errors';
+import { adminForbiddenError, invalidRoleError, invalidUserIdError, lastSuperAdminError, roleNotAssignedError, unknownAdminError } from './errors';
 import { getAdminRoleNames } from './permissions';
 import type { AdminRole } from '@/lib/types/admin-rbac';
 
@@ -22,6 +22,16 @@ async function requireSuperAdmin(actorUserId: string): Promise<AdminRole[]> {
 function assertValidRole(role: unknown): asserts role is AdminRole {
   if (typeof role !== 'string' || !(ADMIN_ROLES as readonly string[]).includes(role)) {
     throw invalidRoleError(role);
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** `targetUserId` is a path param, not something Next validates — checked before any query
+ * touches the `uuid`-typed `admin_profiles.user_id` column (see `invalidUserIdError`). */
+function assertValidUserId(userId: string): void {
+  if (!UUID_RE.test(userId)) {
+    throw invalidUserIdError();
   }
 }
 
@@ -46,6 +56,7 @@ async function getOrCreateAdminProfileId(targetUserId: string): Promise<string> 
 /** Spec 009 §3/AC-5, `POST /admin/users/{userId}/roles`. Idempotent: assigning a role the target
  * already holds is a no-op, not a conflict. */
 export async function assignRole(actorUserId: string, targetUserId: string, role: unknown): Promise<AdminRole> {
+  assertValidUserId(targetUserId);
   assertValidRole(role);
   const actorRoles = await requireSuperAdmin(actorUserId);
 
@@ -78,6 +89,7 @@ export async function assignRole(actorUserId: string, targetUserId: string, role
  * commits, then re-reads the now-current count.
  */
 export async function revokeRole(actorUserId: string, targetUserId: string, role: unknown): Promise<void> {
+  assertValidUserId(targetUserId);
   assertValidRole(role);
   const actorRoles = await requireSuperAdmin(actorUserId);
 

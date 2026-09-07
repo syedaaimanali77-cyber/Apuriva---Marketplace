@@ -66,3 +66,10 @@ export function roleNotAssignedError(): ApiRouteError {
 export function invalidRoleError(role: unknown): ApiRouteError {
   return validationError([{ field: 'role', message: `"${String(role)}" is not one of the seven canonical admin roles.` }]);
 }
+
+/** AC-3: the `userId` path param must be a UUID before it reaches any `uuid`-typed column
+ * (`adminProfiles.userId`) — otherwise Postgres rejects it with `22P02`, which `withApiRoute`
+ * would surface as an opaque `500 INTERNAL_ERROR` instead of a validation failure. */
+export function invalidUserIdError(): ApiRouteError {
+  return validationError([{ field: 'userId', message: 'must be a valid UUID.' }]);
+}
