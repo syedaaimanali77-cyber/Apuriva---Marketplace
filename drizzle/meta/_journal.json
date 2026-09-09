@@ -36,6 +36,13 @@
       "when": 1788733182630,
       "tag": "0005_add_spec_009_admin_rbac",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788967141132,
+      "tag": "0006_lean_shaman",
+      "breakpoints": true
     }
   ]
 }

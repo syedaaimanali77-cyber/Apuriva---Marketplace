@@ -344,7 +344,36 @@ export const adminActionApprovals = pgTable(
 // Catalog
 // ---------------------------------------------------------------------------
 
-export const categories = pgTable('categories', { ...baseColumns() });
+/** Spec 010 §4 Lifecycle: shared by Category, Subcategory, and Service. `pending_review` is the
+ * status of a catalog entity awaiting publication (either an admin's own draft-for-review, or the
+ * unpublished result of an approved AI suggestion) — distinct from `CATALOG_SUGGESTION_STATUSES`
+ * below, which tracks the separate `CatalogSuggestion` proposal record, never a catalog entity
+ * itself. */
+export const CATALOG_ENTITY_STATUSES = ['draft', 'published', 'pending_review', 'retired'] as const;
+
+/** Spec 010 §3 Request/response types: kept a distinct type from `CATALOG_ENTITY_STATUSES` even
+ * though both use `pending_review` — a `CatalogSuggestion` has no corresponding catalog row until
+ * approved. */
+export const CATALOG_SUGGESTION_STATUSES = ['pending_review', 'approved', 'rejected'] as const;
+
+export const PRICING_MODELS = ['fixed', 'package', 'hourly', 'quote', 'custom'] as const;
+
+export const CATALOG_SUGGESTION_ENTITY_TYPES = ['category', 'subcategory', 'service'] as const;
+
+export const categories = pgTable(
+  'categories',
+  {
+    ...baseColumns(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    status: text('status', { enum: CATALOG_ENTITY_STATUSES }).notNull().default('draft'),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex('categories_slug_uq').on(t.slug),
+    check('categories_status_ck', sql`${t.status} in ('draft','published','pending_review','retired')`),
+  ],
+);
 
 export const subcategories = pgTable(
   'subcategories',
@@ -353,19 +382,82 @@ export const subcategories = pgTable(
     categoryId: uuid('category_id')
       .notNull()
       .references(() => categories.id, { onDelete: 'restrict' }),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    status: text('status', { enum: CATALOG_ENTITY_STATUSES }).notNull().default('draft'),
   },
-  (t) => [index('subcategories_category_id_idx').on(t.categoryId)],
+  (t) => [
+    index('subcategories_category_id_idx').on(t.categoryId),
+    // Spec 010 §3 Slug rules: unique within the parent category, not globally.
+    uniqueIndex('subcategories_category_id_slug_uq').on(t.categoryId, t.slug),
+    check('subcategories_status_ck', sql`${t.status} in ('draft','published','pending_review','retired')`),
+  ],
 );
 
 export const services = pgTable(
   'services',
   {
     ...baseColumns(),
-    subcategoryId: uuid('subcategory_id')
+    categoryId: uuid('category_id')
       .notNull()
-      .references(() => subcategories.id, { onDelete: 'restrict' }),
+      .references(() => categories.id, { onDelete: 'restrict' }),
+    // Spec 010 §4 Data model: nullable — not every service belongs to a subcategory.
+    subcategoryId: uuid('subcategory_id').references((): AnyPgColumn => subcategories.id, { onDelete: 'restrict' }),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    pricingModel: text('pricing_model', { enum: PRICING_MODELS }).notNull().default('quote'),
+    status: text('status', { enum: CATALOG_ENTITY_STATUSES }).notNull().default('draft'),
+    // Service-specific variable data, e.g. typical duration ranges (spec 010 §4).
+    metadata: jsonb('metadata').notNull().default({}),
   },
-  (t) => [index('services_subcategory_id_idx').on(t.subcategoryId)],
+  (t) => [
+    index('services_category_id_idx').on(t.categoryId),
+    index('services_subcategory_id_idx').on(t.subcategoryId),
+    // Spec 010 §3 Slug rules: unique across the whole catalog scope (no two services share a slug).
+    uniqueIndex('services_slug_uq').on(t.slug),
+    check('services_pricing_model_ck', sql`${t.pricingModel} in ('fixed','package','hourly','quote','custom')`),
+    check('services_status_ck', sql`${t.status} in ('draft','published','pending_review','retired')`),
+  ],
+);
+
+/** Spec 010 §4 Data model / AC-3: an AI-proposed category/subcategory/service, never itself a
+ * catalog entity. `resultingEntityId` is intentionally untyped as a single FK — it may point at
+ * `categories`, `subcategories`, or `services` depending on `entityType`, which no single Postgres
+ * FK constraint can express; the application layer (lib/catalog/suggestions.ts) is the source of
+ * truth for that relationship, same rationale as `admin_actions.target_id` (spec 009) above. */
+export const catalogSuggestions = pgTable(
+  'catalog_suggestions',
+  {
+    ...baseColumns(),
+    entityType: text('entity_type', { enum: CATALOG_SUGGESTION_ENTITY_TYPES }).notNull(),
+    proposedName: text('proposed_name').notNull(),
+    proposedSlug: text('proposed_slug').notNull(),
+    categoryId: uuid('category_id').references((): AnyPgColumn => categories.id, { onDelete: 'restrict' }),
+    subcategoryId: uuid('subcategory_id').references((): AnyPgColumn => subcategories.id, { onDelete: 'restrict' }),
+    pricingModel: text('pricing_model', { enum: PRICING_MODELS }),
+    metadata: jsonb('metadata').notNull().default({}),
+    rationale: text('rationale'),
+    source: text('source').notNull(),
+    status: text('status', { enum: CATALOG_SUGGESTION_STATUSES }).notNull().default('pending_review'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewedBy: uuid('reviewed_by').references((): AnyPgColumn => users.id, { onDelete: 'restrict' }),
+    resultingEntityId: uuid('resulting_entity_id'),
+  },
+  (t) => [
+    index('catalog_suggestions_status_idx').on(t.status),
+    index('catalog_suggestions_category_id_idx').on(t.categoryId),
+    index('catalog_suggestions_subcategory_id_idx').on(t.subcategoryId),
+    index('catalog_suggestions_reviewed_by_idx').on(t.reviewedBy),
+    check(
+      'catalog_suggestions_entity_type_ck',
+      sql`${t.entityType} in ('category','subcategory','service')`,
+    ),
+    check('catalog_suggestions_status_ck', sql`${t.status} in ('pending_review','approved','rejected')`),
+    check(
+      'catalog_suggestions_pricing_model_ck',
+      sql`${t.pricingModel} is null or ${t.pricingModel} in ('fixed','package','hourly','quote','custom')`,
+    ),
+  ],
 );
 
 export const serviceFields = pgTable(

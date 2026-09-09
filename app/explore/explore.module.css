@@ -1,0 +1,50 @@
+/*
+ * Spec 010 §5 — customer-facing catalog browse. Built on the APURIVA Design System's own tokens,
+ * same approach as app/admin/admin.module.css. Per CLAUDE.md's branding rule, this page carries no
+ * logo/header of its own.
+ */
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.categoryCard {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.categoryName {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.categoryMeta {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
