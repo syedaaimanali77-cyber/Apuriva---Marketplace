@@ -1,7 +1,7 @@
 # Spec: Location & Address Services
 
 **File:** `docs/specs/2026-08-28-012-location-address-services.md`
-**Status:** Draft
+**Status:** Approved
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §8, §12, §132.19, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §4, §18, [docs/workflow.md](../workflow.md)
