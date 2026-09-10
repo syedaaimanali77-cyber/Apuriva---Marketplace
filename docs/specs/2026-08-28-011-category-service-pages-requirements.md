@@ -33,7 +33,7 @@ identically whether filled via form or AI conversation.
 | # | Criterion |
 |---|---|
 | AC-1 | **Given** a category page **When** rendered **Then** it includes header, popular services, service-specific search entry, recommended providers, nearby availability, relevant filters, and an AI-assist entry point — never a bare list |
-| AC-2 | **Given** a service page **When** rendered **Then** pricing is displayed per its `pricingModel` (fixed → exact price, package → starting price, variable → range, quote → "get offers", hourly → hourly rate) |
+| AC-2 | **Given** a service page **When** rendered **Then** pricing is displayed per its `pricingModel` (fixed → exact price, package → starting price, custom → range, quote → "get offers", hourly → hourly rate) — `custom` is `PricingModel`'s fifth value (spec 010 §3); there is no `variable` value |
 | AC-3 | **Given** a service's required fields **When** a request is submitted (manually or via AI, spec 015/034) without them **Then** submission is rejected with the specific missing fields named |
 | AC-4 | **Given** a service with recommended-but-optional media **When** viewed **Then** the UI explains why the media helps, without blocking submission if omitted |
 | AC-5 | **Given** an official service FAQ **When** AI drafts a suggested FAQ answer **Then** it is stored as a suggestion and never shown to customers as official until an admin publishes it |
@@ -58,7 +58,7 @@ identically whether filled via form or AI conversation.
 ### Request and response types
 
 ```typescript
-// packages/types/src/service-page.ts
+// lib/types/service-page.ts
 export interface ServiceFieldDto {
   id: string;
   serviceId: string;
@@ -102,8 +102,16 @@ export interface ServicePageDto {
 |---|---|---|
 | `ServiceField` | new | `id uuid pk`, `service_id uuid fk->Service`, `key text`, `label text`, `type text`, `required boolean`, `options jsonb nullable`, `validation jsonb nullable`, `sort_order integer` |
 | `ServiceRequirement` | new | `id uuid pk`, `service_id uuid fk->Service`, `kind text` (media/duration/buffer/verification), `detail jsonb` |
-| `ServiceFAQ` | new | `id uuid pk`, `service_id uuid fk->Service`, `provider_id uuid fk->ProviderProfile nullable` (null = official), `question text`, `answer text`, `source text` (official/provider/ai_suggested), `status text` (published/pending_review) |
-| `ServicePackage` | new | `id uuid pk`, `service_id uuid fk->Service`, `provider_id uuid fk->ProviderProfile nullable`, `name text`, `description text`, `amount_minor_units integer`, `currency_code text`, `included_items jsonb` |
+| `ServiceFAQ` | new | `id uuid pk`, `service_id uuid fk->Service`, `provider_profile_id uuid fk->ProviderProfile nullable` (null = official), `question text`, `answer text`, `source text` (official/provider/ai_suggested), `status text` (published/pending_review) |
+| `ServicePackage` | new | `id uuid pk`, `service_id uuid fk->Service`, `provider_profile_id uuid fk->ProviderProfile nullable`, `name text`, `description text`, `amount_minor_units integer`, `currency_code text`, `included_items jsonb` |
+
+`ServiceFAQ`/`ServicePackage` name their `ProviderProfile` FK column `provider_profile_id`, matching
+every existing FK to that table (`provider_services`, `provider_availabilities`,
+`provider_availability_overrides`, `provider_service_areas`) — never the bare `provider_id` this
+section originally used, which would have been the only inconsistently-named `ProviderProfile` FK
+in the schema. The API-facing `providerId` field on `ServicePageDto.faqs[]` (§3) is unaffected —
+that's the established DTO-level shorthand (e.g. spec 017's `eligiblePool[].providerId`), not the
+DB column name.
 
 ### Migration
 
@@ -116,8 +124,8 @@ export interface ServicePageDto {
 
 ### Retention and privacy
 
-No personal data beyond `provider_id` attribution on packages/FAQs, already covered by profile
-deletion rules (spec 008).
+No personal data beyond `provider_profile_id` attribution on packages/FAQs, already covered by
+profile deletion rules (spec 008).
 
 ---
 
@@ -134,8 +142,8 @@ Media-requirement guidance ("why this helps") is shown as inline help text, not 
 modal. FAQ source (official vs. provider) shown via icon+label, not color alone (master spec
 §3.5).
 
-**Route(s):** `apps/web/app/explore/[category]`, `apps/web/app/explore/[category]/[service]`
-**Shared components used/added:** `packages/ui` `PriceDisplay` (new, pricing-model-aware),
+**Route(s):** `app/explore/[category]`, `app/explore/[category]/[service]`
+**Shared components used/added:** `components` `PriceDisplay` (new, pricing-model-aware),
 `FAQList`, `PackageCard`
 
 ---
@@ -144,19 +152,19 @@ modal. FAQ source (official vs. provider) shown via icon+label, not color alone 
 
 | Level | What it covers | Where |
 |---|---|---|
-| **Unit** | pricing-model-to-display mapping, field-validation rule evaluation | `apps/api/services/**/*.test.ts` |
-| **Integration** | field CRUD, FAQ approval flow, provider-vs-admin FAQ ownership | `apps/api/services/*.integration.test.ts` |
-| **Component** | service page renders each pricing model correctly | `apps/web` (Testing Library) |
-| **E2E** | customer views service page, sees correct pricing display and FAQs | `apps/web-e2e/service-page.spec.ts` |
+| **Unit** | pricing-model-to-display mapping, field-validation rule evaluation | `app/api/v1/services/**/*.test.ts` |
+| **Integration** | field CRUD, FAQ approval flow, provider-vs-admin FAQ ownership | `app/api/v1/services/*.integration.test.ts` |
+| **Component** | service page renders each pricing model correctly | the application (Testing Library) |
+| **E2E** | customer views service page, sees correct pricing display and FAQs | `e2e/service-page.spec.ts` |
 
 **Traceability**
 
 | AC | Test |
 |---|---|
-| AC-2 | `apps/web/PriceDisplay.test.tsx::renders each pricing model` |
-| AC-3 | `apps/api/services/fields.integration.test.ts::rejects missing required field` |
-| AC-5 | `apps/api/services/faq.integration.test.ts::ai suggestion hidden until approved` |
-| AC-6 | `apps/web/FAQList.test.tsx::distinguishes official vs provider` |
+| AC-2 | `PriceDisplay.test.tsx::renders each pricing model` |
+| AC-3 | `app/api/v1/services/fields.integration.test.ts::rejects missing required field` |
+| AC-5 | `app/api/v1/services/faq.integration.test.ts::ai suggestion hidden until approved` |
+| AC-6 | `FAQList.test.tsx::distinguishes official vs provider` |
 
 **Coverage:** ≥80% on new code.
 
@@ -171,7 +179,7 @@ here — this spec covers the customer-facing read path and the shared field-def
 - Request-form rendering/submission logic itself (spec 015) — this spec only defines the field
   *schema* both the form and AI read from.
 - Search/filter logic on category pages (spec 013).
-- Recommended-providers ranking logic (spec 016).
+- Recommended-providers ranking logic (spec 017).
 
 ---
 

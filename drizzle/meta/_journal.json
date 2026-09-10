@@ -43,6 +43,13 @@
       "when": 1788967141132,
       "tag": "0006_lean_shaman",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789034866879,
+      "tag": "0007_mean_robbie_robertson",
+      "breakpoints": true
     }
   ]
 }

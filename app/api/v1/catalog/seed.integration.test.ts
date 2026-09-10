@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { getDb, getPool } from '@/lib/db';
 import { categories, permissions, roles, services } from '@/lib/db/schema';
 import { GET as LIST_CATEGORIES } from '@/app/api/v1/categories/route';
@@ -60,8 +60,15 @@ describe.skipIf(!dbReachable)('catalog seed (spec 010 AC-1, integration)', () =>
     const after = await getDb().select({ id: categories.id }).from(categories).where(eq(categories.status, 'published'));
     expect(after.length).toBe(before.length);
 
+    // Scoped to spec 010's own 4 resources (catalog.category/subcategory/service/suggestion) —
+    // content_admin's total permission count also includes spec 011's own catalog.service_field/
+    // catalog.service_faq rows, seeded separately by drizzle/0007_mean_robbie_robertson.sql, so
+    // this only re-checks that spec 010's own seed statement didn't duplicate.
     const [contentAdminRole] = await getDb().select({ id: roles.id }).from(roles).where(eq(roles.name, 'content_admin'));
-    const perms = await getDb().select({ id: permissions.id }).from(permissions).where(eq(permissions.roleId, contentAdminRole!.id));
+    const perms = await getDb()
+      .select({ id: permissions.id })
+      .from(permissions)
+      .where(and(eq(permissions.roleId, contentAdminRole!.id), inArray(permissions.resource, ['catalog.category', 'catalog.subcategory', 'catalog.service', 'catalog.suggestion'])));
     expect(perms.length).toBe(15);
   });
 });

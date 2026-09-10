@@ -460,6 +460,10 @@ export const catalogSuggestions = pgTable(
   ],
 );
 
+/** Spec 011 §4: `text`/`select`/`number`/`boolean`/`media` — the field types both the manual
+ * request form and the AI conversational flow (spec 015/034) validate identically against. */
+export const SERVICE_FIELD_TYPES = ['text', 'select', 'number', 'boolean', 'media'] as const;
+
 export const serviceFields = pgTable(
   'service_fields',
   {
@@ -467,9 +471,30 @@ export const serviceFields = pgTable(
     serviceId: uuid('service_id')
       .notNull()
       .references(() => services.id, { onDelete: 'restrict' }),
+    key: text('key').notNull(),
+    label: text('label').notNull(),
+    type: text('type', { enum: SERVICE_FIELD_TYPES }).notNull(),
+    required: boolean('required').notNull().default(false),
+    // `select`'s choice list; nullable for every other `type` (spec 011 §3 VALIDATION_ERROR:
+    // "select type with no options" — enforced at the application layer, not a DB constraint,
+    // since the required shape of `validation` differs per `type` too).
+    options: jsonb('options'),
+    validation: jsonb('validation'),
+    sortOrder: integer('sort_order').notNull().default(0),
   },
-  (t) => [index('service_fields_service_id_idx').on(t.serviceId)],
+  (t) => [
+    index('service_fields_service_id_idx').on(t.serviceId),
+    // A field's `key` is how spec 015/034 both address it — must be unique per service so neither
+    // consumer can address two different fields with the same key.
+    uniqueIndex('service_fields_service_id_key_uq').on(t.serviceId, t.key),
+    check('service_fields_type_ck', sql`${t.type} in ('text','select','number','boolean','media')`),
+  ],
 );
+
+/** Spec 011 §4: media/duration/buffer/verification — a service's non-field prerequisites (e.g.
+ * "photos recommended", "requires a 30-minute buffer"), distinct from `ServiceField` (which
+ * captures a customer-supplied value at request time). */
+export const SERVICE_REQUIREMENT_KINDS = ['media', 'duration', 'buffer', 'verification'] as const;
 
 export const serviceRequirements = pgTable(
   'service_requirements',
@@ -478,9 +503,24 @@ export const serviceRequirements = pgTable(
     serviceId: uuid('service_id')
       .notNull()
       .references(() => services.id, { onDelete: 'restrict' }),
+    kind: text('kind', { enum: SERVICE_REQUIREMENT_KINDS }).notNull(),
+    detail: jsonb('detail').notNull().default({}),
   },
-  (t) => [index('service_requirements_service_id_idx').on(t.serviceId)],
+  (t) => [
+    index('service_requirements_service_id_idx').on(t.serviceId),
+    check('service_requirements_kind_ck', sql`${t.kind} in ('media','duration','buffer','verification')`),
+  ],
 );
+
+/** Spec 011 §4/AC-5/AC-6: `provider_profile_id` null = an official (admin-authored) FAQ — named
+ * to match every other `ProviderProfile` FK in this file (`provider_services` etc.), never the
+ * bare `provider_id` an earlier draft of spec 011 used. `source` records who authored it;
+ * `status` gates AI-suggested content specifically (`ai_suggested` starts `pending_review` and
+ * only an admin's explicit approval — never the AI itself — sets `published`). Official and
+ * provider-authored FAQs publish immediately on creation; there is no review gate for those (no
+ * such endpoint exists in spec 011 §3), only for `ai_suggested`. */
+export const SERVICE_FAQ_SOURCES = ['official', 'provider', 'ai_suggested'] as const;
+export const SERVICE_FAQ_STATUSES = ['published', 'pending_review'] as const;
 
 export const serviceFaqs = pgTable(
   'service_faqs',
@@ -489,8 +529,18 @@ export const serviceFaqs = pgTable(
     serviceId: uuid('service_id')
       .notNull()
       .references(() => services.id, { onDelete: 'restrict' }),
+    providerProfileId: uuid('provider_profile_id').references((): AnyPgColumn => providerProfiles.id, { onDelete: 'restrict' }),
+    question: text('question').notNull(),
+    answer: text('answer').notNull(),
+    source: text('source', { enum: SERVICE_FAQ_SOURCES }).notNull(),
+    status: text('status', { enum: SERVICE_FAQ_STATUSES }).notNull().default('pending_review'),
   },
-  (t) => [index('service_faqs_service_id_idx').on(t.serviceId)],
+  (t) => [
+    index('service_faqs_service_id_idx').on(t.serviceId),
+    index('service_faqs_provider_profile_id_idx').on(t.providerProfileId),
+    check('service_faqs_source_ck', sql`${t.source} in ('official','provider','ai_suggested')`),
+    check('service_faqs_status_ck', sql`${t.status} in ('published','pending_review')`),
+  ],
 );
 
 export const servicePackages = pgTable(
@@ -500,8 +550,20 @@ export const servicePackages = pgTable(
     serviceId: uuid('service_id')
       .notNull()
       .references(() => services.id, { onDelete: 'restrict' }),
+    providerProfileId: uuid('provider_profile_id').references((): AnyPgColumn => providerProfiles.id, { onDelete: 'restrict' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    amountMinorUnits: integer('amount_minor_units').notNull(),
+    currencyCode: text('currency_code').notNull(),
+    includedItems: jsonb('included_items').notNull().default([]),
   },
-  (t) => [index('service_packages_service_id_idx').on(t.serviceId)],
+  (t) => [
+    index('service_packages_service_id_idx').on(t.serviceId),
+    index('service_packages_provider_profile_id_idx').on(t.providerProfileId),
+    // Same pair/format rule as `moneyPairChecks` (spec 003 §AC-1), applied directly since spec
+    // 011 §4 names these columns without the `moneyColumns(base)` helper's base-prefix convention.
+    check('service_packages_currency_format_ck', sql`${t.currencyCode} ~ '^[A-Z]{3}$'`),
+  ],
 );
 
 // ---------------------------------------------------------------------------

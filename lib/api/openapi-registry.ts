@@ -159,4 +159,16 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
   { method: 'GET', path: '/admin/catalog/pending-review', summary: 'List pending AI catalog suggestions; Content/Marketplace admin', tags: ['catalog'] },
   { method: 'POST', path: '/admin/catalog/pending-review/{id}/approve', summary: 'Approve a suggestion — creates the entity pending_review, never publishes directly', tags: ['catalog'] },
   { method: 'POST', path: '/admin/catalog/pending-review/{id}/reject', summary: 'Reject a suggestion — records reviewer/time, publishes nothing', tags: ['catalog'] },
+  { method: 'GET', path: '/categories/{id}/page', summary: 'Aggregated category page data (public)', tags: ['service-page'] },
+  { method: 'GET', path: '/services/{id}/page', summary: 'Aggregated service page data: fields, FAQs, packages, pricing (public)', tags: ['service-page'] },
+  { method: 'GET', path: '/services/{id}/fields', summary: 'Field definitions consumed identically by the manual form and the AI (spec 034)', tags: ['service-page'] },
+  { method: 'POST', path: '/admin/services/{id}/fields', summary: 'Define a service field; Content/Marketplace admin', tags: ['service-page'] },
+  { method: 'POST', path: '/admin/services/{id}/faqs', summary: 'Add an official FAQ, published immediately; Content/Marketplace admin', tags: ['service-page'] },
+  { method: 'POST', path: '/providers/me/services/{id}/faqs', summary: "Add the caller's own FAQ for a service they offer; session (provider, ownership-checked)", tags: ['service-page'] },
+  {
+    method: 'POST',
+    path: '/admin/services/{id}/faqs/ai-suggestions/{suggestionId}/approve',
+    summary: 'Publish an AI-drafted FAQ suggestion; Content/Marketplace admin, AI never publishes directly',
+    tags: ['service-page'],
+  },
 ];
