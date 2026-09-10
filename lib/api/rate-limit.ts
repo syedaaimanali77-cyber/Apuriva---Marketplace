@@ -6,7 +6,7 @@
  * `docs/specs/2026-08-28-041-feature-flags-platform-configuration.md` is where these become
  * runtime-configurable instead of hardcoded here.
  */
-export type RateLimitDomain = 'auth' | 'search' | 'messaging' | 'ai' | 'mcp' | 'payment' | 'security' | 'default';
+export type RateLimitDomain = 'auth' | 'search' | 'messaging' | 'ai' | 'mcp' | 'payment' | 'security' | 'location' | 'default';
 
 export interface RateLimitRule {
   limit: number;
@@ -21,6 +21,9 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   mcp: { limit: 30, windowMs: 60_000 },
   payment: { limit: 10, windowMs: 60_000 },
   security: { limit: 5, windowMs: 60_000 },
+  // Spec 012 §3: geocode/reverse-geocode reach a paid external vendor per call — its own budget
+  // rather than sharing 'default', same reasoning as 'search'/'payment'.
+  location: { limit: 60, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 

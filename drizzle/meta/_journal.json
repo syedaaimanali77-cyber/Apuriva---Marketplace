@@ -50,6 +50,13 @@
       "when": 1789034866879,
       "tag": "0007_mean_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789041672050,
+      "tag": "0008_add_location_address_columns",
+      "breakpoints": true
     }
   ]
 }

@@ -1444,14 +1444,49 @@ export const fileAssets = pgTable(
   (t) => [index('file_assets_uploaded_by_user_id_idx').on(t.uploadedByUserId)],
 );
 
-export const locations = pgTable('locations', { ...baseColumns() });
+/**
+ * Spec 012 §4 owns `locations`'/`addresses`' real columns; this stays exactly spec 003's baseline
+ * shape until then. Coordinates are fixed-point integers (degrees × 1,000,000), never
+ * numeric/real/double — schema-lint AC-1 bans float types schema-wide, and this mirrors
+ * `moneyColumns()`'s minor-units approach at six decimal places of precision instead of currency.
+ */
+export const locations = pgTable(
+  'locations',
+  {
+    ...baseColumns(),
+    latitudeMicroDegrees: integer('latitude_micro_degrees'),
+    longitudeMicroDegrees: integer('longitude_micro_degrees'),
+    geoHierarchy: jsonb('geo_hierarchy'),
+  },
+  (t) => [
+    check(
+      'locations_lat_lng_pair_ck',
+      sql`(${t.latitudeMicroDegrees} is null) = (${t.longitudeMicroDegrees} is null)`,
+    ),
+    check(
+      'locations_latitude_range_ck',
+      sql`${t.latitudeMicroDegrees} is null or ${t.latitudeMicroDegrees} between -90000000 and 90000000`,
+    ),
+    check(
+      'locations_longitude_range_ck',
+      sql`${t.longitudeMicroDegrees} is null or ${t.longitudeMicroDegrees} between -180000000 and 180000000`,
+    ),
+  ],
+);
 
 export const addresses = pgTable(
   'addresses',
   {
     ...baseColumns(),
-    userId: uuid('user_id').references(() => users.id, { onDelete: 'restrict' }),
-    locationId: uuid('location_id').references(() => locations.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    locationId: uuid('location_id')
+      .notNull()
+      .references(() => locations.id, { onDelete: 'restrict' }),
+    label: text('label').notNull(),
+    structured: jsonb('structured').notNull(),
+    isDefault: boolean('is_default').notNull().default(false),
   },
   (t) => [index('addresses_user_id_idx').on(t.userId), index('addresses_location_id_idx').on(t.locationId)],
 );

@@ -65,12 +65,26 @@ describe('schema lint (spec 003)', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('AC-5: no jsonb column exists on any baseline table yet (feature-specific, owned by later specs)', () => {
+  it('AC-5: every jsonb column is an explicitly reviewed, documented exception — never a silent addition', () => {
+    // Each entry here is a later spec's owning-spec-approved use of jsonb for a genuinely
+    // variable, service-specific attribute (AC-5) — not core/queryable/relationship data. Adding
+    // a jsonb column anywhere else fails this test until it's deliberately added here too.
+    const ALLOWED_JSONB_COLUMNS: Record<string, string[]> = {
+      // Spec 005 §4: variable per-event-type detail, never queried/filtered on directly.
+      security_events: ['metadata'],
+      // Spec 012 §4: geo hierarchy (city/area/country) — descriptive, never queried/filtered on.
+      locations: ['geo_hierarchy'],
+      // Spec 012 §4: structured address fields — descriptive, never queried/filtered on.
+      addresses: ['structured'],
+    };
+
     const offenders: string[] = [];
     for (const { config } of tables) {
       for (const column of config.columns) {
         if (column.columnType === 'PgJsonb' || column.columnType === 'PgJson') {
-          offenders.push(`${config.name}.${column.name}`);
+          if (!(ALLOWED_JSONB_COLUMNS[config.name] ?? []).includes(column.name)) {
+            offenders.push(`${config.name}.${column.name}`);
+          }
         }
       }
     }

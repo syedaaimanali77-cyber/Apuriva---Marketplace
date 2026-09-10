@@ -1,0 +1,76 @@
+/*
+ * Spec 012 §5 — saved-address management. Built on the APURIVA Design System's own tokens
+ * (app/styles/apuriva-tokens.css), same approach as app/account/privacy-security/privacy-security.module.css.
+ * Per CLAUDE.md's branding rule, this page carries no logo/header of its own — the global
+ * AppHeader already provides the page's one brand placement.
+ */
+
+.page {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.addressCard {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: var(--space-4);
+}
+
+.addressBody {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+}
+
+.addressHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.addressLabel {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.addressText {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.addressActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 480px) {
+  .addressCard {
+    grid-template-columns: 1fr;
+  }
+}

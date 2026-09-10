@@ -171,4 +171,16 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Publish an AI-drafted FAQ suggestion; Content/Marketplace admin, AI never publishes directly',
     tags: ['service-page'],
   },
+  { method: 'POST', path: '/location/geocode', summary: 'Resolve address text to coordinates + hierarchy; session or guest', tags: ['location'] },
+  { method: 'POST', path: '/location/reverse-geocode', summary: 'Resolve coordinates to an address; session or guest', tags: ['location'] },
+  { method: 'GET', path: '/addresses', summary: "List the caller's own saved addresses", tags: ['location'] },
+  { method: 'POST', path: '/addresses', summary: 'Save a new address for the caller', tags: ['location'] },
+  { method: 'PATCH', path: '/addresses/{id}', summary: 'Update a saved address; owner only', tags: ['location'] },
+  { method: 'DELETE', path: '/addresses/{id}', summary: 'Delete a saved address; owner only, blocked while a booking references it', tags: ['location'] },
+  {
+    method: 'GET',
+    path: '/providers/{id}/service-area-check',
+    summary: "Whether a candidate location falls within a provider's declared service area; session or guest",
+    tags: ['location'],
+  },
 ];

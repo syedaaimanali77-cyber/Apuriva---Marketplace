@@ -11,9 +11,13 @@
  * the same way app/account/_components/AccountMenu.tsx builds its own dropdown for the same
  * reason — not a `ui/` design-system component, but exported from here since it's a genuinely
  * reusable app-facing primitive. `PriceDisplay`/`FAQList`/`PackageCard` are spec 011's own
- * additions, built the same way, for the same reason.
+ * additions, built the same way, for the same reason. `Map` (spec 012) is the same case as
+ * `Dialog`/`Menu`/`Tabs` above — named by spec 002, no `ui/` implementation exists — built here
+ * instead, deliberately vendor-agnostic since no maps vendor is selected yet (spec 012 §8 risk
+ * #1). `AddressForm` (spec 012) is its own addition, the same way as `PriceDisplay` etc.
  */
 export * from './Alert';
+export * from './AddressForm';
 export * from './Badge';
 export * from './Button';
 export * from './Card';
@@ -26,6 +30,7 @@ export * from './FormField';
 export * from './Icon';
 export * from './IconButton';
 export * from './Input';
+export * from './Map';
 export * from './OtpInput';
 export * from './PackageCard';
 export * from './PriceDisplay';
