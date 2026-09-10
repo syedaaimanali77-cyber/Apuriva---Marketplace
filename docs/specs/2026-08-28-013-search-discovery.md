@@ -1,7 +1,7 @@
 # Spec: Search & Discovery
 
 **File:** `docs/specs/2026-08-28-013-search-discovery.md`
-**Status:** Draft
+**Status:** Approved
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §19–§22, §97, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §13, [docs/workflow.md](../workflow.md)
