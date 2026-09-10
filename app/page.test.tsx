@@ -4,6 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import HomePage from './page';
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 function jsonResponse(ok: boolean, body: unknown) {
   return { ok, json: async () => body };
 }
