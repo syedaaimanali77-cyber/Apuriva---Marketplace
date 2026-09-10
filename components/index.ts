@@ -15,6 +15,8 @@
  * `Dialog`/`Menu`/`Tabs` above — named by spec 002, no `ui/` implementation exists — built here
  * instead, deliberately vendor-agnostic since no maps vendor is selected yet (spec 012 §8 risk
  * #1). `AddressForm` (spec 012) is its own addition, the same way as `PriceDisplay` etc.
+ * `SearchBar`/`ResultCard`/`IntentChip` (spec 013) are the same case again — named by spec 013,
+ * no `ui/` implementation exists, built here.
  */
 export * from './Alert';
 export * from './AddressForm';
@@ -30,11 +32,14 @@ export * from './FormField';
 export * from './Icon';
 export * from './IconButton';
 export * from './Input';
+export * from './IntentChip';
 export * from './Map';
 export * from './OtpInput';
 export * from './PackageCard';
 export * from './PriceDisplay';
 export * from './Radio';
+export * from './ResultCard';
+export * from './SearchBar';
 export * from './Select';
 export * from './Skeleton';
 export * from './Table';

@@ -183,4 +183,13 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: "Whether a candidate location falls within a provider's declared service area; session or guest",
     tags: ['location'],
   },
+  { method: 'GET', path: '/search', summary: 'Authoritative, paginated search results; session or guest', tags: ['search'] },
+  {
+    method: 'POST',
+    path: '/search/interpret',
+    summary: 'AI-assisted NL/voice-transcribed text -> structured search intent (never results); session or guest',
+    tags: ['search'],
+  },
+  { method: 'GET', path: '/search/autocomplete', summary: 'Search suggestions; session or guest', tags: ['search'] },
+  { method: 'POST', path: '/search/recent', summary: "Record a search to the caller's own recent-searches list", tags: ['search'] },
 ];

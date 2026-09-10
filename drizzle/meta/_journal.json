@@ -57,6 +57,13 @@
       "when": 1789041672050,
       "tag": "0008_add_location_address_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789048387354,
+      "tag": "0009_add_search_indexes",
+      "breakpoints": true
     }
   ]
 }

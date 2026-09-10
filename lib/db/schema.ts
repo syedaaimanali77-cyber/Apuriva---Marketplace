@@ -1499,3 +1499,27 @@ export const analyticsEvents = pgTable(
   },
   (t) => [index('analytics_events_actor_user_id_idx').on(t.actorUserId)],
 );
+
+/**
+ * Spec 013 §4 — the caller's own recent searches, sourcing `/api/v1/search/autocomplete`'s
+ * AC-2 "recent searches" suggestion. Deliberately a dedicated table, not a reuse of
+ * `analyticsEvents` (still column-less; spec 040 owns adding its real columns) — an analytics
+ * log is the wrong shape for a low-latency, per-user, autocomplete-facing read path.
+ */
+export const recentSearches = pgTable(
+  'recent_searches',
+  {
+    ...baseColumns(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    q: text('q'),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'restrict' }),
+    categoryId: uuid('category_id').references(() => categories.id, { onDelete: 'restrict' }),
+  },
+  (t) => [
+    index('recent_searches_user_id_idx').on(t.userId),
+    index('recent_searches_service_id_idx').on(t.serviceId),
+    index('recent_searches_category_id_idx').on(t.categoryId),
+  ],
+);

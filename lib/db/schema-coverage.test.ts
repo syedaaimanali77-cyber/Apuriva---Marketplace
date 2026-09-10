@@ -107,6 +107,7 @@ const EXPECTED_TABLES = [
   'locations',
   'addresses',
   'analytics_events',
+  'recent_searches',
 ] as const;
 
 const STATE_MACHINE_ENTITIES = ['requests', 'offers', 'bookings', 'payments', 'payouts'] as const;

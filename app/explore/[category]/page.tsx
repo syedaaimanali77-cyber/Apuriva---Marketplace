@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, EmptyState, ErrorState, Input, Skeleton } from '@/components';
 import type { CategoryPageDto } from '@/lib/types/service-page';
@@ -19,11 +19,13 @@ type PageStatus = 'loading' | 'error' | 'ready';
  */
 export default function CategoryPage() {
   const params = useParams<{ category: string }>();
+  const router = useRouter();
   const categoryId = params.category;
 
   const [status, setStatus] = useState<PageStatus>('loading');
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<CategoryPageDto | null>(null);
+  const [searchText, setSearchText] = useState('');
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -76,7 +78,25 @@ export default function CategoryPage() {
       <h1 className={styles.title}>{page.name}</h1>
 
       <div className={styles.section}>
-        <Input type="search" placeholder={`Search ${page.name.toLowerCase()}...`} aria-label="Search this category" disabled />
+        {/* Spec 013 replaces this category's search placeholder — real search/filter logic
+         * lives at app/search, not duplicated here; this just deep-links into it. */}
+        <form
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const qs = new URLSearchParams({ categoryId });
+            if (searchText.trim()) qs.set('q', searchText.trim());
+            router.push(`/search?${qs.toString()}`);
+          }}
+        >
+          <Input
+            type="search"
+            value={searchText}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
+            placeholder={`Search ${page.name.toLowerCase()}...`}
+            aria-label="Search this category"
+          />
+        </form>
       </div>
 
       {page.filters.length > 0 ? (
