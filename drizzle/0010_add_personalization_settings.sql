@@ -1,0 +1,1 @@
+ALTER TABLE "customer_profiles" ADD COLUMN "personalization_enabled" boolean DEFAULT true NOT NULL;

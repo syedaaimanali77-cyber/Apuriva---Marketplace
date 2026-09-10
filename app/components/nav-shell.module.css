@@ -1,0 +1,106 @@
+/* Spec 014 §5 — same IA, adapted layout: bottom tab bar under the breakpoint, side nav at/above
+   it. Both trees render; only one is ever visible, so there's no client-side layout flash. */
+
+.bottomOnly {
+  display: block;
+}
+
+.sideOnly {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .bottomOnly {
+    display: none;
+  }
+
+  .sideOnly {
+    display: block;
+  }
+}
+
+.bottomBar {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  height: var(--nav-bottom-h);
+  background: var(--surface-nav);
+  border-top: 1px solid var(--border-subtle);
+  z-index: var(--z-nav);
+}
+
+.bottomItem {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
+  min-height: var(--touch-target-min);
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.bottomItem[data-active='true'] {
+  color: var(--teal-700);
+}
+
+.bottomLabel {
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
+}
+
+.bottomItem[data-active='true'] .bottomLabel {
+  font-weight: var(--weight-semibold);
+}
+
+.sideNav {
+  position: fixed;
+  top: var(--nav-top-h);
+  bottom: 0;
+  inset-inline-start: 0;
+  overflow-y: auto;
+  width: var(--nav-side-w);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-3);
+  background: var(--surface-nav);
+  border-inline-end: 1px solid var(--border-subtle);
+  z-index: var(--z-nav);
+}
+
+/* Reserves room for the fixed nav so page content isn't hidden underneath it — mobile bottom tab
+   bar height below the breakpoint, desktop side nav width at/above it. */
+.contentArea {
+  padding-bottom: var(--nav-bottom-h);
+}
+
+@media (min-width: 768px) {
+  .contentArea {
+    padding-bottom: 0;
+    padding-inline-start: var(--nav-side-w);
+  }
+}
+
+.sideItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  text-align: start;
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--text-body);
+}
+
+.sideItem[data-active='true'] {
+  font-weight: var(--weight-semibold);
+  background: var(--surface-brand-subtle);
+  color: var(--text-brand);
+}

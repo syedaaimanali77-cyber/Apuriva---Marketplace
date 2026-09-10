@@ -1,11 +1,19 @@
+'use client';
+
 import Image from 'next/image';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { branding } from '@/lib/config/branding';
 import apurivaLogo from '@/ui/assets/apuriva-logo-full.jpeg';
 import { AccountMenu } from '@/app/account/_components/AccountMenu';
 
+// Login/register carry their own primary brand placement via AuthShell (spec 005 §5) — per the
+// single-brand-placement rule in CLAUDE.md, the global header must not duplicate that logo there.
+// Exported so NavShell (spec 014) hides on the same routes rather than redefining this list.
+export const HEADERLESS_ROUTES = ['/login', '/register'];
+
 /**
- * Global top bar — every page gets this, so it intentionally carries no tagline (that's
+ * Global top bar — every other page gets this, so it intentionally carries no tagline (that's
  * Home-page-only content, see app/page.tsx).
  *
  * ui/assets/apuriva-logo-full.jpeg is a single square (1254x1254) lockup with the mark, the
@@ -18,6 +26,10 @@ import { AccountMenu } from '@/app/account/_components/AccountMenu';
  * never stretched.
  */
 export function AppHeader() {
+  const pathname = usePathname();
+  if (HEADERLESS_ROUTES.includes(pathname)) {
+    return null;
+  }
   return (
     <header
       style={{

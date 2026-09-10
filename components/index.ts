@@ -16,8 +16,15 @@
  * instead, deliberately vendor-agnostic since no maps vendor is selected yet (spec 012 §8 risk
  * #1). `AddressForm` (spec 012) is its own addition, the same way as `PriceDisplay` etc.
  * `SearchBar`/`ResultCard`/`IntentChip` (spec 013) are the same case again — named by spec 013,
- * no `ui/` implementation exists, built here.
+ * no `ui/` implementation exists, built here. `ActiveBookingBanner`/`Switch` (spec 014) DO have a
+ * real `ui/` implementation (`ui/components/marketplace/ActiveBookingBanner`,
+ * `ui/components/forms/Switch`) and are thin re-exports, the same way `Table` is — unlike
+ * `BottomTabBar`/`SideNav` (also spec 014), which are named in `ui/_ds_manifest.json`'s registry
+ * but (like `Dialog`/`Menu`/`Tabs`) have no `.jsx` on disk to import, so they're built directly in
+ * `app/components/` instead — app-shell chrome alongside `AppHeader`, not generic design-system
+ * primitives, so they're intentionally not re-exported from this barrel either.
  */
+export * from './ActiveBookingBanner';
 export * from './Alert';
 export * from './AddressForm';
 export * from './Badge';
@@ -42,5 +49,6 @@ export * from './ResultCard';
 export * from './SearchBar';
 export * from './Select';
 export * from './Skeleton';
+export * from './Switch';
 export * from './Table';
 export * from './Toast';

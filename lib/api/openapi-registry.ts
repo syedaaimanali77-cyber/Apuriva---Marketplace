@@ -183,6 +183,19 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: "Whether a candidate location falls within a provider's declared service area; session or guest",
     tags: ['location'],
   },
+  { method: 'GET', path: '/home', summary: 'Customer-mode home feed (curated/recent/active-booking); session or guest', tags: ['home'] },
+  {
+    method: 'GET',
+    path: '/users/me/personalization-settings',
+    summary: "Current home-feed personalization opt-in/out state",
+    tags: ['home'],
+  },
+  {
+    method: 'PATCH',
+    path: '/users/me/personalization-settings',
+    summary: 'Opt out of/adjust home-feed personalization',
+    tags: ['home'],
+  },
   { method: 'GET', path: '/search', summary: 'Authoritative, paginated search results; session or guest', tags: ['search'] },
   {
     method: 'POST',

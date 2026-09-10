@@ -154,6 +154,10 @@ export const customerProfiles = pgTable(
       .notNull()
       .unique()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 014 §4/§7 AC-7: opt out of home-feed personalization. Stops using history for
+     * recommendations (falls back to `curated_popular`); does not itself delete the underlying
+     * history — deletion is spec 008's separate, explicit flow. */
+    personalizationEnabled: boolean('personalization_enabled').notNull().default(true),
   },
   (t) => [index('customer_profiles_user_id_idx').on(t.userId)],
 );
