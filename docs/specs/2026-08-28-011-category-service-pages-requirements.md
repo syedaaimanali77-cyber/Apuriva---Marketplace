@@ -1,7 +1,7 @@
 # Spec: Category & Service Pages + Requirements
 
 **File:** `docs/specs/2026-08-28-011-category-service-pages-requirements.md`
-**Status:** Draft
+**Status:** Approved
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §15–§17, §26, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §4, [docs/workflow.md](../workflow.md)
