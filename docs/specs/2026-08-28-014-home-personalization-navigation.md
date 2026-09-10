@@ -1,7 +1,7 @@
 # Spec: Home, Personalization & Navigation
 
 **File:** `docs/specs/2026-08-28-014-home-personalization-navigation.md`
-**Status:** Draft
+**Status:** Approved
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §13, §59–§61, §123, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §12, [docs/workflow.md](../workflow.md)
