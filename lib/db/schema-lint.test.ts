@@ -76,6 +76,10 @@ describe('schema lint (spec 003)', () => {
       locations: ['geo_hierarchy'],
       // Spec 012 §4: structured address fields — descriptive, never queried/filtered on.
       addresses: ['structured'],
+      // Spec 015 §4: a request's answer to one `ServiceField`, whose type is genuinely variable
+      // per that field's own `type` (text/select/number/boolean/media). Read back as a whole to
+      // rebuild `RequestDto.fieldValues`; never queried or filtered on.
+      request_field_values: ['value'],
     };
 
     const offenders: string[] = [];

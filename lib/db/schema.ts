@@ -629,6 +629,31 @@ export const providerServiceAreas = pgTable(
 // Requests (state machine: AC-3)
 // ---------------------------------------------------------------------------
 
+/** Spec 015 §4 — master spec §125's request states. `draft` is an internal, single-transaction
+ * step (spec 015 §4 "Creation is one transaction"), never customer-visible. */
+export const REQUEST_STATUSES = [
+  'draft',
+  'submitted',
+  'matching',
+  'offers_open',
+  'provider_selected',
+  'booking_created',
+  'cancelled',
+  'expired',
+  'completed',
+] as const;
+
+/** Spec 015 §4 — master spec §28's urgency. */
+export const REQUEST_URGENCIES = ['normal', 'urgent'] as const;
+
+// Spec 015 §4: master spec §27's budget shapes need two money pairs (one pair cannot express a
+// range). `moneyColumns`/`moneyPairChecks` take the *column* base name, so it is snake_case here;
+// the resulting columns are destructured onto camelCase properties below, so the TS field names
+// stay consistent with every other column in this file.
+const budgetMinColumns = moneyColumns('budget_min');
+const budgetMaxColumns = moneyColumns('budget_max');
+const preferredTimeColumns = scheduledTimeColumns('preferred');
+
 export const requests = pgTable(
   'requests',
   {
@@ -639,11 +664,53 @@ export const requests = pgTable(
     serviceId: uuid('service_id')
       .notNull()
       .references(() => services.id, { onDelete: 'restrict' }),
-    status: text('status').notNull(),
+    status: text('status', { enum: REQUEST_STATUSES }).notNull(),
+    /** Spec 015 §4 — feature columns. The table itself is spec 003's baseline skeleton. */
+    description: text('description').notNull(),
+    budgetMinAmountMinorUnits: budgetMinColumns.budget_minAmountMinorUnits,
+    budgetMinCurrencyCode: budgetMinColumns.budget_minCurrencyCode,
+    budgetMaxAmountMinorUnits: budgetMaxColumns.budget_maxAmountMinorUnits,
+    budgetMaxCurrencyCode: budgetMaxColumns.budget_maxCurrencyCode,
+    preferredAt: preferredTimeColumns.preferredAt,
+    preferredTimezone: preferredTimeColumns.preferredTimezone,
+    addressId: uuid('address_id')
+      .notNull()
+      .references(() => addresses.id, { onDelete: 'restrict' }),
+    urgency: text('urgency', { enum: REQUEST_URGENCIES }).notNull(),
+    /** Spec 015 §3 idempotency: scoped per customer by the unique index below, never globally. */
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('requests_customer_profile_id_idx').on(t.customerProfileId),
     index('requests_service_id_idx').on(t.serviceId),
+    index('requests_address_id_idx').on(t.addressId),
+    // Spec 017 reads "every request in `submitted`" — its covering index, added here with the
+    // column it reads rather than left for that spec to retrofit.
+    index('requests_status_idx').on(t.status),
+    uniqueIndex('requests_customer_idempotency_key_uq').on(t.customerProfileId, t.idempotencyKey),
+    ...moneyPairChecks('requests', 'budget_min'),
+    ...moneyPairChecks('requests', 'budget_max'),
+    check('requests_status_ck', sql`${t.status} in ('draft','submitted','matching','offers_open','provider_selected','booking_created','cancelled','expired','completed')`),
+    check('requests_urgency_ck', sql`${t.urgency} in ('normal','urgent')`),
+    // Spec 015 §4 budget semantics: omitted -> all four null; target amount -> min = max;
+    // range -> min < max. Both pairs are always null together or set together.
+    check(
+      'requests_budget_pair_ck',
+      sql`(${t.budgetMinAmountMinorUnits} is null) = (${t.budgetMaxAmountMinorUnits} is null)`,
+    ),
+    check(
+      'requests_budget_order_ck',
+      sql`${t.budgetMinAmountMinorUnits} is null or ${t.budgetMinAmountMinorUnits} <= ${t.budgetMaxAmountMinorUnits}`,
+    ),
+    check(
+      'requests_budget_currency_match_ck',
+      sql`${t.budgetMinCurrencyCode} is null or ${t.budgetMinCurrencyCode} = ${t.budgetMaxCurrencyCode}`,
+    ),
+    check(
+      'requests_budget_positive_ck',
+      sql`${t.budgetMinAmountMinorUnits} is null or ${t.budgetMinAmountMinorUnits} > 0`,
+    ),
   ],
 );
 
@@ -657,6 +724,10 @@ export const requestFieldValues = pgTable(
     serviceFieldId: uuid('service_field_id')
       .notNull()
       .references(() => serviceFields.id, { onDelete: 'restrict' }),
+    /** Spec 015 §4: the customer-supplied value, whose JSON type is genuinely variable per
+     * `ServiceField.type` (text/select/number/boolean/media) and is never queried or filtered on —
+     * the reviewed jsonb exception registered in lib/db/schema-lint.test.ts's allowlist. */
+    value: jsonb('value').notNull(),
   },
   (t) => [
     index('request_field_values_request_id_idx').on(t.requestId),
@@ -672,8 +743,16 @@ export const requestAttachments = pgTable(
     requestId: uuid('request_id')
       .notNull()
       .references(() => requests.id, { onDelete: 'restrict' }),
+    /** Spec 015 §3/§4: the linkage only. Upload, size/MIME/scan state and the count/size limits
+     * are spec 027's (§8 #1 — deliberately unresolved here, never invented). */
+    fileAssetId: uuid('file_asset_id')
+      .notNull()
+      .references(() => fileAssets.id, { onDelete: 'restrict' }),
   },
-  (t) => [index('request_attachments_request_id_idx').on(t.requestId)],
+  (t) => [
+    index('request_attachments_request_id_idx').on(t.requestId),
+    index('request_attachments_file_asset_id_idx').on(t.fileAssetId),
+  ],
 );
 
 export const requestProviderMatches = pgTable(

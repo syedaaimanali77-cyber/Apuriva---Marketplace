@@ -31,6 +31,17 @@ export interface DataExportPayload {
     customerProfile: { id: string; createdAt: string } | null;
     providerProfile: { id: string; businessName: string | null; lifecycleStatus: string; createdAt: string } | null;
   };
+  /** Spec 015 §4 "Retention and privacy": the caller's own requests, with an explicit column
+   * allowlist — never internal matching data (`request_provider_matches`, ranking, pool). */
+  requests: Array<{
+    id: string;
+    status: string;
+    serviceId: string;
+    description: string;
+    urgency: string;
+    preferredAt: string | null;
+    createdAt: string;
+  }>;
   bookings: Array<{ id: string; status: string; createdAt: string }>;
   reviews: Array<{ id: string; bookingId: string; createdAt: string }>;
   /** "Permitted messages" (spec 008 §3): messages in a conversation `userId` participates in —
@@ -75,6 +86,23 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     })
     .from(providerProfiles)
     .where(eq(providerProfiles.userId, userId));
+
+  // Spec 015 §4: ownership-scoped through the caller's own `CustomerProfile`, the same join shape
+  // the booking/receipt sections below use, with an explicit column allowlist (never `select *`).
+  const requestRows = customerProfile
+    ? await db
+        .select({
+          id: requests.id,
+          status: requests.status,
+          serviceId: requests.serviceId,
+          description: requests.description,
+          urgency: requests.urgency,
+          preferredAt: requests.preferredAt,
+          createdAt: requests.createdAt,
+        })
+        .from(requests)
+        .where(eq(requests.customerProfileId, customerProfile.id))
+    : [];
 
   const bookingRows = await db
     .select({ id: bookings.id, status: bookings.status, createdAt: bookings.createdAt })
@@ -143,6 +171,15 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
           }
         : null,
     },
+    requests: requestRows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      serviceId: r.serviceId,
+      description: r.description,
+      urgency: r.urgency,
+      preferredAt: r.preferredAt ? r.preferredAt.toISOString() : null,
+      createdAt: r.createdAt.toISOString(),
+    })),
     bookings: bookingRows.map((b) => ({ id: b.id, status: b.status, createdAt: b.createdAt.toISOString() })),
     reviews: reviewRows.map((r) => ({ id: r.id, bookingId: r.bookingId, createdAt: r.createdAt.toISOString() })),
     messages: messageRows.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),

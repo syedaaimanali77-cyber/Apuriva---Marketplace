@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { getPool } from '@/lib/db';
 import { registerFileAssetStorage, type FileAssetStorage } from './file-asset-storage';
 
@@ -51,19 +52,46 @@ export async function seedBooking(customerUserId: string, status: string): Promi
   );
   const providerProfileId = providerProfileRows[0]!.id;
 
-  const { rows: categoryRows } = await pool.query<{ id: string }>('INSERT INTO categories DEFAULT VALUES RETURNING id');
+  // Spec 010 gave the catalog tables real `not null` name/slug columns; spec 015 gave `requests`
+  // its own feature columns (description/address/urgency/idempotency). Both are reflected here so
+  // this fixture keeps building the minimal FK chain a booking needs.
+  const suffix = randomUUID().slice(0, 8);
+  const { rows: categoryRows } = await pool.query<{ id: string }>(
+    'INSERT INTO categories (name, slug) VALUES ($1, $2) RETURNING id',
+    [`Privacy Category ${suffix}`, `privacy-category-${suffix}`],
+  );
   const { rows: subcategoryRows } = await pool.query<{ id: string }>(
-    'INSERT INTO subcategories (category_id) VALUES ($1) RETURNING id',
-    [categoryRows[0]!.id],
+    'INSERT INTO subcategories (category_id, name, slug) VALUES ($1, $2, $3) RETURNING id',
+    [categoryRows[0]!.id, `Privacy Subcategory ${suffix}`, `privacy-subcategory-${suffix}`],
   );
   const { rows: serviceRows } = await pool.query<{ id: string }>(
-    'INSERT INTO services (subcategory_id) VALUES ($1) RETURNING id',
-    [subcategoryRows[0]!.id],
+    'INSERT INTO services (category_id, subcategory_id, name, slug) VALUES ($1, $2, $3, $4) RETURNING id',
+    [categoryRows[0]!.id, subcategoryRows[0]!.id, `Privacy Service ${suffix}`, `privacy-service-${suffix}`],
+  );
+
+  const { rows: locationRows } = await pool.query<{ id: string }>(
+    'INSERT INTO locations (latitude_micro_degrees, longitude_micro_degrees) VALUES ($1, $2) RETURNING id',
+    [31_520_000, 74_358_000],
+  );
+  const { rows: addressRows } = await pool.query<{ id: string }>(
+    'INSERT INTO addresses (user_id, location_id, label, structured) VALUES ($1, $2, $3, $4) RETURNING id',
+    [customerUserId, locationRows[0]!.id, 'Home', JSON.stringify({ area: 'Area', city: 'City', country: 'Country' })],
   );
 
   const { rows: requestRows } = await pool.query<{ id: string }>(
-    'INSERT INTO requests (customer_profile_id, service_id, status) VALUES ($1, $2, $3) RETURNING id',
-    [customerProfileId, serviceRows[0]!.id, 'draft'],
+    `INSERT INTO requests
+       (customer_profile_id, service_id, status, description, address_id, urgency, idempotency_key, idempotency_fingerprint)
+     VALUES ($1, $2, $3, $4, $5, 'normal', $6, $7)
+     RETURNING id`,
+    [
+      customerProfileId,
+      serviceRows[0]!.id,
+      'draft',
+      'Seeded privacy-fixture request',
+      addressRows[0]!.id,
+      `privacy-seed-${randomUUID()}`,
+      'privacy-seed-fingerprint',
+    ],
   );
   const { rows: offerRows } = await pool.query<{ id: string }>(
     'INSERT INTO offers (request_id, provider_profile_id, status) VALUES ($1, $2, $3) RETURNING id',

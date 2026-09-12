@@ -205,4 +205,25 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
   },
   { method: 'GET', path: '/search/autocomplete', summary: 'Search suggestions; session or guest', tags: ['search'] },
   { method: 'POST', path: '/search/recent', summary: "Record a search to the caller's own recent-searches list", tags: ['search'] },
+  // Spec 015 §3 — request creation & lifecycle.
+  {
+    method: 'POST',
+    path: '/requests',
+    summary: 'Create (draft -> submitted) a service request; requires Idempotency-Key',
+    tags: ['requests'],
+  },
+  { method: 'GET', path: '/requests', summary: "List the caller's own requests (active|history)", tags: ['requests'] },
+  { method: 'GET', path: '/requests/{id}', summary: "Read one of the caller's own requests", tags: ['requests'] },
+  {
+    method: 'GET',
+    path: '/requests/{id}/cancel-preview',
+    summary: 'Dry run: the consequence of cancelling, shown before confirmation',
+    tags: ['requests'],
+  },
+  {
+    method: 'POST',
+    path: '/requests/{id}/cancel',
+    summary: 'Cancel a request before provider selection',
+    tags: ['requests'],
+  },
 ];

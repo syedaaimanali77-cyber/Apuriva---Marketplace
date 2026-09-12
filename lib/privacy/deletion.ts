@@ -1,10 +1,13 @@
 import { and, eq, lte } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { providerProfiles, users } from '@/lib/db/schema';
+import { customerProfiles, providerProfiles, requests, users } from '@/lib/db/schema';
 import { hasActiveBooking } from './booking-lifecycle-adapter';
 import { activeBookingBlocksDeletionError, deletionAlreadyPendingError, deletionNotPendingError } from './errors';
 
 const DEFAULT_GRACE_PERIOD_DAYS = 14;
+
+/** Spec 015 §4: the sentinel a deleted account's request descriptions are redacted to. */
+export const REDACTED_DESCRIPTION = '[redacted]';
 
 /**
  * Spec 008 §8 risk #1: 14 days is the implementation default, explicitly pending Legal/Product
@@ -82,6 +85,12 @@ export async function cancelDeletion(userId: string): Promise<void> {
  * affect a row once. Anonymizes identifying fields on `User`/`ProviderProfile` (`CustomerProfile`
  * carries no PII columns yet beyond its `user_id` FK); `Payment`/`Payout`/`Refund`/`AuditLog`
  * rows are never touched here — retained keyed to the now-anonymized user, per spec 008 §4.
+ *
+ * Spec 015 §4 "Retention and privacy" joins the same rule rather than adding a second mechanism:
+ * a `Request` row is retained (it is the parent of offers/bookings/payments and every FK is
+ * `restrict`, so deleting it is impossible anyway) and its only free-text PII column,
+ * `description`, is redacted in place. Status/urgency/timestamps stay, so the request's role in
+ * any retained financial or dispute record remains intelligible.
  */
 export async function sweepDeletions(now: Date = new Date()): Promise<{ processed: number }> {
   const db = getDb();
@@ -104,6 +113,20 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
       .where(and(eq(users.id, id), eq(users.lifecycleStatus, 'deletion_pending')));
 
     await db.update(providerProfiles).set({ businessName: null }).where(eq(providerProfiles.userId, id));
+
+    // Spec 015 §4: redact the request's free-text PII, keeping the row itself. `not null` on the
+    // column means a sentinel rather than NULL; every read path treats it as ordinary text, so a
+    // redacted description can never break the status view.
+    const [customerProfile] = await db
+      .select({ id: customerProfiles.id })
+      .from(customerProfiles)
+      .where(eq(customerProfiles.userId, id));
+    if (customerProfile) {
+      await db
+        .update(requests)
+        .set({ description: REDACTED_DESCRIPTION, updatedAt: new Date() })
+        .where(eq(requests.customerProfileId, customerProfile.id));
+    }
   }
 
   return { processed: due.length };

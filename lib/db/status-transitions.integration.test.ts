@@ -30,10 +30,14 @@ describe.skipIf(!dbReachable)('status-transition DB trigger (integration, spec 0
     client.release();
   });
 
+  // Spec 015 populated this entity's transition table with the four transitions it performs
+  // (`draft -> submitted` plus cancellation from each pre-selection state), so these two tests use
+  // a pair NO spec seeds — `draft -> completed` — to exercise the trigger's absent/present rule
+  // without depending on the table still being empty.
   it('rejects a transition absent from requests_status_transitions', async () => {
     const requestId = await seedMinimalRequest(client, 'draft');
 
-    await expect(client.query('UPDATE requests SET status = $1 WHERE id = $2', ['submitted', requestId])).rejects.toThrow(
+    await expect(client.query('UPDATE requests SET status = $1 WHERE id = $2', ['completed', requestId])).rejects.toThrow(
       /Invalid requests status transition/,
     );
   });
@@ -42,13 +46,13 @@ describe.skipIf(!dbReachable)('status-transition DB trigger (integration, spec 0
     const requestId = await seedMinimalRequest(client, 'draft');
     await client.query('INSERT INTO requests_status_transitions (from_status, to_status) VALUES ($1, $2)', [
       'draft',
-      'submitted',
+      'completed',
     ]);
 
-    await client.query('UPDATE requests SET status = $1 WHERE id = $2', ['submitted', requestId]);
+    await client.query('UPDATE requests SET status = $1 WHERE id = $2', ['completed', requestId]);
 
     const { rows } = await client.query<{ status: string }>('SELECT status FROM requests WHERE id = $1', [requestId]);
-    expect(rows[0]!.status).toBe('submitted');
+    expect(rows[0]!.status).toBe('completed');
   });
 
   it('a no-op update (status unchanged) is always allowed, even with an empty transition table', async () => {

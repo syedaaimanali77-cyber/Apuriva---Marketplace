@@ -6,7 +6,18 @@
  * `docs/specs/2026-08-28-041-feature-flags-platform-configuration.md` is where these become
  * runtime-configurable instead of hardcoded here.
  */
-export type RateLimitDomain = 'auth' | 'search' | 'home' | 'messaging' | 'ai' | 'mcp' | 'payment' | 'security' | 'location' | 'default';
+export type RateLimitDomain =
+  | 'auth'
+  | 'search'
+  | 'home'
+  | 'requests'
+  | 'messaging'
+  | 'ai'
+  | 'mcp'
+  | 'payment'
+  | 'security'
+  | 'location'
+  | 'default';
 
 export interface RateLimitRule {
   limit: number;
@@ -19,6 +30,9 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   // Spec 014 §3: the single most-visited screen (guest-accessible) — same order of magnitude as
   // 'search', which it's built on top of.
   home: { limit: 60, windowMs: 60_000 },
+  // Spec 015 §3: the customer's own request create/read surface. A write path deserves a tighter
+  // budget than the shared 'default' 100/60s, the same reasoning 'search'/'payment' already use.
+  requests: { limit: 30, windowMs: 60_000 },
   messaging: { limit: 30, windowMs: 60_000 },
   ai: { limit: 20, windowMs: 60_000 },
   mcp: { limit: 30, windowMs: 60_000 },
