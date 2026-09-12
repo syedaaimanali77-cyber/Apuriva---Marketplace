@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resetRateLimitState } from '@/lib/api/rate-limit';
 import { POST as CREATE_CATEGORY } from '@/app/api/v1/admin/categories/route';
-import { POST as CREATE_SUBCATEGORY } from '@/app/api/v1/admin/categories/[categoryId]/subcategories/route';
+import { POST as CREATE_SUBCATEGORY } from '@/app/api/v1/admin/categories/[id]/subcategories/route';
 import { POST as CREATE_SERVICE } from '@/app/api/v1/admin/services/route';
 import { GET as GET_SERVICE, PATCH as EDIT_SERVICE } from '@/app/api/v1/admin/services/[id]/route';
 import { POST as RETIRE_SERVICE } from '@/app/api/v1/admin/services/[id]/retire/route';

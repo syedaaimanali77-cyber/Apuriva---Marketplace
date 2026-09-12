@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resetRateLimitState } from '@/lib/api/rate-limit';
 import { POST as CREATE_CATEGORY } from '@/app/api/v1/admin/categories/route';
 import { POST as RETIRE_CATEGORY } from '@/app/api/v1/admin/categories/[id]/retire/route';
-import { POST as CREATE_SUBCATEGORY } from '@/app/api/v1/admin/categories/[categoryId]/subcategories/route';
+import { POST as CREATE_SUBCATEGORY } from '@/app/api/v1/admin/categories/[id]/subcategories/route';
 import { POST as CREATE_SERVICE } from '@/app/api/v1/admin/services/route';
 import { PATCH as EDIT_SERVICE } from '@/app/api/v1/admin/services/[id]/route';
 import { authenticatedRequest, isDatabaseReachable, registerContentAdmin } from './catalog-test-support';

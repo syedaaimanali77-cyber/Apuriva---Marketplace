@@ -4,7 +4,7 @@ import { GET as LIST_CATEGORIES_PUBLIC } from '@/app/api/v1/categories/route';
 import { GET as GET_CATEGORY_PUBLIC } from '@/app/api/v1/categories/[id]/route';
 import { GET as GET_SERVICE_PUBLIC } from '@/app/api/v1/services/[id]/route';
 import { POST as CREATE_CATEGORY } from '@/app/api/v1/admin/categories/route';
-import { POST as CREATE_SUBCATEGORY } from '@/app/api/v1/admin/categories/[categoryId]/subcategories/route';
+import { POST as CREATE_SUBCATEGORY } from '@/app/api/v1/admin/categories/[id]/subcategories/route';
 import { POST as CREATE_SERVICE } from '@/app/api/v1/admin/services/route';
 import { PATCH as EDIT_SERVICE } from '@/app/api/v1/admin/services/[id]/route';
 import { authenticatedRequest, isDatabaseReachable, registerContentAdmin } from './catalog-test-support';
