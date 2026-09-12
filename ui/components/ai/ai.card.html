@@ -1,0 +1,31 @@
+<!-- @dsCard group="Components" viewport="700x700" name="AI — Ask Apuriva" subtitle="Assistant panel, messages, suggested actions, confirmations and tool approvals" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>html,body{margin:0;background:var(--surface-page)}#root{padding:20px}.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.col{display:grid;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">const {X}=window;const NS=window.ApurivaDesignSystem_90e8bd;
+const {AiAssistantPanel,AiAssistantLauncher,AiMessage,AiSuggestedActions,AiConfirmationCard,AiToolApproval,AiActivityLog}=NS;
+ReactDOM.createRoot(document.getElementById('root')).render(<div className="col">
+ <div style={{height:360}}>
+  <AiAssistantPanel composerValue="" onComposerChange={()=>{}} footer={<div style={{padding:'0 20px 12px'}}><AiSuggestedActions actions={[{label:'Compare these 3 offers',icon:'chart-column'},{label:'Ask about warranty',icon:'message-circle'},{label:'Book the top match',icon:'calendar'}]}/></div>}>
+   <AiMessage role="user" timestamp="4:32 PM">Need an electrician tomorrow around DHA, preferably under Rs. 3,000.</AiMessage>
+   <AiMessage timestamp="4:32 PM">I found 6 electricians available in DHA tomorrow within your budget. Three have sent offers already.</AiMessage>
+   <AiMessage pending/>
+  </AiAssistantPanel>
+ </div>
+ <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,alignItems:'start'}}>
+  <AiConfirmationCard summary="I can book this for you now." parameters={[{label:'Provider',value:'Ali Raza'},{label:'Service',value:'AC Repair'},{label:'When',value:'Thu 14 Mar, 5:00 PM'},{label:'Price',value:'Rs. 3,200 PKR'}]} confirmLabel="Yes, book it"/>
+  <div className="col">
+   <AiToolApproval toolLabel="Send a message to Ali Raza" description="I'll ask whether the AC is on the second floor." args={[{label:'conversation',value:'REQ-2841'},{label:'length',value:'1 message'}]}/>
+   <AiToolApproval toolLabel="Check Ali's availability" state="approved" description="Read-only — ran automatically."/>
+   <AiToolApproval toolLabel="Create booking" state="failed" errorMessage="Ali is no longer available at 5 PM."/>
+  </div>
+ </div>
+ <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:20,background:'var(--surface-card)',border:'1px solid var(--border-subtle)',borderRadius:'var(--radius-lg)',padding:20,alignItems:'center'}}>
+  <AiActivityLog groups={[{label:'Today · 4:32 PM',entries:[{label:'Searched for electricians',detail:'DHA, tomorrow, under Rs. 3,000',time:'4:32 PM'},{label:"Checked Ali's availability",time:'4:33 PM'},{label:'Prepared booking',time:'4:35 PM'},{label:'Booking confirmed',confirmed:true,time:'4:36 PM'}]}]}/>
+  <AiAssistantLauncher/>
+ </div>
+</div>);
+</script></body></html>

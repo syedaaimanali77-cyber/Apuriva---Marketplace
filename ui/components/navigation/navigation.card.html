@@ -1,0 +1,27 @@
+<!-- @dsCard group="Components" viewport="700x420" name="Navigation" subtitle="Logo, top bar, side nav, tabs and the mobile tab bar" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>html,body{margin:0;background:var(--surface-page)}#root{padding:20px}.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.col{display:grid;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">const {X}=window;const NS=window.ApurivaDesignSystem_90e8bd;
+const {Logo,TopBar,SideNav,BottomTabBar,Tabs,IconButton,Avatar}=NS;
+function Demo(){const [t,setT]=React.useState('upcoming');const [n,setN]=React.useState('home');
+ return <div className="col">
+  <div style={{border:'1px solid var(--border-subtle)',borderRadius:'var(--radius-lg)',overflow:'hidden'}}>
+   <TopBar sticky={false} start={<Logo size={19}/>} end={<><IconButton icon="bell" label="Notifications"/><Avatar name="Sana Khalid" size="sm"/></>}/>
+   <div style={{display:'flex',height:210,background:'var(--surface-page)'}}>
+    <SideNav activeId={n} onSelect={setN} items={[{id:'home',label:'Home',icon:'house'},{id:'explore',label:'Explore',icon:'compass'},{id:'requests',label:'Requests',icon:'file-text',badge:2},{id:'bookings',label:'Bookings',icon:'calendar'},{id:'account',label:'Account',icon:'user'}]}/>
+    <div style={{flex:1,padding:16,display:'grid',gap:14,alignContent:'start'}}>
+     <Tabs activeId={t} onSelect={setT} items={[{id:'upcoming',label:'Upcoming',count:2},{id:'active',label:'Active'},{id:'completed',label:'Completed'},{id:'cancelled',label:'Cancelled'}]}/>
+     <Tabs variant="pill" activeId={t} onSelect={setT} items={[{id:'upcoming',label:'Upcoming'},{id:'active',label:'Active'},{id:'completed',label:'Completed'}]} style={{justifySelf:'start'}}/>
+    </div>
+   </div>
+  </div>
+  <div style={{maxWidth:380,border:'1px solid var(--border-subtle)',borderRadius:'var(--radius-lg)',overflow:'hidden'}}>
+   <BottomTabBar activeId={n} onSelect={setN} items={[{id:'home',label:'Home',icon:'house'},{id:'explore',label:'Explore',icon:'compass'},{id:'requests',label:'Requests',icon:'file-text',badge:2},{id:'bookings',label:'Bookings',icon:'calendar'},{id:'account',label:'Account',icon:'user'}]}/>
+  </div>
+ </div>;}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script></body></html>

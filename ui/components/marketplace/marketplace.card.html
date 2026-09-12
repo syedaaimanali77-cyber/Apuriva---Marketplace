@@ -1,0 +1,31 @@
+<!-- @dsCard group="Components" viewport="700x760" name="Marketplace" subtitle="Service, provider, offer, booking and request cards with timers and ratings" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>html,body{margin:0;background:var(--surface-page)}#root{padding:20px}.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.col{display:grid;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">const {X}=window;const NS=window.ApurivaDesignSystem_90e8bd;
+const {ServiceCard,ProviderCard,OfferCard,BookingCard,RequestCard,RequestStatusTimeline,ActiveBookingBanner,Rating,OfferTimer,Button}=NS;
+ReactDOM.createRoot(document.getElementById('root')).render(<div className="col">
+ <ActiveBookingBanner status="Provider on the way" service="AC Repair" providerName="Ali Raza" when="Arrives ~4:55 PM" action={<Button variant="inverse" size="sm">Track</Button>}/>
+ <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+  <ServiceCard name="AC Repair" category="Home Repair" price="Rs. 2,500" priceModel="package" duration="1–2 hrs" rating={4.7} reviewCount={312} providerCount={48} badge="Popular"/>
+  <ServiceCard name="Deep Cleaning" category="Cleaning" price="Rs. 1,200" priceModel="hourly" duration="3–4 hrs" rating={4.6} reviewCount={188}/>
+  <ServiceCard name="Event Photography" category="Photography" priceModel="quote" duration="Full day" rating={4.9} reviewCount={64}/>
+ </div>
+ <ProviderCard name="Ali Raza" headline="AC & refrigeration technician · 6 yrs" rating={4.8} reviewCount={126} distance="2.4 km" verified topMatch priceFrom="Rs. 2,800" tags={['Split AC','Same day']} reason="Closest available technician with a 4.8+ rating in DHA." actions={<><Button size="sm">View profile</Button><Button size="sm" variant="ghost">Message</Button></>}/>
+ <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,alignItems:'start'}}>
+  <OfferCard providerName="Ali Raza" rating={4.8} reviewCount={126} verified topMatch price="Rs. 3,200" arrival="Arrives in ~35 min" duration="1–2 hrs" includes={['Gas top-up','30-day warranty']} message="I can be there by 5 PM." secondsRemaining={42} actions={<><Button size="sm">Accept offer</Button><Button size="sm" variant="ghost">Request change</Button></>}/>
+  <OfferCard providerName="Hina Tariq" rating={4.5} reviewCount={54} price="Rs. 2,750" arrival="Tomorrow, 10 AM" duration="2 hrs" includes={['Diagnostics']} expired/>
+ </div>
+ <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,alignItems:'start'}}>
+  <BookingCard status="confirmed" service="AC Repair" providerName="Ali Raza" when="Thu 14 Mar · 5:00 PM" location="DHA Phase 5, Lahore" price="Rs. 3,200" reference="BK-2841"/>
+  <RequestCard status="offers" offerCount={3} urgent service="AC Repair — Split, not cooling" description="Second floor bedroom, Haier 1.5 ton." when="Tomorrow, morning" location="DHA Phase 5" budget="Up to Rs. 3,000" attachments="2 photos"/>
+ </div>
+ <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:20,alignItems:'start',background:'var(--surface-card)',border:'1px solid var(--border-subtle)',borderRadius:'var(--radius-lg)',padding:20}}>
+  <RequestStatusTimeline currentIndex={2} steps={[{label:'Request sent',detail:'4:32 PM'},{label:'Providers notified',detail:'8 providers'},{label:'Offers received',detail:'3 offers'},{label:'Provider selected'},{label:'Payment'},{label:'Booking confirmed'}]}/>
+  <div className="col" style={{minWidth:180}}><Rating value={4.8} count={126}/><Rating value={4.0} size="sm" count={12}/><OfferTimer secondsRemaining={22}/><OfferTimer expired/></div>
+ </div>
+</div>);
+</script></body></html>

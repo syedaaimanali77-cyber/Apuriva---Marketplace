@@ -1,0 +1,24 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Forms" subtitle="Fields, selects, choices, switches and marketplace search" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>html,body{margin:0;background:var(--surface-page)}#root{padding:20px}.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.col{display:grid;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">const {X}=window;const NS=window.ApurivaDesignSystem_90e8bd;
+const {FormField,Input,Textarea,Select,Checkbox,Radio,RadioGroup,Switch,SearchField}=NS;
+ReactDOM.createRoot(document.getElementById('root')).render(<div className="col">
+ <SearchField/>
+ <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+  <FormField label="Your area" htmlFor="a" help="Used to find nearby providers."><Input id="a" iconLeft="map-pin" defaultValue="DHA Phase 5, Lahore"/></FormField>
+  <FormField label="Budget" htmlFor="b" optional><Input id="b" prefix="Rs." inputMode="numeric" placeholder="3,000"/></FormField>
+  <FormField label="Preferred time" htmlFor="c" required><Select id="c" placeholder="Choose a window" options={['Morning (9–12)','Afternoon (12–5)','Evening (5–9)']}/></FormField>
+  <FormField label="Phone" htmlFor="d" error="Enter a valid Pakistani mobile number."><Input id="d" invalid defaultValue="0300-12"/></FormField>
+ </div>
+ <FormField label="What do you need?" htmlFor="e"><Textarea id="e" rows={2} maxLength={600} defaultValue="Split AC in the upstairs bedroom is not cooling."/></FormField>
+ <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,alignItems:'start'}}>
+  <RadioGroup legend="Pricing model"><Radio name="p" label="Fixed price" defaultChecked/><Radio name="p" label="Get offers" description="Providers send you quotes."/></RadioGroup>
+  <div className="col" style={{gap:0}}><Checkbox label="Send me offer alerts" defaultChecked/><Checkbox label="Photos help providers quote" description="Optional for this service."/><Switch id="sw" label="Personalized results" checked/></div>
+ </div>
+</div>);
+</script></body></html>
