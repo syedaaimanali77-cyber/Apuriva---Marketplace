@@ -55,7 +55,7 @@ never fabricated in application code; no real money moves in demo mode.
 ### Request and response types
 
 ```typescript
-// packages/types/src/demo.ts
+// lib/types/demo.ts
 export interface DemoLoginRequest {
   persona: 'customer' | 'provider' | 'admin';
 }
@@ -86,7 +86,7 @@ while still exercising the internal notification-creation logic).
 | `User` | extend | `is_demo boolean default false` |
 | (every seeded entity) | extend | implicit via `is_demo`-flagged owning `User`/`CustomerProfile`/`ProviderProfile` — no need to flag every child row individually if ownership chains back to a demo user |
 
-A seed script (`packages/database/seed`) populates the full realistic dataset described in
+A seed script (`lib/db/seed`) populates the full realistic dataset described in
 master spec §110, tagged as demo via the owning accounts' `is_demo` flag.
 
 ### Migration
@@ -113,9 +113,9 @@ clearly synthetic (e.g. obviously placeholder names/numbers), never real custome
 | **Error** | reset failure shows retry, never leaves data in a partially-reset inconsistent state |
 | **Success** | demo mode banner persistently visible across the entire session (master spec §111's "clear Demo Mode label") |
 
-**Route(s):** `apps/web/app/demo` (entry point), demo banner rendered globally when
+**Route(s):** `app/demo` (entry point), demo banner rendered globally when
 `is_demo = true`
-**Shared components used/added:** `packages/ui` `DemoModeBanner` (new)
+**Shared components used/added:** `components` `DemoModeBanner` (new)
 
 ---
 
@@ -123,19 +123,19 @@ clearly synthetic (e.g. obviously placeholder names/numbers), never real custome
 
 | Level | What it covers | Where |
 |---|---|---|
-| **Unit** | `is_demo` propagation/branching logic (notification no-op, payment sandbox routing) | `apps/api/demo/**/*.test.ts` |
-| **Integration** | one-click login per persona; reset restores clean state without cross-session leakage; demo payment uses real sandbox | `apps/api/demo/*.integration.test.ts` |
-| **E2E** | full demo walkthrough per persona touching the core journeys (search→request→offer→booking→payment→completion→review) | `apps/web-e2e/demo-mode.spec.ts` |
+| **Unit** | `is_demo` propagation/branching logic (notification no-op, payment sandbox routing) | `app/api/v1/demo/**/*.test.ts` |
+| **Integration** | one-click login per persona; reset restores clean state without cross-session leakage; demo payment uses real sandbox | `app/api/v1/demo/*.integration.test.ts` |
+| **E2E** | full demo walkthrough per persona touching the core journeys (search→request→offer→booking→payment→completion→review) | `e2e/demo-mode.spec.ts` |
 
 **Traceability**
 
 | AC | Test |
 |---|---|
-| AC-1 | `apps/web-e2e/demo-mode.spec.ts::one-click login per persona` |
-| AC-2 | `packages/database/seed/coverage.test.ts::spans all required entity states` |
-| AC-4 | `apps/api/demo/payment.integration.test.ts::real sandbox, not fabricated` |
-| AC-5 | `apps/api/demo/reset.integration.test.ts::isolated reset, no cross-session leakage` |
-| AC-6 | `apps/api/demo/notifications.integration.test.ts::no real external send` |
+| AC-1 | `e2e/demo-mode.spec.ts::one-click login per persona` |
+| AC-2 | `lib/db/seed/coverage.test.ts::spans all required entity states` |
+| AC-4 | `app/api/v1/demo/payment.integration.test.ts::real sandbox, not fabricated` |
+| AC-5 | `app/api/v1/demo/reset.integration.test.ts::isolated reset, no cross-session leakage` |
+| AC-6 | `app/api/v1/demo/notifications.integration.test.ts::no real external send` |
 
 **Coverage:** ≥80% on new code.
 

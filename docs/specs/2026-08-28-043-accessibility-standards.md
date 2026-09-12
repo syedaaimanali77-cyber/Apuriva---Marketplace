@@ -35,11 +35,11 @@ admin journeys; manual review sign-off exists for those critical journeys.
 
 | # | Criterion |
 |---|---|
-| AC-1 | **Given** any PR touching `apps/web` **When** CI runs **Then** an automated accessibility scan (axe-core or equivalent) runs against changed routes and fails the build on new violations |
+| AC-1 | **Given** any PR touching the application **When** CI runs **Then** an automated accessibility scan (axe-core or equivalent) runs against changed routes and fails the build on new violations |
 | AC-2 | **Given** the critical customer journey (guest → search → request → offer → booking → payment → completion → review) **When** manually reviewed **Then** it is fully keyboard-operable and screen-reader-navigable end to end |
 | AC-3 | **Given** the critical provider journey (signup → profile → services → availability → request → offer → booking → completion → earnings) **When** manually reviewed **Then** the same standard holds |
 | AC-4 | **Given** every design token color pair used for text/background **When** checked **Then** it meets WCAG AA contrast (extends spec 002's token-level check to actual usage in context) |
-| AC-5 | **Given** `prefers-reduced-motion: reduce` **When** any screen with a transition renders **Then** motion is reduced/disabled, verified across the built product, not just in `packages/ui` isolation |
+| AC-5 | **Given** `prefers-reduced-motion: reduce` **When** any screen with a transition renders **Then** motion is reduced/disabled, verified across the built product, not just in `components` isolation |
 | AC-6 | **Given** the Urdu/RTL locale (spec 042) **When** accessibility-tested **Then** it passes the same checklist as the English/LTR experience |
 | AC-7 | **Given** all interactive touch targets **When** measured **Then** they meet minimum touch-target size guidelines |
 
@@ -73,14 +73,14 @@ motion/RTL behaviour), turning per-spec intentions into a continuously enforced 
 
 | Level | What it covers | Where |
 |---|---|---|
-| **Accessibility (automated)** | axe-core scan on every route in CI, blocking on new violations | CI gate, `apps/web-e2e/a11y/*.spec.ts` |
+| **Accessibility (automated)** | axe-core scan on every route in CI, blocking on new violations | CI gate, `e2e/a11y/*.spec.ts` |
 | **Keyboard** | full keyboard-only walkthroughs of the three critical journeys | manual review checklist + Playwright keyboard-navigation tests |
 | **Screen-reader** | NVDA/VoiceOver walkthroughs of the three critical journeys | manual review checklist |
 | **Contrast** | automated contrast check across all token combinations in actual rendered context | CI script extending spec 002's token-level test |
 | **Focus** | focus order and visibility across forms/dialogs/menus | Playwright focus-order assertions |
 | **Touch target** | minimum tap-target size across mobile breakpoints | Playwright/visual assertion |
 | **Reduced motion** | `prefers-reduced-motion` respected across all animated components in situ | Playwright with emulated media feature |
-| **RTL/Urdu** | full checklist re-run against the Urdu locale | `apps/web-e2e/a11y/rtl.spec.ts` |
+| **RTL/Urdu** | full checklist re-run against the Urdu locale | `e2e/a11y/rtl.spec.ts` |
 
 **Traceability**
 
@@ -88,8 +88,8 @@ motion/RTL behaviour), turning per-spec intentions into a continuously enforced 
 |---|---|
 | AC-1 | CI `a11y-scan` job, required status check |
 | AC-2, AC-3 | manual review sign-off document (per journey), linked in the implementing PR |
-| AC-4 | `packages/ui/tokens-in-context.test.ts` |
-| AC-6 | `apps/web-e2e/a11y/rtl.spec.ts` |
+| AC-4 | `components/tokens-in-context.test.ts` |
+| AC-6 | `e2e/a11y/rtl.spec.ts` |
 
 **Coverage:** Every route reachable from the three critical journeys must pass the automated
 scan with zero new violations; 100% of the master spec §106 checklist items must have at least

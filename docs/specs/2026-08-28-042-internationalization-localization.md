@@ -56,7 +56,7 @@ in business logic.
 ### Request and response types
 
 ```typescript
-// packages/types/src/i18n.ts
+// lib/types/i18n.ts
 export interface LocaleDto {
   code: 'en' | 'ur';
   label: string;
@@ -86,7 +86,7 @@ No new error codes — this spec constrains existing response localization behav
 |---|---|---|
 | `User` | extend | `locale text default 'en'` |
 
-No new core entity — translation resources live in `packages/config`/`apps/web` as versioned
+No new core entity — translation resources live in `lib/config` or the application as versioned
 translation-resource files, not database rows (translatable *content*, like catalog service
 names, may need a separate translation-table design if admin-editable per-locale content is
 required — flagged as a risk below).
@@ -118,9 +118,9 @@ as a matter of completeness.
 Applies retroactively across every route built in specs 007–041 — this spec's acceptance
 criteria include an audit pass over those screens, not just new UI.
 
-**Route(s):** locale switcher in `apps/web/app/account/settings`, applied globally via
-`apps/web/app/layout.tsx`
-**Shared components used/added:** `packages/ui` RTL-aware layout primitives (extends spec 002's
+**Route(s):** locale switcher in `app/account/settings`, applied globally via
+`app/layout.tsx`
+**Shared components used/added:** `components` RTL-aware layout primitives (extends spec 002's
 `Text`/layout components)
 
 ---
@@ -129,20 +129,20 @@ criteria include an audit pass over those screens, not just new UI.
 
 | Level | What it covers | Where |
 |---|---|---|
-| **Unit** | locale-fallback logic, RTL direction resolution | `packages/config/i18n/**/*.test.ts` |
-| **Integration** | API responses localize error/notification messages per caller locale | `apps/api/i18n/*.integration.test.ts` |
-| **Component** | representative screens render correctly in RTL (visual/structural, not just string swap) | `apps/web` (Testing Library + RTL snapshot) |
-| **E2E** | user switches to Urdu, completes a core flow (search → request) fully in RTL | `apps/web-e2e/i18n.spec.ts` |
+| **Unit** | locale-fallback logic, RTL direction resolution | `lib/config/i18n/**/*.test.ts` |
+| **Integration** | API responses localize error/notification messages per caller locale | `app/api/v1/i18n/*.integration.test.ts` |
+| **Component** | representative screens render correctly in RTL (visual/structural, not just string swap) | the application (Testing Library + RTL snapshot) |
+| **E2E** | user switches to Urdu, completes a core flow (search → request) fully in RTL | `e2e/i18n.spec.ts` |
 | **Accessibility** | RTL screen-reader behavior tested | CI gate |
 
 **Traceability**
 
 | AC | Test |
 |---|---|
-| AC-1 | `apps/web-e2e/i18n.spec.ts::full RTL mirror on Urdu` |
-| AC-2 | `apps/api/search/interpret.integration.test.ts::roman urdu without locale switch` (extends spec 013's test) |
-| AC-4 | `packages/validation/address.test.ts::country-configurable, not PK hard-coded` |
-| AC-6 | `packages/config/i18n/fallback.test.ts::missing key falls back gracefully` |
+| AC-1 | `e2e/i18n.spec.ts::full RTL mirror on Urdu` |
+| AC-2 | `app/api/v1/search/interpret.integration.test.ts::roman urdu without locale switch` (extends spec 013's test) |
+| AC-4 | `lib/validation/address.test.ts::country-configurable, not PK hard-coded` |
+| AC-6 | `lib/config/i18n/fallback.test.ts::missing key falls back gracefully` |
 
 **Coverage:** ≥80% on new code; the retroactive audit across specs 007–041 is tracked as a
 checklist in the implementing PR rather than a numeric coverage target.

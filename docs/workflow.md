@@ -83,7 +83,13 @@ Natural language input (chat or voice)
 
 ## 2. Dependency notes (why the order isn't purely sequential-by-milestone)
 
-- **Booking (020)** depends on both **Offers (017–018)** and **Availability (019)** being in
+- **Matching (017)** depends on **Availability & Service Areas (016)** — matching AC-1's hard
+  eligibility filter ("service area, availability") and 016 AC-3 ("feeds spec 017 AC-1") name
+  each other directly, and 016's own "Why it matters now" states matching depends on real
+  availability/service-area data rather than assuming providers are always available. This is a
+  genuine build-order dependency (not a deferred/soft one), so 016 is sequenced immediately
+  before 017 rather than after it as originally numbered.
+- **Booking (020)** depends on both **Offers (018–019)** and **Availability (016)** being in
   place — a booking is the confirmed output of an accepted offer against a validated slot.
 - **Payment processing (021)** must exist before **Booking (020)** can go fully live end-to-end
   for offer-based/paid services, but the booking state machine and payment authorization are
@@ -91,7 +97,7 @@ Natural language input (chat or voice)
   §46) and reused by cancellation (023) and refunds (022).
 - **Messaging (025)** is needed in a limited form before booking (pre-booking chat, master spec
   §33) and in full form after (post-booking chat) — the spec covers both, but pre-booking chat
-  is what request/offer flows (015–018) actually depend on.
+  is what request/offer flows (015–019) actually depend on.
 - **MCP tools (035–036)** wrap the modules that already exist — each MCP action tool is only
   buildable once its underlying module (requests, offers, bookings, payments, etc.) has a real
   authorization boundary to call into. MCP is deliberately sequenced after the modules it
@@ -110,6 +116,40 @@ Natural language input (chat or voice)
   see each individual spec's "UI states" and "Data model" sections, which already bake these
   rules in rather than deferring them.
 
+### Dependency tickets (partial functionality gated on a later spec)
+
+These are cases where a spec references a capability owned by a later spec for one specific
+endpoint/AC/edge case, while its own core scope remains buildable and testable without that
+later spec existing yet — the same pattern already used for audit hooks, above. Each is a
+tracked follow-up, not a resequencing:
+
+- **008 (Security Sessions & Privacy Center)** reuses `FileAsset` (stubbed in 003) to store data
+  exports. The upload/CDN/signed-URL pipeline that makes exported files actually downloadable
+  isn't built until **027 (File Uploads & Media Storage)**. Ticket: wire 008's export delivery to
+  027's signed-URL mechanism once 027 ships.
+- **015 (Request Creation)**'s `cancel-preview` endpoint, for the edge case of cancelling after
+  `Provider Selected`, calls into the fee/consequence engine owned by **023 (Cancellation Policy
+  & No-show)**. Ticket: wire that call once 023 ships (015's own AC-4, pre-selection cancellation
+  with no fee, needs nothing from 023).
+- **010 (Service Catalog)** AC-3 and **011 (Category & Service Pages)**'s AI-suggested-FAQs open
+  question, and **013 (Search & Discovery)**'s `/search/interpret`, all reference the AI
+  abstraction owned by **033 (AI Assistant Architecture)** / **034 (AI Conversation, Memory &
+  Autonomy)**. Each spec's own core scope (manual catalog edits, FAQ display, keyword/voice
+  search) ships without AI; only the AI-assisted paths need 033/034 wired in later. 011 and 013
+  already flag this explicitly as an open sequencing question.
+- **029 (Reviews & Ratings)** and **038 (Admin Moderation & Fraud/Abuse)** each note an optional,
+  explicitly-deferred AI-assisted flagging path through 033 — rule-based logic ships first.
+- **025 (Messaging & Conversations)** AC-6 (`403 BLOCKED`) requires the `UserBlock` table and
+  block-effect rules defined in **030 (Blocking, Reporting & Safety Incidents)**. 030's own "Why
+  it matters now" acknowledges messaging already references this. Ticket: wire 025's block check
+  to 030's `UserBlock` table once 030 ships; 025's core booking-scoped chat (AC-1–AC-5) doesn't
+  need it.
+- **020 (Booking Creation)** defines `Protected`/`Settled` in its state enum but explicitly
+  leaves open (open question #2) whether **021 (Payment Processing & Protection)** or 020 itself
+  drives the transition into those two states — recommended resolution: 021 owns the trigger, 020
+  owns the state machine it writes into. Per the note above, 021 must exist before an offer-based/
+  paid booking can go live end-to-end, even though 020 is specified first.
+
 ---
 
 ## 3. Feature implementation order
@@ -122,7 +162,7 @@ architecture doc §4.
 
 | # | Feature | Scope | Module(s) | Master spec §§ |
 |---|---|---|---|---|
-| 001 | Monorepo & Environment Foundation | Monorepo layout, env/secrets separation, `.env.example` | — (platform) | §4.4, §118 |
+| 001 | Application & Environment Foundation | Single-app layout, env/secrets separation, `.env.example` | — (platform) | §4.4, §118 |
 | 002 | Design System & UI Primitives | Design tokens, branding centralization, accessible primitives | — (platform) | §3, §106 |
 | 003 | Database & Core Data Model | Core entity groups, money/time handling, state-machine conventions | — (platform) | §6, §7, §124, §125 |
 | 004 | API Foundation & Response Standards | API versioning, response/error conventions, rate limiting | — (platform) | §98–§101 |
@@ -152,15 +192,15 @@ architecture doc §4.
 | # | Feature | Scope | Module(s) | Master spec §§ |
 |---|---|---|---|---|
 | 015 | Request Creation & Lifecycle | Request creation, budget, media, status, cancellation | Requests | §27–§28, §37–§38 |
-| 016 | Provider Matching, Ranking & Distribution | Eligibility rules, weighted ranking, fair exposure, request distribution | Matching | §23–§25, §29–§30 |
+| 016 | Provider Availability & Service Areas | Weekly schedule, overrides, blocked periods, availability visibility | Provider Profiles | §40–§42 |
+| 017 | Provider Matching, Ranking & Distribution | Eligibility rules, weighted ranking, fair exposure, request distribution | Matching | §23–§25, §29–§30 |
 
 ### Milestone 5 — Offers & Booking
 
 | # | Feature | Scope | Module(s) | Master spec §§ |
 |---|---|---|---|---|
-| 017 | Offer System & 2-Minute Timer | Offer lifecycle, server-authoritative expiry | Offers | §31–§32 |
-| 018 | Offer Negotiation & Comparison | Pre-booking chat, negotiation, offer/provider comparison | Offers | §33–§36 |
-| 019 | Provider Availability & Service Areas | Weekly schedule, overrides, blocked periods, availability visibility | Provider Profiles | §40–§42 |
+| 018 | Offer System & 2-Minute Timer | Offer lifecycle, server-authoritative expiry | Offers | §31–§32 |
+| 019 | Offer Negotiation & Comparison | Pre-booking chat, negotiation, offer/provider comparison | Offers | §33–§36 |
 | 020 | Booking Creation & State Machine | Server-authoritative booking, revalidation, race-condition prevention, arrival/progress | Bookings | §39, §43–§45, §125 |
 
 ### Milestone 6 — Payments

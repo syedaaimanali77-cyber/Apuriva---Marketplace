@@ -86,10 +86,10 @@ cache should not leak private data).
 | **Error** | consistent with master spec §105's plain-language/actionable/honest/context-specific pattern across the whole app, not just individually per spec |
 | **Success** | no false-positive success states offline (AC-2's core guarantee, audited across all prior specs' write actions) |
 
-**Route(s):** applies globally; SEO specifically governs `apps/web/app/explore/*`,
-`apps/web/app/providers/[id]` (where public)
-**Shared components used/added:** `packages/ui` `OfflineBanner` (new), service worker
-configuration in `apps/web`
+**Route(s):** applies globally; SEO specifically governs `app/explore/*`,
+`app/providers/[id]` (where public)
+**Shared components used/added:** `components` `OfflineBanner` (new), service worker
+configuration in the application
 
 ---
 
@@ -97,21 +97,21 @@ configuration in `apps/web`
 
 | Level | What it covers | Where |
 |---|---|---|
-| **Unit** | offline-queue safe-action allowlist, SEO metadata generation | `apps/web/**/*.test.ts` |
-| **Integration** | robots/sitemap correctness (public pages included, private excluded) | `apps/web/seo.integration.test.ts` |
+| **Unit** | offline-queue safe-action allowlist, SEO metadata generation | `**/*.test.ts` |
+| **Integration** | robots/sitemap correctness (public pages included, private excluded) | `seo.integration.test.ts` |
 | **Performance** | Core Web Vitals budget check on representative pages under throttled network | CI Lighthouse/WebPageTest run |
-| **E2E** | offline mode: app shell loads, offline banner shows, queued safe action completes on reconnect without duplication | `apps/web-e2e/pwa-offline.spec.ts` |
-| **PWA** | install prompt/manifest correctness | `apps/web-e2e/pwa-install.spec.ts` |
+| **E2E** | offline mode: app shell loads, offline banner shows, queued safe action completes on reconnect without duplication | `e2e/pwa-offline.spec.ts` |
+| **PWA** | install prompt/manifest correctness | `e2e/pwa-install.spec.ts` |
 
 **Traceability**
 
 | AC | Test |
 |---|---|
-| AC-1 | `apps/web-e2e/pwa-install.spec.ts` |
-| AC-2 | `apps/web-e2e/pwa-offline.spec.ts::never claims success without server confirmation` |
-| AC-3 | `apps/web-e2e/pwa-offline.spec.ts::queued action retries without duplication` |
+| AC-1 | `e2e/pwa-install.spec.ts` |
+| AC-2 | `e2e/pwa-offline.spec.ts::never claims success without server confirmation` |
+| AC-3 | `e2e/pwa-offline.spec.ts::queued action retries without duplication` |
 | AC-4 | CI performance budget job (fails build on regression beyond threshold) |
-| AC-6 | `apps/web/seo.integration.test.ts::private routes excluded from sitemap/robots` |
+| AC-6 | `app/seo.integration.test.ts::private routes excluded from sitemap/robots` |
 
 **Coverage:** ≥80% on new code; performance budgets are enforced as hard CI thresholds, not just
 tested.
