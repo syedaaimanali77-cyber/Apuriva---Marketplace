@@ -2,6 +2,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NavShell } from './NavShell';
+import { ACCOUNT_UPDATED_EVENT } from '@/app/account/_components/useAccountUser';
 
 const { getPathname, setPathname } = vi.hoisted(() => {
   let pathname = '/';
@@ -102,5 +103,18 @@ describe('NavShell (spec 014 §2 AC-4/AC-5/AC-6/AC-8)', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(true, { data: CUSTOMER_USER })));
     render(<NavShell />);
     await waitFor(() => expect(screen.getAllByRole('link', { name: 'Explore', current: 'page' }).length).toBeGreaterThan(0));
+  });
+
+  it('a same-page mode switch (ACCOUNT_UPDATED_EVENT from useAccountUser) refreshes the nav immediately, without a route change', async () => {
+    setPathname('/');
+    let currentUser: typeof CUSTOMER_USER | typeof PROVIDER_USER = CUSTOMER_USER;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(true, { data: currentUser }))));
+    render(<NavShell />);
+    await expectExactNavLabels(['Home', 'Explore', 'Requests', 'Bookings', 'Account']);
+
+    currentUser = PROVIDER_USER;
+    window.dispatchEvent(new Event(ACCOUNT_UPDATED_EVENT));
+
+    await expectExactNavLabels(['Dashboard', 'Requests', 'Schedule', 'Earnings', 'Account']);
   });
 });

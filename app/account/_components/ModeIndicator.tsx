@@ -2,8 +2,8 @@ import { Badge } from '@/components';
 import type { ActiveMode } from '@/lib/types/users';
 
 const MODE_COPY: Record<ActiveMode, { label: string; icon: string; tone: 'brand' | 'accent' }> = {
-  customer: { label: 'Customer mode', icon: 'user', tone: 'brand' },
-  provider: { label: 'Provider mode', icon: 'briefcase', tone: 'accent' },
+  customer: { label: 'Customer Mode', icon: 'user', tone: 'brand' },
+  provider: { label: 'Service Provider Mode', icon: 'briefcase', tone: 'accent' },
 };
 
 /** Spec 006 §5 — the persistent indicator of the CURRENT SESSION's active mode (never a global
