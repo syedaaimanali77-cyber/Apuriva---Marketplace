@@ -1,7 +1,7 @@
 # Spec: Request Creation & Lifecycle
 
 **File:** `docs/specs/2026-08-28-015-request-creation-lifecycle.md`
-**Status:** Draft
+**Status:** Approved
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §27–§28, §37–§38, §125, §132.9, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §5.2, §14, [docs/workflow.md](../workflow.md)
