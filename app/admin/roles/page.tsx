@@ -9,12 +9,24 @@ import styles from '../admin.module.css';
 interface ApiErrorBody {
   code: string;
   message: string;
+  errors?: { field: string; message: string }[];
 }
 
 interface ApiResult<T> {
   ok: boolean;
   data?: T;
   error?: ApiErrorBody;
+}
+
+/** `VALIDATION_ERROR` responses carry the specific `field`/`message` (e.g. "userId must be a
+ * valid UUID.") behind the generic top-level message — surface it so the operator knows exactly
+ * what to fix instead of a bare "The request failed validation." (spec 009 §3 error contract). */
+function describeError(error: ApiErrorBody | undefined, fallback: string): string {
+  if (!error) return fallback;
+  if (error.errors?.length) {
+    return error.errors.map((e) => `${e.field} ${e.message}`).join(' ');
+  }
+  return error.message ?? fallback;
 }
 
 /** Same CSRF-cookie-echo pattern as app/account/privacy-security/page.tsx. */
@@ -88,7 +100,7 @@ export default function AdminRolesPage() {
     });
     setAssignPending(false);
     if (!res.ok) {
-      setFormError(res.error?.message ?? "Couldn't assign that role.");
+      setFormError(describeError(res.error, "Couldn't assign that role."));
       return;
     }
     setAnnouncement(`Assigned ${selectedRole} to ${targetUserId}.`);
@@ -107,7 +119,7 @@ export default function AdminRolesPage() {
     });
     setRevokePending(false);
     if (!res.ok) {
-      setFormError(res.error?.message ?? "Couldn't revoke that role.");
+      setFormError(describeError(res.error, "Couldn't revoke that role."));
       return;
     }
     setAnnouncement(`Revoked ${selectedRole} from ${targetUserId}.`);
