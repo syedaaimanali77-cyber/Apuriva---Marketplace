@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Icon } from '@/ui/components/core/Icon.jsx';
+import { Button } from '@/ui/components/core/Button.jsx';
+import { IconButton } from '@/ui/components/core/IconButton.jsx';
 import { Input } from '@/ui/components/forms/Input.jsx';
 
 export interface SearchBarProps {
@@ -37,6 +38,7 @@ function getSpeechRecognitionConstructor(): (new () => SpeechRecognitionLike) | 
  * `onChange` a typed character would use, so it goes through identical interpretation/validation
  * downstream (no separate "isVoice" code path exists anywhere, matching `lib/types/search.ts`'s
  * contract). No ASR is implemented here — this only calls whatever the browser already provides.
+ * Controls are the DS `Input`, `IconButton` (voice) and `Button` (submit).
  */
 export function SearchBar({ value, onChange, onSubmit, placeholder = 'Search for a service...', loading = false }: SearchBarProps) {
   const [voiceSupported, setVoiceSupported] = useState(false);
@@ -73,7 +75,7 @@ export function SearchBar({ value, onChange, onSubmit, placeholder = 'Search for
       }}
       style={{ display: 'flex', gap: 'var(--space-2)', width: '100%' }}
     >
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <Input
           type="search"
           value={value}
@@ -84,42 +86,22 @@ export function SearchBar({ value, onChange, onSubmit, placeholder = 'Search for
         />
       </div>
       {voiceSupported ? (
-        <button
-          type="button"
-          onClick={handleMicClick}
-          aria-label={listening ? 'Listening...' : 'Search by voice'}
+        <IconButton
+          icon="mic"
+          label={listening ? 'Listening...' : 'Search by voice'}
+          variant="outline"
           aria-pressed={listening}
-          style={{
-            display: 'grid',
-            placeItems: 'center',
-            width: 40,
-            height: 40,
-            border: '1px solid var(--field-border)',
-            borderRadius: 'var(--radius-md)',
-            background: listening ? 'var(--surface-brand-subtle)' : 'var(--field-bg)',
-            cursor: 'pointer',
-          }}
-        >
-          <Icon name="mic" size="sm" color={listening ? 'var(--teal-600)' : 'var(--text-muted)'} />
-        </button>
+          onClick={handleMicClick}
+          style={
+            listening
+              ? { background: 'var(--surface-brand-subtle)', color: 'var(--teal-600)', borderColor: 'var(--border-brand)' }
+              : undefined
+          }
+        />
       ) : null}
-      <button
-        type="submit"
-        disabled={loading}
-        style={{
-          height: 40,
-          padding: '0 16px',
-          borderRadius: 'var(--radius-md)',
-          border: 'none',
-          background: 'var(--action-primary-bg)',
-          color: 'var(--action-primary-fg)',
-          fontFamily: 'var(--font-sans)',
-          fontWeight: 'var(--weight-semibold)',
-          cursor: loading ? 'not-allowed' : 'pointer',
-        }}
-      >
+      <Button type="submit" variant="primary" loading={loading}>
         Search
-      </button>
+      </Button>
     </form>
   );
 }

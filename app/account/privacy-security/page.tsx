@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, ConfirmDialog, ErrorState, Skeleton, Table } from '@/components';
+import { Alert, Badge, Button, Card, ConfirmDialog, ErrorState, Skeleton, Table } from '@/components';
 import type { TableColumn } from '@/components';
 import type { DataExportStatus, SessionSummaryDto } from '@/lib/types/privacy';
 import styles from './privacy-security.module.css';
@@ -287,9 +287,13 @@ export default function PrivacySecurityPage() {
       key: 'device',
       header: 'Device',
       render: (row) => (
-        <span>
+        <span className={styles.deviceCell}>
           {row.deviceLabel ?? 'Unknown device'}
-          {row.isCurrent ? <span className={styles.currentBadge}>This device</span> : null}
+          {row.isCurrent ? (
+            <Badge tone="brand" size="sm" icon={null}>
+              This device
+            </Badge>
+          ) : null}
         </span>
       ),
     },

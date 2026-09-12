@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Card, ErrorState, FormField, Input, Select, Skeleton, Table } from '@/components';
+import { Alert, Badge, Button, Card, ErrorState, FormField, Input, Select, Skeleton, Table } from '@/components';
 import type { TableColumn } from '@/components';
 import type { CatalogEntityStatus, CatalogSuggestionDto, CategoryDto, PricingModel, SubcategoryDto } from '@/lib/types/catalog';
 import styles from '../../admin.module.css';
@@ -57,6 +57,14 @@ const PRICING_MODEL_OPTIONS: { value: PricingModel; label: string }[] = [
   { value: 'quote', label: 'quote' },
   { value: 'custom', label: 'custom' },
 ];
+
+/** DS status badges: the literal status text, paired with tone (and the tone's icon). */
+const STATUS_TONES: Record<CatalogEntityStatus, 'neutral' | 'success' | 'warning'> = {
+  draft: 'neutral',
+  published: 'success',
+  pending_review: 'warning',
+  retired: 'neutral',
+};
 
 type PageStatus = 'loading' | 'forbidden' | 'error' | 'ready';
 
@@ -289,7 +297,7 @@ export default function AdminCatalogPage() {
 
   if (pageStatus === 'loading') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Catalog</h1>
         <Card>
           <Skeleton lines={4} />
@@ -300,7 +308,7 @@ export default function AdminCatalogPage() {
 
   if (pageStatus === 'forbidden') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Catalog</h1>
         <Alert tone="warning" title="Content/Marketplace admin required">
           Catalog management is scoped to the Content/Marketplace admin permission (spec 010 §3) — your account doesn't currently hold it.
@@ -311,7 +319,7 @@ export default function AdminCatalogPage() {
 
   if (pageStatus === 'error') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Catalog</h1>
         <ErrorState description={pageError ?? undefined} onRetry={load} />
       </main>
@@ -321,14 +329,23 @@ export default function AdminCatalogPage() {
   const categoryColumns: TableColumn<CategoryDto>[] = [
     { key: 'name', header: 'Name', render: (c) => c.name },
     { key: 'slug', header: 'Slug', render: (c) => c.slug },
-    { key: 'status', header: 'Status', render: (c) => c.status },
-    { key: 'sortOrder', header: 'Sort order', render: (c) => String(c.sortOrder) },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (c) => (
+        <Badge tone={STATUS_TONES[c.status]} size="sm">
+          {c.status}
+        </Badge>
+      ),
+    },
+    { key: 'sortOrder', header: 'Sort order', numeric: true, render: (c) => String(c.sortOrder) },
     {
       key: 'actions',
       header: '',
+      align: 'end',
       render: (c) =>
         c.status === 'retired' ? null : (
-          <Button variant="danger" onClick={() => handleRetireCategory(c.id)}>
+          <Button variant="danger" size="sm" onClick={() => handleRetireCategory(c.id)}>
             Retire
           </Button>
         ),
@@ -340,13 +357,22 @@ export default function AdminCatalogPage() {
     { key: 'categoryName', header: 'Category', render: (s) => s.categoryName },
     { key: 'name', header: 'Name', render: (s) => s.name },
     { key: 'slug', header: 'Slug', render: (s) => s.slug },
-    { key: 'status', header: 'Status', render: (s) => s.status },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (s) => (
+        <Badge tone={STATUS_TONES[s.status]} size="sm">
+          {s.status}
+        </Badge>
+      ),
+    },
     {
       key: 'actions',
       header: '',
+      align: 'end',
       render: (s) =>
         s.status === 'retired' ? null : (
-          <Button variant="danger" onClick={() => handleRetireSubcategory(s.id)}>
+          <Button variant="danger" size="sm" onClick={() => handleRetireSubcategory(s.id)}>
             Retire
           </Button>
         ),
@@ -361,12 +387,13 @@ export default function AdminCatalogPage() {
     {
       key: 'actions',
       header: '',
+      align: 'end',
       render: (s) => (
         <div className={styles.actions}>
-          <Button variant="primary" onClick={() => handleApproveSuggestion(s.id)}>
+          <Button variant="primary" size="sm" onClick={() => handleApproveSuggestion(s.id)}>
             Approve
           </Button>
-          <Button variant="danger" onClick={() => handleRejectSuggestion(s.id)}>
+          <Button variant="danger" size="sm" onClick={() => handleRejectSuggestion(s.id)}>
             Reject
           </Button>
         </div>
@@ -375,7 +402,7 @@ export default function AdminCatalogPage() {
   ];
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-density="dense">
       <h1 className={styles.title}>Catalog</h1>
 
       <span role="status" aria-live="polite" className={styles.visuallyHidden}>
@@ -393,7 +420,7 @@ export default function AdminCatalogPage() {
             {categoryFormError}
           </Alert>
         ) : null}
-        <div className={styles.form}>
+        <Card elevation="flat" className={styles.form}>
           <div className={styles.formField}>
             <FormField label="Name" htmlFor="category-name">
               <Input id="category-name" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
@@ -414,7 +441,7 @@ export default function AdminCatalogPage() {
               Create category
             </Button>
           </div>
-        </div>
+        </Card>
         <Table columns={categoryColumns} rows={categories} caption="All categories" emptyMessage="No categories yet." />
       </section>
 
@@ -429,7 +456,7 @@ export default function AdminCatalogPage() {
             {subFormError}
           </Alert>
         ) : null}
-        <div className={styles.form}>
+        <Card elevation="flat" className={styles.form}>
           <div className={styles.formField}>
             <FormField label="Parent category id" htmlFor="sub-category-id">
               <Input id="sub-category-id" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} placeholder="category uuid" />
@@ -455,7 +482,7 @@ export default function AdminCatalogPage() {
               Create subcategory
             </Button>
           </div>
-        </div>
+        </Card>
         <Table columns={subcategoryColumns} rows={flatSubcategories} caption="All subcategories" emptyMessage="No subcategories yet." />
       </section>
 
@@ -471,7 +498,7 @@ export default function AdminCatalogPage() {
             {serviceFormError}
           </Alert>
         ) : null}
-        <div className={styles.form}>
+        <Card elevation="flat" className={styles.form}>
           <div className={styles.formField}>
             <FormField label="Category id" htmlFor="service-category-id">
               <Input id="service-category-id" value={serviceCategoryId} onChange={(e) => setServiceCategoryId(e.target.value)} placeholder="category uuid" />
@@ -512,14 +539,14 @@ export default function AdminCatalogPage() {
               Create service
             </Button>
           </div>
-        </div>
+        </Card>
 
         {lookupServiceError ? (
           <Alert tone="error" title="Something went wrong">
             {lookupServiceError}
           </Alert>
         ) : null}
-        <div className={styles.form}>
+        <Card elevation="flat" className={styles.form}>
           <div className={styles.formField}>
             <FormField label="Service id" htmlFor="lookup-service-id">
               <Input id="lookup-service-id" value={lookupServiceId} onChange={(e) => setLookupServiceId(e.target.value)} placeholder="service uuid" />
@@ -530,7 +557,7 @@ export default function AdminCatalogPage() {
               Retire service
             </Button>
           </div>
-        </div>
+        </Card>
       </section>
 
       <section aria-labelledby="ai-suggestions-heading" className={styles.section}>

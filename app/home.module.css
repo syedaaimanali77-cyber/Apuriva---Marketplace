@@ -9,7 +9,9 @@
 
 .hero {
   display: grid;
-  grid-template-columns: 1fr;
+  /* minmax(0, …) lets the column shrink below its content's min-content width (the search row),
+     so the hero copy wraps inside a phone viewport instead of being clipped. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-6);
   padding: var(--space-8) var(--space-6);
   border-radius: var(--radius-xl);
@@ -19,7 +21,7 @@
 
 @media (min-width: 768px) {
   .hero {
-    grid-template-columns: 1.1fr 0.9fr;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
     align-items: center;
     padding: var(--space-10) var(--space-8);
   }
@@ -128,8 +130,9 @@
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--ai-border);
   border-radius: var(--radius-xl);
-  background: var(--surface-brand-subtle);
+  background: var(--ai-surface);
 }
 
 .promoIcon {
@@ -158,6 +161,7 @@
 .personalizationControl {
   padding: var(--space-3) var(--space-4);
   background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
 }
 
@@ -186,10 +190,14 @@
   gap: var(--space-4);
 }
 
+/* Mirrors the DS Card surface (subtle elevation). */
 .providerTile {
-  padding: var(--space-4);
+  padding: var(--density-card-pad);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   background: var(--surface-card);
+  box-shadow: var(--shadow-sm);
+  font-weight: var(--weight-semibold);
   font-size: var(--text-base);
   color: var(--text-heading);
 }

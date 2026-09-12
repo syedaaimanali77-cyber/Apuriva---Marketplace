@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { IconButton } from '@/components';
+import { Icon, IconButton } from '@/components';
 import type { ActiveMode } from '@/lib/types/users';
 import { ModeIndicator } from './ModeIndicator';
 import { useAccountUser } from './useAccountUser';
@@ -114,7 +114,11 @@ export function AccountMenu() {
               disabled={pending || user.activeMode === 'customer'}
               onClick={() => handleSwitchMode('customer')}
             >
-              {user.activeMode === 'customer' ? 'Currently in customer mode' : 'Switch to customer mode'}
+              <Icon name="user" size="sm" />
+              <span className={styles.itemLabel}>
+                {user.activeMode === 'customer' ? 'Currently in customer mode' : 'Switch to customer mode'}
+              </span>
+              {user.activeMode === 'customer' ? <Icon name="check" size="sm" color="var(--teal-600)" /> : null}
             </button>
 
             {user.hasProviderProfile ? (
@@ -125,11 +129,16 @@ export function AccountMenu() {
                 disabled={pending || user.activeMode === 'provider'}
                 onClick={() => handleSwitchMode('provider')}
               >
-                {user.activeMode === 'provider' ? 'Currently in provider mode' : 'Switch to provider mode'}
+                <Icon name="briefcase" size="sm" />
+                <span className={styles.itemLabel}>
+                  {user.activeMode === 'provider' ? 'Currently in provider mode' : 'Switch to provider mode'}
+                </span>
+                {user.activeMode === 'provider' ? <Icon name="check" size="sm" color="var(--teal-600)" /> : null}
               </button>
             ) : (
               <button type="button" role="menuitem" className={styles.item} disabled={pending} onClick={() => becomeProvider()}>
-                Become a Provider
+                <Icon name="plus" size="sm" />
+                <span className={styles.itemLabel}>Become a Provider</span>
               </button>
             )}
           </div>

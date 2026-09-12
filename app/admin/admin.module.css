@@ -1,12 +1,13 @@
 /*
  * Spec 009 §5 — Admin RBAC & Roles UI (role management, pending approvals, pending post-action
- * review). Built on the APURIVA Design System's own tokens, same approach as
- * app/account/privacy-security/privacy-security.module.css. Per CLAUDE.md's branding rule, these
- * pages carry no logo/header of their own.
+ * review), plus spec 010's catalog editor. Built on the APURIVA Design System's own tokens, same
+ * approach as app/account/privacy-security/privacy-security.module.css. Admin pages opt into the
+ * DS's `dense` adaptive density (`data-density` on each page's <main>) and group their forms in
+ * flat DS `Card`s. Per CLAUDE.md's branding rule, these pages carry no logo/header of their own.
  */
 
 .page {
-  max-width: 960px;
+  max-width: var(--container-wide);
   margin: 0 auto;
   padding: var(--space-8) var(--space-6);
   display: grid;
@@ -17,6 +18,7 @@
   margin: 0;
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
   color: var(--text-heading);
 }
 
@@ -60,6 +62,8 @@
 
 .actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 

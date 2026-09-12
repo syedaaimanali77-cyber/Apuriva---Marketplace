@@ -6,6 +6,7 @@ export default function AdminOverviewPage() {
   return (
     <PlaceholderPage
       title="Overview"
+      density="dense"
       description="Admin dashboard content is coming soon (spec 037). In the meantime, jump straight to what's already built."
       links={[
         { href: '/admin/operations', label: 'Operations' },

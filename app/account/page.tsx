@@ -2,7 +2,7 @@
 
 import { useRef } from 'react';
 import Link from 'next/link';
-import { Badge, Button, Icon, Skeleton } from '@/components';
+import { Alert, Badge, Button, Icon, Skeleton } from '@/components';
 import { branding } from '@/lib/config/branding';
 import type { ActiveMode } from '@/lib/types/users';
 import { useAccountUser } from './_components/useAccountUser';
@@ -209,12 +209,7 @@ export default function AccountPage() {
         </section>
       ) : null}
 
-      {error ? (
-        <p role="alert" className={styles.error}>
-          <Icon name="circle-alert" size="sm" />
-          {error}
-        </p>
-      ) : null}
+      {error ? <Alert tone="error">{error}</Alert> : null}
       <span role="status" aria-live="polite" className={styles.visuallyHidden}>
         {announcement}
       </span>

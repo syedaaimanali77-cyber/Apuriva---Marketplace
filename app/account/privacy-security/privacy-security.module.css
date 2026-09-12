@@ -6,7 +6,7 @@
  */
 
 .page {
-  max-width: 840px;
+  max-width: var(--container-content);
   margin: 0 auto;
   padding: var(--space-8) var(--space-6);
   display: grid;
@@ -46,14 +46,11 @@
   color: var(--text-muted);
 }
 
-.currentBadge {
-  margin-left: var(--space-2);
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-brand-subtle);
-  color: var(--text-brand);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
+.deviceCell {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .downloadLink {

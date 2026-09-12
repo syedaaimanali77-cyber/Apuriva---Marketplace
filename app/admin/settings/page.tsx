@@ -7,6 +7,7 @@ export default function AdminSettingsPage() {
   return (
     <PlaceholderPage
       title="Settings"
+      density="dense"
       description="Role and permission configuration already exists — reachable here. Feature-flag management (spec 041) will join once implemented."
       links={[{ href: '/admin/roles', label: 'Roles & permissions' }]}
     />

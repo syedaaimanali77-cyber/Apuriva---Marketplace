@@ -63,7 +63,8 @@ export function NavShell() {
 
   if (HEADERLESS_ROUTES.includes(pathname)) return null;
 
-  const items: NavItem[] = pathname.startsWith('/admin')
+  const isAdmin = pathname.startsWith('/admin');
+  const items: NavItem[] = isAdmin
     ? ADMIN_NAV_ITEMS
     : user?.activeMode === 'provider'
       ? PROVIDER_NAV_ITEMS
@@ -77,7 +78,8 @@ export function NavShell() {
         <BottomTabBar items={items} activeId={activeId} />
       </div>
       <div className={styles.sideOnly}>
-        <SideNav items={items} activeId={activeId} />
+        {/* The DS admin console uses navy side-nav chrome; customer/provider keep the light nav. */}
+        <SideNav items={items} activeId={activeId} tone={isAdmin ? 'dark' : 'light'} />
       </div>
     </>
   );

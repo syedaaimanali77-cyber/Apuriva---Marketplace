@@ -127,7 +127,7 @@ export default function AdminRolesPage() {
 
   if (pageStatus === 'loading') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Admin roles</h1>
         <Card>
           <Skeleton lines={4} />
@@ -138,7 +138,7 @@ export default function AdminRolesPage() {
 
   if (pageStatus === 'forbidden') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Admin roles</h1>
         <Alert tone="warning" title="Super Admin required">
           Role management is scoped to the Super Admin role (spec 009 AC-5) — your account doesn't currently hold it.
@@ -149,7 +149,7 @@ export default function AdminRolesPage() {
 
   if (pageStatus === 'error') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Admin roles</h1>
         <ErrorState description={pageError ?? undefined} onRetry={load} />
       </main>
@@ -159,7 +159,7 @@ export default function AdminRolesPage() {
   const columns: TableColumn<AdminRoleDto['name']>[] = [{ key: 'name', header: 'Role', render: (name) => name }];
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-density="dense">
       <h1 className={styles.title}>Admin roles</h1>
 
       <span role="status" aria-live="polite" className={styles.visuallyHidden}>
@@ -175,7 +175,7 @@ export default function AdminRolesPage() {
             {formError}
           </Alert>
         ) : null}
-        <div className={styles.form}>
+        <Card elevation="flat" className={styles.form}>
           <div className={styles.formField}>
             <FormField label="User id" htmlFor="target-user-id">
               <Input id="target-user-id" value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)} placeholder="user uuid" />
@@ -200,7 +200,7 @@ export default function AdminRolesPage() {
               Revoke
             </Button>
           </div>
-        </div>
+        </Card>
       </section>
 
       <section aria-labelledby="catalog-heading" className={styles.section}>

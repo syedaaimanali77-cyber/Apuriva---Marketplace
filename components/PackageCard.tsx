@@ -23,7 +23,16 @@ export function PackageCard({ servicePackage }: { servicePackage: ServicePackage
       <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
         <h3 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-heading)' }}>{servicePackage.name}</h3>
         {servicePackage.description ? <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>{servicePackage.description}</p> : null}
-        <span style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-heading)' }}>
+        <span
+          data-numeric
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-lg)',
+            fontWeight: 'var(--weight-semibold)',
+            letterSpacing: 'var(--tracking-snug)',
+            color: 'var(--text-price)',
+          }}
+        >
           {formatMoney(servicePackage.amountMinorUnits, servicePackage.currencyCode)}
         </span>
         {servicePackage.includedItems.length > 0 ? (

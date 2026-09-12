@@ -3,6 +3,7 @@
 import { Badge } from '@/ui/components/core/Badge.jsx';
 import { Card } from '@/ui/components/core/Card.jsx';
 import { Icon } from '@/ui/components/core/Icon.jsx';
+import { Rating } from '@/ui/components/marketplace/Rating.jsx';
 import { PriceDisplay } from './PriceDisplay';
 import type { SearchResultDto } from '@/lib/types/search';
 
@@ -13,19 +14,15 @@ export interface ResultCardProps {
 
 /** Spec 013 §5 — one search result. `approxDistance` is only ever the coarse, bucketed label
  * `SearchResultDto` already carries (never a precise figure computed client-side); `rating` is
- * only rendered when present (spec 029 dependency, never fabricated). */
+ * only rendered when present (spec 029 dependency, never fabricated), via the DS `Rating`. */
 export function ResultCard({ result, onClick }: ResultCardProps) {
   return (
     <Card interactive={Boolean(onClick)} onClick={onClick} style={{ display: 'grid', gap: 'var(--space-2)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
         <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-heading)' }}>
           {result.displayName}
         </span>
-        {result.rating !== undefined ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)' }}>
-            <Icon name="star" size="xs" color="var(--warning-600)" /> {result.rating.toFixed(1)}
-          </span>
-        ) : null}
+        {result.rating !== undefined ? <Rating value={result.rating} size="sm" /> : null}
       </div>
 
       {result.approxDistance ? (

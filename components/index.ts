@@ -3,10 +3,10 @@
  * Every later screen spec imports from here (`@/components`), not from `ui/` directly —
  * `ui/` stays the design system's own source, this module is the app-facing integration of it.
  *
- * Dialog, Menu, and Tabs are named by spec 002 but have no implementation present in ui/ (only
- * referenced in ui/_ds_manifest.json's component registry — no .jsx/.d.ts files exist for them in
- * this export of the design system). They are intentionally omitted here rather than
- * reimplemented from scratch. `ConfirmDialog` is the one exception: spec 008 needs a destructive
+ * Dialog, Menu, and Tabs are named by spec 002. Earlier exports of the design system shipped no
+ * implementation for them; the restored ui/ now includes them (ui/components/overlays,
+ * ui/components/navigation), but nothing re-exports them here until a screen adopts them — the
+ * app-built stand-ins described below stay in place until then. `ConfirmDialog` is one: spec 008 needs a destructive
  * confirmation dialog for its own UI (§5) and builds one from existing tokens (./ConfirmDialog.tsx)
  * the same way app/account/_components/AccountMenu.tsx builds its own dropdown for the same
  * reason — not a `ui/` design-system component, but exported from here since it's a genuinely
@@ -18,11 +18,16 @@
  * `SearchBar`/`ResultCard`/`IntentChip` (spec 013) are the same case again — named by spec 013,
  * no `ui/` implementation exists, built here. `ActiveBookingBanner`/`Switch` (spec 014) DO have a
  * real `ui/` implementation (`ui/components/marketplace/ActiveBookingBanner`,
- * `ui/components/forms/Switch`) and are thin re-exports, the same way `Table` is — unlike
- * `BottomTabBar`/`SideNav` (also spec 014), which are named in `ui/_ds_manifest.json`'s registry
- * but (like `Dialog`/`Menu`/`Tabs`) have no `.jsx` on disk to import, so they're built directly in
- * `app/components/` instead — app-shell chrome alongside `AppHeader`, not generic design-system
- * primitives, so they're intentionally not re-exported from this barrel either.
+ * `ui/components/forms/Switch`) and are thin re-exports, the same way `Table` is. `Logo`/`TopBar`
+ * are thin re-exports too (used by the app shell: `AppHeader`, `AuthShell`), as are `ListRow`/`Tag`
+ * (placeholder pages, search suggestions, category filter chips).
+ * `Textarea`/`RequestStatusTimeline` (spec 015) are thin re-exports for the same reason: both
+ * already exist under `ui/` (`ui/components/forms/Textarea`,
+ * `ui/components/marketplace/RequestStatusTimeline`) and spec 015 is simply the first screen to
+ * need them, so nothing is reimplemented here. `BottomTabBar`/
+ * `SideNav` (also spec 014) stay built directly in `app/components/` and are not re-exported: the
+ * ui/ versions render `<button onClick>` items, while the app shell needs real `next/link`
+ * navigation links — so those styles follow the ui/ components but the markup stays link-based.
  */
 export * from './ActiveBookingBanner';
 export * from './Alert';
@@ -40,15 +45,21 @@ export * from './Icon';
 export * from './IconButton';
 export * from './Input';
 export * from './IntentChip';
+export * from './ListRow';
+export * from './Logo';
 export * from './Map';
 export * from './OtpInput';
 export * from './PackageCard';
 export * from './PriceDisplay';
 export * from './Radio';
+export * from './RequestStatusTimeline';
 export * from './ResultCard';
 export * from './SearchBar';
 export * from './Select';
 export * from './Skeleton';
 export * from './Switch';
 export * from './Table';
+export * from './Tag';
+export * from './Textarea';
 export * from './Toast';
+export * from './TopBar';

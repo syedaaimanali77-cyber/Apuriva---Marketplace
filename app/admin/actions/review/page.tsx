@@ -95,7 +95,7 @@ export default function AdminPostActionReviewPage() {
 
   if (pageStatus === 'loading') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Post-action review</h1>
         <Card>
           <Skeleton lines={4} />
@@ -106,7 +106,7 @@ export default function AdminPostActionReviewPage() {
 
   if (pageStatus === 'error') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Post-action review</h1>
         <ErrorState description={pageError ?? undefined} onRetry={load} />
       </main>
@@ -139,7 +139,7 @@ export default function AdminPostActionReviewPage() {
   ];
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-density="dense">
       <h1 className={styles.title}>Post-action review</h1>
 
       <span role="status" aria-live="polite" className={styles.visuallyHidden}>

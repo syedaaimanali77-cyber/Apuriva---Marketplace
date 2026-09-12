@@ -216,6 +216,7 @@ export default function AddressesPage() {
                     <Button
                       variant="secondary"
                       size="sm"
+                      iconLeft="pencil"
                       onClick={() => {
                         setEditingAddress(address);
                         setFormOpen(true);
@@ -223,7 +224,7 @@ export default function AddressesPage() {
                     >
                       Edit
                     </Button>
-                    <Button variant="secondary" size="sm" onClick={() => setDeleteTarget(address)}>
+                    <Button variant="secondary" size="sm" iconLeft="trash-2" onClick={() => setDeleteTarget(address)}>
                       Delete
                     </Button>
                   </div>

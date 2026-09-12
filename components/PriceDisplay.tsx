@@ -44,7 +44,18 @@ export function PriceDisplay({ priceDisplay }: { priceDisplay: PriceDisplayValue
   }
 
   return (
-    <span data-price-display-type={type} style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-heading)' }}>
+    // DS money/figures: display face, tabular numerals, `--text-price`.
+    <span
+      data-price-display-type={type}
+      data-numeric
+      style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: 'var(--text-lg)',
+        fontWeight: 'var(--weight-semibold)',
+        letterSpacing: 'var(--tracking-snug)',
+        color: 'var(--text-price)',
+      }}
+    >
       {label}
     </span>
   );
