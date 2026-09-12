@@ -6,6 +6,7 @@ import { HEADERLESS_ROUTES } from './AppHeader';
 import { BottomTabBar } from './BottomTabBar';
 import { SideNav } from './SideNav';
 import { ADMIN_NAV_ITEMS, CUSTOMER_NAV_ITEMS, PROVIDER_NAV_ITEMS, type NavItem } from './nav-items';
+import { ACCOUNT_UPDATED_EVENT } from '@/app/account/_components/useAccountUser';
 import type { UserDto } from '@/lib/types/users';
 import styles from './nav-shell.module.css';
 
@@ -29,10 +30,10 @@ function computeActiveId(items: NavItem[], pathname: string): string | undefined
  * `activeMode` (spec 006, never re-derived here) otherwise selects customer vs. provider. A
  * guest (401 from `/users/me`) gets the customer set, same as an authenticated customer — nothing
  * in it requires a session to view (the individual destination pages/API calls enforce their own
- * auth). Refetches on every navigation and on window focus rather than holding a shared
- * context/store (no such mechanism exists elsewhere in this app yet) — a same-page mode switch via
- * `AccountMenu` is reflected here on the next navigation, not instantly; acceptable since mode
- * switching itself has no dedicated nav destination to jump to immediately.
+ * auth). Refetches on every navigation, on window focus, and on `ACCOUNT_UPDATED_EVENT` (dispatched
+ * by `useAccountUser` after a confirmed mode switch or provider-profile creation) rather than
+ * holding a shared context/store (no such mechanism exists elsewhere in this app yet) — a same-page
+ * mode switch via `AccountMenu` or the `/account` page is reflected here immediately.
  */
 export function NavShell() {
   const pathname = usePathname();
@@ -52,9 +53,11 @@ export function NavShell() {
     }
     load();
     window.addEventListener('focus', load);
+    window.addEventListener(ACCOUNT_UPDATED_EVENT, load);
     return () => {
       cancelled = true;
       window.removeEventListener('focus', load);
+      window.removeEventListener(ACCOUNT_UPDATED_EVENT, load);
     };
   }, [pathname]);
 
