@@ -12,6 +12,15 @@ import {
 } from './export';
 import { registerFileAssetStorage } from './file-asset-storage';
 import { registerTestFileAssetStorage, seedBooking, seedUser } from './test-support';
+import { runMatching } from '@/lib/matching/run';
+import {
+  allWeekAlwaysOpen,
+  registerProvider,
+  seedCustomerWithAddress,
+  seedProviderService,
+  seedSubmittedRequest,
+  seedWeeklyHours,
+} from '@/lib/matching/matching-test-support';
 
 const dbReachable = await isDatabaseReachable();
 
@@ -164,5 +173,47 @@ describe.skipIf(!dbReachable)('lib/privacy/export (spec 008 AC-3, integration)',
     expect(download.contentType).toBe('application/json');
     const parsed = JSON.parse(download.body);
     expect(parsed.profile.id).toBe(userId);
+  });
+
+  // Spec 017 §4 "Retention and privacy" — the existence and outcome of matching, never the
+  // admin-only competitive-intelligence fields.
+  it("generateExportPayload includes matching on the caller's own requests (asCustomer) and own provider rows (asProvider)", async () => {
+    const provider = await registerProvider();
+    const { serviceId } = await seedProviderService(provider.providerProfileId);
+    await seedWeeklyHours(provider.providerProfileId, allWeekAlwaysOpen());
+    const customer = await seedCustomerWithAddress();
+    const request = await seedSubmittedRequest(customer.userId, serviceId, customer.addressId);
+    await runMatching(request.id);
+
+    const customerPayload = await generateExportPayload(customer.userId);
+    expect(customerPayload.matching.asCustomer).toHaveLength(1);
+    expect(customerPayload.matching.asCustomer[0]!.requestId).toBe(request.id);
+    expect(customerPayload.matching.asCustomer[0]!.providerResponse).toBe('none');
+    expect(customerPayload.matching.asProvider).toHaveLength(0);
+
+    const providerPayload = await generateExportPayload(provider.userId);
+    expect(providerPayload.matching.asProvider).toHaveLength(1);
+    expect(providerPayload.matching.asProvider[0]!.requestId).toBe(request.id);
+    expect(providerPayload.matching.asCustomer).toHaveLength(0);
+  });
+
+  it('generateExportPayload NEVER includes scoreMicros, scoreBreakdown, or exclusionReason — those are admin-only (AC-6)', async () => {
+    const provider = await registerProvider();
+    const { serviceId } = await seedProviderService(provider.providerProfileId);
+    await seedWeeklyHours(provider.providerProfileId, allWeekAlwaysOpen());
+    const customer = await seedCustomerWithAddress();
+    const request = await seedSubmittedRequest(customer.userId, serviceId, customer.addressId);
+    await runMatching(request.id);
+
+    const payload = await generateExportPayload(provider.userId);
+    const matchingRow = payload.matching.asProvider[0]!;
+    expect(Object.keys(matchingRow).sort()).toEqual(['notifiedAt', 'providerResponse', 'rank', 'requestId'].sort());
+    expect(JSON.stringify(payload.matching)).not.toMatch(/scoreMicros|scoreBreakdown|exclusionReason/i);
+  });
+
+  it('a user with no requests and no provider profile exports empty matching arrays, not an error', async () => {
+    const userId = await seedUser();
+    const payload = await generateExportPayload(userId);
+    expect(payload.matching).toEqual({ asCustomer: [], asProvider: [] });
   });
 });

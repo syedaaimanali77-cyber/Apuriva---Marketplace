@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { getDb } from '@/lib/db';
-import { requests, requestsStatusHistory } from '@/lib/db/schema';
+import { requests, requestsStatusHistory, requestsStatusTransitions } from '@/lib/db/schema';
 import { resetRateLimitState } from '@/lib/api/rate-limit';
 import { POST as CREATE_REQUEST } from './route';
 import { POST as CANCEL } from './[id]/cancel/route';
@@ -43,18 +43,35 @@ function cancelRequestHttp(session: TestSession, requestId: string, expectedVers
 
 /** Moves a request into a state only a later spec can reach, so this spec's rules can be tested
  * against it. Written straight at the DB with the transition row the trigger requires, since spec
- * 015 deliberately seeds no `submitted -> matching` transition of its own. */
+ * 015 itself seeds no `submitted -> matching`/`-> offers_open` transition of its own.
+ *
+ * Some of these transitions have since been permanently seeded by the later spec that owns them
+ * (`submitted -> matching` by spec 017's own migration) — this helper must never delete a row it
+ * did not itself borrow, or it would silently narrow what the database permits for every test that
+ * runs after it in the same process. It therefore checks whether the row already existed BEFORE
+ * inserting, and only removes it afterward if this call was the one that added it. */
 async function forceStatus(requestId: string, status: 'matching' | 'offers_open' | 'completed', fromStatus: string) {
   const db = getDb();
-  await db.execute(
-    sql`INSERT INTO requests_status_transitions (from_status, to_status) VALUES (${fromStatus}, ${status}) ON CONFLICT DO NOTHING`,
-  );
+  const [existing] = await db
+    .select({ id: requestsStatusTransitions.id })
+    .from(requestsStatusTransitions)
+    .where(and(eq(requestsStatusTransitions.fromStatus, fromStatus), eq(requestsStatusTransitions.toStatus, status)));
+  const alreadySeeded = Boolean(existing);
+
+  if (!alreadySeeded) {
+    await db.execute(
+      sql`INSERT INTO requests_status_transitions (from_status, to_status) VALUES (${fromStatus}, ${status}) ON CONFLICT DO NOTHING`,
+    );
+  }
   await db.update(requests).set({ status }).where(eq(requests.id, requestId));
-  // Remove the borrowed row immediately: it belongs to a later spec, and leaving it behind would
-  // silently widen what the database permits for every test that runs after this one.
-  await db.execute(
-    sql`DELETE FROM requests_status_transitions WHERE from_status = ${fromStatus} AND to_status = ${status}`,
-  );
+  // Remove the borrowed row immediately, but ONLY if this call was the one that added it — a
+  // transition a shipped spec now seeds permanently must never be deleted by a test exercising a
+  // different spec.
+  if (!alreadySeeded) {
+    await db.execute(
+      sql`DELETE FROM requests_status_transitions WHERE from_status = ${fromStatus} AND to_status = ${status}`,
+    );
+  }
 }
 
 describe.skipIf(!dbReachable)('request cancellation (spec 015 AC-4, integration)', () => {

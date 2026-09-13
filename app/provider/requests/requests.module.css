@@ -1,0 +1,101 @@
+/*
+ * Spec 017 §5 — the provider's incoming-request inbox (distributed requests, accept/decline
+ * actions). Built on the APURIVA Design System's own tokens (app/styles/apuriva-tokens.css), same
+ * approach as app/account/addresses/addresses.module.css. Per CLAUDE.md's branding rule, this
+ * page carries no logo/header of its own — the global AppHeader already provides the page's one
+ * brand placement.
+ */
+
+.page {
+  max-width: var(--container-content);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.requestCard {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.requestHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.requestMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.serviceName {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.requestDetail {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-body);
+}
+
+.requestFacts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.requestActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 480px) {
+  .requestActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

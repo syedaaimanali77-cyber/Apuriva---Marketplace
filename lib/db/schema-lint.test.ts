@@ -86,6 +86,17 @@ describe('schema lint (spec 003)', () => {
       // (mode, radius, centre address) are real relational columns precisely because they ARE
       // core/queryable data (AC-5).
       provider_service_areas: ['cities'],
+      // Spec 017 4: the per-service ranking-weight override and an AI suggestion's proposed
+      // weights. Both are a fixed nine-key factor->integer map read back whole and validated in
+      // application code (lib/matching/weights.ts); never queried or filtered on in SQL. The
+      // queryable part of matching config (`matching_pool_size`) is a real integer column.
+      services: ['matching_weights'],
+      matching_suggestions: ['suggested_weights'],
+      // Spec 017 §4: the per-factor scoring breakdown (AC-2/AC-6) — a fixed nine-key
+      // factor->{normalized,weight,available} map, read back whole for admin explainability and
+      // never queried or filtered on in SQL. `score_micros` (the queryable/sortable part) is a
+      // real integer column precisely because it IS core/queryable data.
+      request_provider_matches: ['score_breakdown'],
     };
 
     const offenders: string[] = [];

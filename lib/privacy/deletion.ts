@@ -113,6 +113,10 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
       .where(and(eq(users.id, id), eq(users.lifecycleStatus, 'deletion_pending')));
 
     await db.update(providerProfiles).set({ businessName: null }).where(eq(providerProfiles.userId, id));
+    // Spec 017 §4 "Retention and privacy": `request_provider_matches` rows need no sweep of their
+    // own — they carry no PII once `provider_profiles.business_name` is nulled above, and every
+    // FK on that table is `restrict`, so the rows are retained keyed to the now-anonymized user
+    // exactly like every other provider-owned row in this schema.
 
     // Spec 015 §4: redact the request's free-text PII, keeping the row itself. `not null` on the
     // column means a sentinel rather than NULL; every read path treats it as ordinary text, so a

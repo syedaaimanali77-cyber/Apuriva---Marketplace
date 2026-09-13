@@ -295,4 +295,59 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Replace the whole service-area configuration in one transaction; session (provider)',
     tags: ['availability'],
   },
+  // Spec 017 §3 — provider matching, ranking & distribution.
+  {
+    method: 'GET',
+    path: '/requests/{id}/matches',
+    summary: 'Admin-only ranking explainability: who was excluded/ranked and why (AC-6)',
+    tags: ['matching'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/requests',
+    summary: "The caller's own distributed-to inbox; session (provider)",
+    tags: ['matching'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/requests/{id}',
+    summary: 'One distributed request, with its available action; session (provider), distributed-to-only',
+    tags: ['matching'],
+  },
+  {
+    method: 'POST',
+    path: '/providers/me/requests/{id}/accept',
+    summary: 'Accept a distributed request (fixed/package/hourly only); enforces the single-claim invariant',
+    tags: ['matching'],
+  },
+  {
+    method: 'POST',
+    path: '/providers/me/requests/{id}/decline',
+    summary: 'Decline a distributed request; always available while actionable',
+    tags: ['matching'],
+  },
+  {
+    method: 'PATCH',
+    path: '/admin/services/{id}/matching-weights',
+    summary: 'Configure a service\'s ranking-weight/pool-size override; admin, risk-tier medium',
+    tags: ['matching'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/matching/suggestions',
+    summary: 'List AI-proposed ranking-weight suggestions pending admin review (AC-7)',
+    tags: ['matching'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/matching/suggestions/{id}/approve',
+    summary: "Approve a suggestion — applies its weights to the target service; admin, risk-tier medium",
+    tags: ['matching'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/matching/suggestions/{id}/reject',
+    summary: 'Reject a suggestion — never applied; admin, risk-tier medium',
+    tags: ['matching'],
+  },
 ];

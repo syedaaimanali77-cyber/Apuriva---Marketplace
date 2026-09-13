@@ -16,6 +16,7 @@ import {
   payments,
   providerProfiles,
   refunds,
+  requestProviderMatches,
   requests,
   reviews,
   users,
@@ -73,6 +74,18 @@ export interface DataExportPayload {
     }>;
   } | null;
   availabilityNotifications: Array<{ id: string; providerProfileId: string; status: string; createdAt: string }>;
+  /**
+   * Spec 017 §4 "Retention and privacy": the existence and outcome of matching, never the
+   * competitive-intelligence fields (`scoreMicros`, `scoreBreakdown`, `exclusionReason`) that are
+   * admin-only (AC-6). `asCustomer` covers matching on the caller's OWN requests
+   * (ownership-scoped through `customer_profiles`, the same join `requests` above uses);
+   * `asProvider` covers rows where the caller is the `provider_profile_id`. A caller with neither
+   * profile exports two empty arrays rather than being asked to distinguish the two cases.
+   */
+  matching: {
+    asCustomer: Array<{ requestId: string; rank: number | null; providerResponse: string; notifiedAt: string | null }>;
+    asProvider: Array<{ requestId: string; rank: number | null; providerResponse: string; notifiedAt: string | null }>;
+  };
   receipts: {
     payments: Array<{ id: string; bookingId: string; status: string; createdAt: string }>;
     refunds: Array<{ id: string; paymentId: string; createdAt: string }>;
@@ -220,6 +233,34 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         .where(eq(providerServiceAreas.providerProfileId, providerProfile.id))
     : [];
 
+  // Spec 017 §4: explicit column allowlist, excluding `scoreMicros`/`scoreBreakdown`/
+  // `exclusionReason` — those are admin-only (AC-6) and a provider learning why a competitor was
+  // excluded, or what a competitor scored, is a competitive-intelligence leak.
+  const matchingAsCustomerRows = customerProfile
+    ? await db
+        .select({
+          requestId: requestProviderMatches.requestId,
+          rank: requestProviderMatches.rank,
+          providerResponse: requestProviderMatches.providerResponse,
+          notifiedAt: requestProviderMatches.notifiedAt,
+        })
+        .from(requestProviderMatches)
+        .innerJoin(requests, eq(requests.id, requestProviderMatches.requestId))
+        .where(eq(requests.customerProfileId, customerProfile.id))
+    : [];
+
+  const matchingAsProviderRows = providerProfile
+    ? await db
+        .select({
+          requestId: requestProviderMatches.requestId,
+          rank: requestProviderMatches.rank,
+          providerResponse: requestProviderMatches.providerResponse,
+          notifiedAt: requestProviderMatches.notifiedAt,
+        })
+        .from(requestProviderMatches)
+        .where(eq(requestProviderMatches.providerProfileId, providerProfile.id))
+    : [];
+
   const availabilityNotificationRows = customerProfile
     ? await db
         .select({
@@ -274,6 +315,16 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
       ...row,
       createdAt: row.createdAt.toISOString(),
     })),
+    matching: {
+      asCustomer: matchingAsCustomerRows.map((row) => ({
+        ...row,
+        notifiedAt: row.notifiedAt ? row.notifiedAt.toISOString() : null,
+      })),
+      asProvider: matchingAsProviderRows.map((row) => ({
+        ...row,
+        notifiedAt: row.notifiedAt ? row.notifiedAt.toISOString() : null,
+      })),
+    },
     receipts: {
       payments: paymentRows.map((p) => ({ ...p, createdAt: p.createdAt.toISOString() })),
       refunds: refundRows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),

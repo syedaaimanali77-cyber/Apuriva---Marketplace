@@ -421,6 +421,14 @@ export const services = pgTable(
     status: text('status', { enum: CATALOG_ENTITY_STATUSES }).notNull().default('draft'),
     // Service-specific variable data, e.g. typical duration ranges (spec 010 §4).
     metadata: jsonb('metadata').notNull().default({}),
+    /**
+     * Spec 017 §4 — per-service overrides of the platform matching defaults (master spec §23:
+     * "Weights can differ by service"). Null means this service uses
+     * `DEFAULT_MATCHING_WEIGHTS` / `DEFAULT_MATCHING_POOL_SIZE` (lib/matching/weights.ts);
+     * there is deliberately no row-per-service requirement.
+     */
+    matchingWeights: jsonb('matching_weights').$type<Record<string, number>>(),
+    matchingPoolSize: integer('matching_pool_size'),
   },
   (t) => [
     index('services_category_id_idx').on(t.categoryId),
@@ -429,6 +437,9 @@ export const services = pgTable(
     uniqueIndex('services_slug_uq').on(t.slug),
     check('services_pricing_model_ck', sql`${t.pricingModel} in ('fixed','package','hourly','quote','custom')`),
     check('services_status_ck', sql`${t.status} in ('draft','published','pending_review','retired')`),
+    // Spec 017 §3 "Distribution": bounded 1..50 at the database too, so no path can persist an
+    // out-of-range pool size even if a future caller skips the route's validation.
+    check('services_matching_pool_size_ck', sql`${t.matchingPoolSize} is null or ${t.matchingPoolSize} between 1 and 50`),
   ],
 );
 
@@ -894,6 +905,30 @@ export const requestAttachments = pgTable(
   ],
 );
 
+/** Spec 017 §3 AC-1 — why a provider was excluded before ranking. `at_capacity` is RESERVED:
+ * E5 is a documented no-op this release (spec 017 DECIDED-1), so no code path emits it. */
+export const MATCH_EXCLUSION_REASONS = [
+  'service_not_offered',
+  'outside_service_area',
+  'unavailable',
+  'not_verified',
+  'at_capacity',
+] as const;
+
+/** Spec 017 §3 AC-5 — a provider's response to a distributed request. A response vocabulary, not
+ * a state machine: spec 003 AC-3 reserves `*_status_history`/`*_status_transitions` for Request,
+ * Offer, Booking, Payment and Payout, and this is none of them. `offer_sent` is written by spec
+ * 018, never by spec 017. */
+export const PROVIDER_RESPONSES = ['none', 'accepted', 'declined', 'offer_sent'] as const;
+
+/**
+ * Spec 017 §4 — extends spec 003's baseline skeleton (which already carried the two FKs, their
+ * covering indexes, and the `(request_id, provider_profile_id)` unique index that gives AC-4's
+ * distribution idempotency for free).
+ *
+ * One row per (request, provider) candidate — INCLUDING excluded candidates, which is what makes
+ * AC-6's admin explainability possible: an exclusion is recorded, not merely absent.
+ */
 export const requestProviderMatches = pgTable(
   'request_provider_matches',
   {
@@ -904,11 +939,98 @@ export const requestProviderMatches = pgTable(
     providerProfileId: uuid('provider_profile_id')
       .notNull()
       .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    /** Spec 017 AC-1: false = failed a hard eligibility rule, never ranked. */
+    eligible: boolean('eligible').notNull(),
+    exclusionReason: text('exclusion_reason', { enum: MATCH_EXCLUSION_REASONS }),
+    /** 1-based position within the eligible pool; null for an excluded candidate. */
+    rank: integer('rank'),
+    /**
+     * Spec 017 §3: score x 1,000,000 as an integer — NEVER a float. `lib/db/schema-lint.test.ts`
+     * (spec 003 AC-1) bans numeric/real/double schema-wide; this is the same fixed-point approach
+     * `locations` uses for coordinates.
+     */
+    scoreMicros: integer('score_micros'),
+    scoreBreakdown: jsonb('score_breakdown'),
+    /** Spec 017 AC-3: entered the pool via a reserved exploration slot rather than organically. */
+    explorationBoosted: boolean('exploration_boosted').notNull().default(false),
+    /** Spec 017 AC-4: null = ranked but not distributed. Delivery itself is spec 026's. */
+    notifiedAt: timestamp('notified_at', { withTimezone: true }),
+    providerResponse: text('provider_response', { enum: PROVIDER_RESPONSES }).notNull().default('none'),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
   },
   (t) => [
     index('request_provider_matches_request_id_idx').on(t.requestId),
     index('request_provider_matches_provider_profile_id_idx').on(t.providerProfileId),
     uniqueIndex('request_provider_matches_request_provider_uq').on(t.requestId, t.providerProfileId),
+    // Spec 017 §4: the ranked read (admin explainability, distribution) and the provider's inbox.
+    index('request_provider_matches_request_rank_idx').on(t.requestId, t.rank),
+    index('request_provider_matches_provider_notified_idx').on(t.providerProfileId, t.notifiedAt),
+    /**
+     * Spec 017 §3 "Concurrency" — the DATABASE half of the claim invariant: at most one provider
+     * may hold `accepted` for a request. Independent of the application's `SELECT ... FOR UPDATE`,
+     * so even a code path that skipped the lock cannot produce two accepted providers.
+     */
+    uniqueIndex('request_provider_matches_accepted_uq')
+      .on(t.requestId)
+      .where(sql`${t.providerResponse} = 'accepted'`),
+    check(
+      'request_provider_matches_exclusion_pairing_ck',
+      sql`(${t.eligible} = false) = (${t.exclusionReason} is not null)`,
+    ),
+    // An excluded candidate is never ranked or scored (AC-1: excluded before ranking ever runs).
+    check(
+      'request_provider_matches_excluded_unranked_ck',
+      sql`${t.eligible} = true or (${t.rank} is null and ${t.scoreMicros} is null)`,
+    ),
+    check(
+      'request_provider_matches_response_pairing_ck',
+      sql`(${t.providerResponse} = 'none') = (${t.respondedAt} is null)`,
+    ),
+    check(
+      'request_provider_matches_score_range_ck',
+      sql`${t.scoreMicros} is null or ${t.scoreMicros} between 0 and 1000000`,
+    ),
+    check(
+      'request_provider_matches_exclusion_reason_ck',
+      sql`${t.exclusionReason} is null or ${t.exclusionReason} in ('service_not_offered','outside_service_area','unavailable','not_verified','at_capacity')`,
+    ),
+    check(
+      'request_provider_matches_provider_response_ck',
+      sql`${t.providerResponse} in ('none','accepted','declined','offer_sent')`,
+    ),
+  ],
+);
+
+/** Spec 017 §4 / AC-7 — status vocabulary, deliberately identical to `catalog_suggestions`. */
+export const MATCHING_SUGGESTION_STATUSES = ['pending_review', 'approved', 'rejected'] as const;
+
+/**
+ * Spec 017 §4 / AC-7 (master spec §23, §132.16): an AI-proposed ranking-weight change, recorded
+ * for admin review and NEVER silently applied. Shaped to match the already-shipped
+ * `catalog_suggestions` table (spec 010) field-for-field where the concepts align, so the review
+ * workflow and its audit fields follow one pattern rather than two.
+ *
+ * Applying a suggestion is a separate, explicitly authorized admin action that writes
+ * `services.matching_weights`; nothing in this table is ever read by the scoring path.
+ */
+export const matchingSuggestions = pgTable(
+  'matching_suggestions',
+  {
+    ...baseColumns(),
+    /** null = a proposed change to the platform defaults rather than one service. */
+    serviceId: uuid('service_id').references((): AnyPgColumn => services.id, { onDelete: 'restrict' }),
+    suggestedWeights: jsonb('suggested_weights').$type<Record<string, number>>().notNull(),
+    rationale: text('rationale'),
+    source: text('source').notNull(),
+    status: text('status', { enum: MATCHING_SUGGESTION_STATUSES }).notNull().default('pending_review'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewedBy: uuid('reviewed_by').references((): AnyPgColumn => users.id, { onDelete: 'restrict' }),
+  },
+  (t) => [
+    index('matching_suggestions_service_id_idx').on(t.serviceId),
+    index('matching_suggestions_reviewed_by_idx').on(t.reviewedBy),
+    index('matching_suggestions_status_idx').on(t.status),
+    check('matching_suggestions_status_ck', sql`${t.status} in ('pending_review','approved','rejected')`),
   ],
 );
 

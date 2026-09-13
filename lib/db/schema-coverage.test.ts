@@ -43,6 +43,9 @@ const EXPECTED_TABLES = [
   'request_field_values',
   'request_attachments',
   'request_provider_matches',
+  // Spec 017 §4 / AC-7: not in master spec 124's minimum list - added for the AI ranking-weight
+  // suggestion review workflow, the same allowance spec 009 used for `admin_role_assignments`.
+  'matching_suggestions',
   'requests_status_history',
   'requests_status_transitions',
   // Offers
