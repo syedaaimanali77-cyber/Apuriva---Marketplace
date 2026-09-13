@@ -80,6 +80,12 @@ describe('schema lint (spec 003)', () => {
       // per that field's own `type` (text/select/number/boolean/media). Read back as a whole to
       // rebuild `RequestDto.fieldValues`; never queried or filtered on.
       request_field_values: ['value'],
+      // Spec 016 §4: a provider's `cities` coverage list — a short, unordered set of names
+      // compared case-insensitively in application code (`lib/location/service-area.ts`), read
+      // back whole and never queried or filtered on in SQL. The queryable parts of a service area
+      // (mode, radius, centre address) are real relational columns precisely because they ARE
+      // core/queryable data (AC-5).
+      provider_service_areas: ['cities'],
     };
 
     const offenders: string[] = [];

@@ -35,6 +35,9 @@ const EXPECTED_TABLES = [
   'provider_availabilities',
   'provider_availability_overrides',
   'provider_service_areas',
+  // Spec 016 §4 / AC-6: not in master spec §124's minimum list — added for the customer's
+  // availability-notification opt-in, the same allowance spec 009 used for `admin_role_assignments`.
+  'provider_availability_notification_requests',
   // Requests
   'requests',
   'request_field_values',

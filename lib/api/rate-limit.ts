@@ -17,6 +17,7 @@ export type RateLimitDomain =
   | 'payment'
   | 'security'
   | 'location'
+  | 'availability'
   | 'default';
 
 export interface RateLimitRule {
@@ -41,6 +42,10 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   // Spec 012 §3: geocode/reverse-geocode reach a paid external vendor per call — its own budget
   // rather than sharing 'default', same reasoning as 'search'/'payment'.
   location: { limit: 60, windowMs: 60_000 },
+  // Spec 016 §3: the provider's own schedule/service-area surface plus the guest-readable
+  // availability summary — its own budget rather than sharing 'default', the same reasoning
+  // spec 014 used for 'home' and spec 015 for 'requests'.
+  availability: { limit: 60, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 

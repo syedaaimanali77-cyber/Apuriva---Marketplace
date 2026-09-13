@@ -78,6 +78,13 @@
       "when": 1789208349017,
       "tag": "0011_add_request_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789292993822,
+      "tag": "0012_add_provider_availability_service_areas",
+      "breakpoints": true
     }
   ]
 }

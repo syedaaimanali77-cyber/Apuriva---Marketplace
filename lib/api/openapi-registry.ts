@@ -226,4 +226,73 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Cancel a request before provider selection',
     tags: ['requests'],
   },
+  // Spec 016 §3 — provider availability & service areas. `/providers/{id}/availability` is the
+  // only one of these a non-owner may call; everything under `/providers/me/**` is owner-only and
+  // resolves the provider from the session, never from a client-supplied id.
+  {
+    method: 'GET',
+    path: '/providers/{id}/availability',
+    summary: 'Simplified customer-facing availability state and reason; session or guest',
+    tags: ['availability'],
+  },
+  {
+    method: 'POST',
+    path: '/providers/{id}/availability-notify',
+    summary: 'Opt in to be notified when an unavailable provider is free again; session (customer)',
+    tags: ['availability'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/availability/schedule',
+    summary: "The caller's own weekly recurring schedule and scheduling timezone; session (provider)",
+    tags: ['availability'],
+  },
+  {
+    method: 'PUT',
+    path: '/providers/me/availability/schedule',
+    summary: 'Replace the weekly recurring schedule in one transaction; session (provider)',
+    tags: ['availability'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/availability/overrides',
+    summary: 'Date-specific availability overrides in a date range; session (provider)',
+    tags: ['availability'],
+  },
+  {
+    method: 'POST',
+    path: '/providers/me/availability/overrides',
+    summary: 'Create a date-specific override; session (provider)',
+    tags: ['availability'],
+  },
+  {
+    method: 'PUT',
+    path: '/providers/me/availability/overrides/{date}',
+    summary: 'Update the override for a date; session (provider)',
+    tags: ['availability'],
+  },
+  {
+    method: 'DELETE',
+    path: '/providers/me/availability/overrides/{date}',
+    summary: "Remove a date's override, restoring the weekly pattern; session (provider)",
+    tags: ['availability'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/availability/slots',
+    summary: 'Buffer-aware bookable slots for a service over a date range; session (provider), owner-only detail',
+    tags: ['availability'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/service-areas',
+    summary: "The caller's own service-area configuration; session (provider)",
+    tags: ['availability'],
+  },
+  {
+    method: 'PUT',
+    path: '/providers/me/service-areas',
+    summary: 'Replace the whole service-area configuration in one transaction; session (provider)',
+    tags: ['availability'],
+  },
 ];

@@ -9,6 +9,10 @@ import {
   messages,
   notificationPreferences,
   offers,
+  providerAvailabilities,
+  providerAvailabilityNotificationRequests,
+  providerAvailabilityOverrides,
+  providerServiceAreas,
   payments,
   providerProfiles,
   refunds,
@@ -49,6 +53,26 @@ export interface DataExportPayload {
    * query (e.g. never all messages the user merely sent, if they'd since left the conversation). */
   messages: Array<{ id: string; conversationId: string; senderUserId: string; createdAt: string }>;
   preferences: { id: string; createdAt: string } | null;
+  /**
+   * Spec 016 §4 "Retention and privacy": the exporting user's OWN provider schedule and coverage
+   * configuration, ownership-scoped through `provider_profiles.user_id`. `centerAddressId` is
+   * exported as the address id spec 012's own address data already covers — never raw
+   * coordinates. `availabilityNotifications` is the CUSTOMER side of AC-6's opt-in, since that
+   * row's data subject is the customer who asked to be told.
+   */
+  providerAvailability: {
+    timezone: string | null;
+    weeklyEntries: Array<{ dayOfWeek: number; startMinute: number; endMinute: number }>;
+    overrides: Array<{ date: string; isAvailable: boolean; startMinute: number | null; endMinute: number | null }>;
+    serviceAreas: Array<{
+      serviceId: string | null;
+      mode: string;
+      radiusMeters: number | null;
+      centerAddressId: string | null;
+      cities: string[] | null;
+    }>;
+  } | null;
+  availabilityNotifications: Array<{ id: string; providerProfileId: string; status: string; createdAt: string }>;
   receipts: {
     payments: Array<{ id: string; bookingId: string; status: string; createdAt: string }>;
     refunds: Array<{ id: string; paymentId: string; createdAt: string }>;
@@ -83,6 +107,8 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
       businessName: providerProfiles.businessName,
       lifecycleStatus: providerProfiles.lifecycleStatus,
       createdAt: providerProfiles.createdAt,
+      // Spec 016 §3 R1 — the provider's own scheduling timezone is theirs to export.
+      schedulingTimezone: providerProfiles.schedulingTimezone,
     })
     .from(providerProfiles)
     .where(eq(providerProfiles.userId, userId));
@@ -154,6 +180,58 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         .where(inArray(refunds.paymentId, paymentIds))
     : [];
 
+  // Spec 016 §4: the caller's own provider-side schedule/coverage, with an explicit column
+  // allowlist and an ownership-scoped filter, exactly like every section above. A user with no
+  // provider profile exports `null` here rather than an empty shape, so the two cases stay
+  // distinguishable in the payload.
+  const weeklyRows = providerProfile
+    ? await db
+        .select({
+          dayOfWeek: providerAvailabilities.dayOfWeek,
+          startMinute: providerAvailabilities.startMinute,
+          endMinute: providerAvailabilities.endMinute,
+        })
+        .from(providerAvailabilities)
+        .where(eq(providerAvailabilities.providerProfileId, providerProfile.id))
+    : [];
+
+  const overrideRows = providerProfile
+    ? await db
+        .select({
+          date: providerAvailabilityOverrides.date,
+          isAvailable: providerAvailabilityOverrides.isAvailable,
+          startMinute: providerAvailabilityOverrides.startMinute,
+          endMinute: providerAvailabilityOverrides.endMinute,
+        })
+        .from(providerAvailabilityOverrides)
+        .where(eq(providerAvailabilityOverrides.providerProfileId, providerProfile.id))
+    : [];
+
+  const serviceAreaRows = providerProfile
+    ? await db
+        .select({
+          serviceId: providerServiceAreas.serviceId,
+          mode: providerServiceAreas.mode,
+          radiusMeters: providerServiceAreas.radiusMeters,
+          centerAddressId: providerServiceAreas.centerAddressId,
+          cities: providerServiceAreas.cities,
+        })
+        .from(providerServiceAreas)
+        .where(eq(providerServiceAreas.providerProfileId, providerProfile.id))
+    : [];
+
+  const availabilityNotificationRows = customerProfile
+    ? await db
+        .select({
+          id: providerAvailabilityNotificationRequests.id,
+          providerProfileId: providerAvailabilityNotificationRequests.providerProfileId,
+          status: providerAvailabilityNotificationRequests.status,
+          createdAt: providerAvailabilityNotificationRequests.createdAt,
+        })
+        .from(providerAvailabilityNotificationRequests)
+        .where(eq(providerAvailabilityNotificationRequests.customerProfileId, customerProfile.id))
+    : [];
+
   return {
     generatedAt: new Date().toISOString(),
     profile: {
@@ -184,6 +262,18 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     reviews: reviewRows.map((r) => ({ id: r.id, bookingId: r.bookingId, createdAt: r.createdAt.toISOString() })),
     messages: messageRows.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),
     preferences: preferences ? { id: preferences.id, createdAt: preferences.createdAt.toISOString() } : null,
+    providerAvailability: providerProfile
+      ? {
+          timezone: providerProfile.schedulingTimezone,
+          weeklyEntries: weeklyRows,
+          overrides: overrideRows,
+          serviceAreas: serviceAreaRows,
+        }
+      : null,
+    availabilityNotifications: availabilityNotificationRows.map((row) => ({
+      ...row,
+      createdAt: row.createdAt.toISOString(),
+    })),
     receipts: {
       payments: paymentRows.map((p) => ({ ...p, createdAt: p.createdAt.toISOString() })),
       refunds: refundRows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),

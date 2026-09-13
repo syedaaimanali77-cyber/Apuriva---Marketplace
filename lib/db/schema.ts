@@ -23,7 +23,7 @@
  *   - Every FK below is `onDelete: 'restrict'` and has its own covering index, per AC-4.
  */
 import { sql } from 'drizzle-orm';
-import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 
 // ---------------------------------------------------------------------------
@@ -185,6 +185,14 @@ export const providerProfiles = pgTable(
     businessName: text('business_name'),
     /** Spec 006 §4/retention: transitions (e.g. Suspended, Banned) are audited (spec 039). */
     lifecycleStatus: text('lifecycle_status', { enum: PROVIDER_PROFILE_LIFECYCLE_STATUSES }).notNull().default('draft'),
+    /**
+     * Spec 016 §3 R1: ONE IANA scheduling timezone per provider — never per availability row.
+     * Every weekly entry and date override is a local wall-clock value in this zone, so
+     * converting them to a UTC instant follows that zone's DST rules by construction. Not a
+     * `scheduledTimeColumns()` pair (spec 003 AC-2): a recurring weekly schedule is not an
+     * instant, so there is no timestamptz to pair the identifier with.
+     */
+    schedulingTimezone: text('scheduling_timezone').notNull().default('Asia/Karachi'),
   },
   (t) => [
     index('provider_profiles_user_id_idx').on(t.userId),
@@ -584,14 +592,37 @@ export const providerServices = pgTable(
     serviceId: uuid('service_id')
       .notNull()
       .references(() => services.id, { onDelete: 'restrict' }),
+    /**
+     * Spec 016 §4 — master spec §40's "service-specific durations" and "buffer times". These are
+     * properties of what the PROVIDER offers, not of any booking row: `bookings` stays untouched
+     * by spec 016 (its scheduling columns are approved spec 020's, per spec 003 AC-4).
+     * `duration_minutes` drives spec 016 §3 R7's slot generation; the two buffers widen an
+     * already-occupied interval per R8.
+     */
+    durationMinutes: integer('duration_minutes').notNull().default(60),
+    bufferBeforeMinutes: integer('buffer_before_minutes').notNull().default(0),
+    bufferAfterMinutes: integer('buffer_after_minutes').notNull().default(0),
   },
   (t) => [
     index('provider_services_provider_profile_id_idx').on(t.providerProfileId),
     index('provider_services_service_id_idx').on(t.serviceId),
     uniqueIndex('provider_services_provider_service_uq').on(t.providerProfileId, t.serviceId),
+    check('provider_services_duration_positive_ck', sql`${t.durationMinutes} > 0`),
+    check('provider_services_buffers_non_negative_ck', sql`${t.bufferBeforeMinutes} >= 0 and ${t.bufferAfterMinutes} >= 0`),
   ],
 );
 
+/**
+ * Spec 016 §4 — the provider's recurring weekly pattern (master spec §40). Times are integer
+ * MINUTES FROM LOCAL MIDNIGHT, not `time`: they are wall-clock values in the provider's
+ * `provider_profiles.scheduling_timezone` (§3 R1), and integer arithmetic makes R2's
+ * overlap/touch rule and R7's half-open boundaries exact. `end_minute` may be 1440 ("to
+ * midnight"); `start_minute` may not, since a zero-length window is meaningless (R6).
+ *
+ * R2's "two entries on the same day must not overlap or touch" holds ACROSS rows, so it cannot be
+ * a per-row CHECK — `PUT /providers/me/availability/schedule` replaces the whole weekly set in one
+ * transaction and validates it there (lib/availability/resolve.ts).
+ */
 export const providerAvailabilities = pgTable(
   'provider_availabilities',
   {
@@ -599,10 +630,28 @@ export const providerAvailabilities = pgTable(
     providerProfileId: uuid('provider_profile_id')
       .notNull()
       .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    /** 0 = Sunday, matching JS `Date#getDay()` (spec 016 §3 `WeeklyScheduleEntry`). */
+    dayOfWeek: integer('day_of_week').notNull(),
+    startMinute: integer('start_minute').notNull(),
+    endMinute: integer('end_minute').notNull(),
   },
-  (t) => [index('provider_availabilities_provider_profile_id_idx').on(t.providerProfileId)],
+  (t) => [
+    index('provider_availabilities_provider_profile_id_idx').on(t.providerProfileId),
+    index('provider_availabilities_provider_day_idx').on(t.providerProfileId, t.dayOfWeek),
+    check('provider_availabilities_day_of_week_ck', sql`${t.dayOfWeek} between 0 and 6`),
+    check('provider_availabilities_start_minute_ck', sql`${t.startMinute} between 0 and 1439`),
+    check('provider_availabilities_end_minute_ck', sql`${t.endMinute} between 1 and 1440`),
+    check('provider_availabilities_range_ck', sql`${t.startMinute} < ${t.endMinute}`),
+  ],
 );
 
+/**
+ * Spec 016 §4 / §3 R3–R4 — a date-specific override that WHOLLY REPLACES the weekly pattern for
+ * that local date; it is never merged, unioned or intersected with it. `is_available = false` is
+ * master spec §40's "blocked period" (whole day off, both minutes null); `is_available = true`
+ * requires both minutes and defines the day's only window. One row per date (R4), so there is no
+ * duplicate-override ambiguity to resolve at read time.
+ */
 export const providerAvailabilityOverrides = pgTable(
   'provider_availability_overrides',
   {
@@ -610,10 +659,39 @@ export const providerAvailabilityOverrides = pgTable(
     providerProfileId: uuid('provider_profile_id')
       .notNull()
       .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    /** Local calendar date in the provider's scheduling timezone, stored as `date` (no zone). */
+    date: date('date').notNull(),
+    isAvailable: boolean('is_available').notNull(),
+    startMinute: integer('start_minute'),
+    endMinute: integer('end_minute'),
   },
-  (t) => [index('provider_availability_overrides_provider_profile_id_idx').on(t.providerProfileId)],
+  (t) => [
+    index('provider_availability_overrides_provider_profile_id_idx').on(t.providerProfileId),
+    uniqueIndex('provider_availability_overrides_provider_date_uq').on(t.providerProfileId, t.date),
+    check('provider_availability_overrides_start_pairing_ck', sql`(${t.isAvailable} = false) = (${t.startMinute} is null)`),
+    check('provider_availability_overrides_end_pairing_ck', sql`(${t.isAvailable} = false) = (${t.endMinute} is null)`),
+    check(
+      'provider_availability_overrides_range_ck',
+      sql`${t.startMinute} is null or (${t.startMinute} between 0 and 1439 and ${t.endMinute} between 1 and 1440 and ${t.startMinute} < ${t.endMinute})`,
+    ),
+  ],
 );
 
+/** Spec 016 §3 S1/S5 — master spec §41's radius / specific-cities / remote-online coverage. */
+export const PROVIDER_SERVICE_AREA_MODES = ['radius', 'cities', 'remote'] as const;
+
+/**
+ * Spec 016 §4 / §3 S1–S5. A row with `service_id IS NULL` is the provider's GLOBAL default; a row
+ * with a `service_id` is that service's own area and wins over the global one (S2). No row at all
+ * means unrestricted — preserving exactly the behaviour spec 012's `service-area-check` shipped
+ * with.
+ *
+ * Radius is `radius_meters integer`, never `radius_km numeric`: schema-lint AC-1 bans
+ * numeric/real/double schema-wide, the same reason coordinates are micro-degree integers. The
+ * centre is an `addresses` row (owned by the provider's user), whose `location_id` carries the
+ * coordinates — so this never stores a second copy of a point, and `center_address_id` is what
+ * spec 016 §3 exports to the owner instead of raw coordinates.
+ */
 export const providerServiceAreas = pgTable(
   'provider_service_areas',
   {
@@ -621,8 +699,69 @@ export const providerServiceAreas = pgTable(
     providerProfileId: uuid('provider_profile_id')
       .notNull()
       .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    /** null = the provider-wide default (S1). */
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'restrict' }),
+    mode: text('mode', { enum: PROVIDER_SERVICE_AREA_MODES }).notNull(),
+    radiusMeters: integer('radius_meters'),
+    centerAddressId: uuid('center_address_id').references((): AnyPgColumn => addresses.id, { onDelete: 'restrict' }),
+    cities: jsonb('cities').$type<string[]>(),
   },
-  (t) => [index('provider_service_areas_provider_profile_id_idx').on(t.providerProfileId)],
+  (t) => [
+    index('provider_service_areas_provider_profile_id_idx').on(t.providerProfileId),
+    index('provider_service_areas_service_id_idx').on(t.serviceId),
+    index('provider_service_areas_center_address_id_idx').on(t.centerAddressId),
+    // S1: at most one row per (provider, service) — and, via the partial index, at most one
+    // global row, which a plain UNIQUE cannot express (Postgres UNIQUE allows multiple NULLs).
+    uniqueIndex('provider_service_areas_provider_service_uq').on(t.providerProfileId, t.serviceId),
+    uniqueIndex('provider_service_areas_provider_global_uq')
+      .on(t.providerProfileId)
+      .where(sql`${t.serviceId} is null`),
+    check('provider_service_areas_mode_ck', sql`${t.mode} in ('radius','cities','remote')`),
+    check(
+      'provider_service_areas_radius_shape_ck',
+      sql`(${t.mode} <> 'radius') or (${t.radiusMeters} is not null and ${t.centerAddressId} is not null and ${t.radiusMeters} between 1000 and 500000)`,
+    ),
+    check('provider_service_areas_cities_shape_ck', sql`(${t.mode} <> 'cities') or (${t.cities} is not null)`),
+    check(
+      'provider_service_areas_remote_shape_ck',
+      sql`(${t.mode} <> 'remote') or (${t.radiusMeters} is null and ${t.centerAddressId} is null and ${t.cities} is null)`,
+    ),
+  ],
+);
+
+/** Spec 016 §4 / AC-6 — statuses of a customer's availability-notification opt-in. */
+export const AVAILABILITY_NOTIFICATION_STATUSES = ['pending', 'sent', 'cancelled'] as const;
+
+/**
+ * Spec 016 §4 / AC-6 (master spec §42: "Customer can save/follow provider and optionally request
+ * availability notifications"). Not in master spec §124's minimum entity list — added here the
+ * same way spec 009 added `admin_role_assignments`, per spec 003 AC-4.
+ *
+ * The partial unique index is AC-6's idempotency: a second opt-in while one is still `pending`
+ * cannot create a duplicate row, so the route returns the existing one with `200` instead.
+ * Delivery itself is spec 026's (spec 016 §7) — this table only records the opt-in.
+ */
+export const providerAvailabilityNotificationRequests = pgTable(
+  'provider_availability_notification_requests',
+  {
+    ...baseColumns(),
+    customerProfileId: uuid('customer_profile_id')
+      .notNull()
+      .references(() => customerProfiles.id, { onDelete: 'restrict' }),
+    providerProfileId: uuid('provider_profile_id')
+      .notNull()
+      .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    status: text('status', { enum: AVAILABILITY_NOTIFICATION_STATUSES }).notNull().default('pending'),
+    notifiedAt: timestamp('notified_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('provider_availability_notification_requests_customer_profile_id_idx').on(t.customerProfileId),
+    index('provider_availability_notification_requests_provider_profile_id_idx').on(t.providerProfileId),
+    uniqueIndex('provider_availability_notification_requests_pending_uq')
+      .on(t.customerProfileId, t.providerProfileId)
+      .where(sql`${t.status} = 'pending'`),
+    check('provider_availability_notification_requests_status_ck', sql`${t.status} in ('pending','sent','cancelled')`),
+  ],
 );
 
 // ---------------------------------------------------------------------------

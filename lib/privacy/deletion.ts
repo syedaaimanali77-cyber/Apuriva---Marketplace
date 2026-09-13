@@ -1,6 +1,6 @@
 import { and, eq, lte } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { customerProfiles, providerProfiles, requests, users } from '@/lib/db/schema';
+import { customerProfiles, providerAvailabilityNotificationRequests, providerProfiles, requests, users } from '@/lib/db/schema';
 import { hasActiveBooking } from './booking-lifecycle-adapter';
 import { activeBookingBlocksDeletionError, deletionAlreadyPendingError, deletionNotPendingError } from './errors';
 
@@ -126,6 +126,20 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
         .update(requests)
         .set({ description: REDACTED_DESCRIPTION, updatedAt: new Date() })
         .where(eq(requests.customerProfileId, customerProfile.id));
+
+      // Spec 016 §4 "Retention and privacy" (AC-6): cancel any still-pending availability
+      // notification this customer asked for, so spec 026 can never later send one to a deleted
+      // account. Cancelled rather than deleted — every FK in this schema is `restrict`, and the
+      // row carries no PII of its own once the user is anonymized.
+      await db
+        .update(providerAvailabilityNotificationRequests)
+        .set({ status: 'cancelled', updatedAt: new Date() })
+        .where(
+          and(
+            eq(providerAvailabilityNotificationRequests.customerProfileId, customerProfile.id),
+            eq(providerAvailabilityNotificationRequests.status, 'pending'),
+          ),
+        );
     }
   }
 

@@ -1,0 +1,176 @@
+/*
+ * Spec 016 §5 — provider schedule & service areas. Built exclusively on the APURIVA Design
+ * System's own tokens (app/styles/apuriva-tokens.css), the same approach as
+ * app/account/addresses/addresses.module.css. No raw hex/rgb colour, no literal font size, radius,
+ * shadow or spacing value appears below.
+ *
+ * Per CLAUDE.md's branding rule this page carries no logo/header of its own — the global
+ * AppHeader already provides the page's one brand placement.
+ */
+
+.page {
+  max-width: var(--container-content);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.sectionHint {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+/* Weekly editor -------------------------------------------------------- */
+
+.weekTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.weekTable th,
+.weekTable td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.weekTable thead th {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+}
+
+.dayCell {
+  font-weight: var(--weight-medium);
+  color: var(--text-heading);
+  white-space: nowrap;
+}
+
+/* Overrides and service areas ------------------------------------------ */
+
+.overrideList,
+.areaList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.overrideRow,
+.areaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: var(--text-body);
+}
+
+.overrideDate,
+.areaScope {
+  font-weight: var(--weight-medium);
+  color: var(--text-heading);
+}
+
+/* Customer-facing availability (AC-5) ----------------------------------- */
+
+.availability {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.availabilityHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/*
+ * AC-5 / master spec §3.5: the reason is always visible text beside the state — the badge colour
+ * is decoration, never the only carrier of meaning.
+ */
+.availabilityReason {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-body);
+}
+
+.availabilityNext {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.availabilityActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.availabilityAction {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--action-primary-bg);
+  color: var(--action-primary-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.availabilityAction:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
