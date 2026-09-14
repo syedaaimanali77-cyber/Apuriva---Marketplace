@@ -106,6 +106,13 @@
       "when": 1789379260415,
       "tag": "0015_add_offer_negotiation_comparison",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789465660415,
+      "tag": "0016_add_booking_creation_state_machine",
+      "breakpoints": true
     }
   ]
 }

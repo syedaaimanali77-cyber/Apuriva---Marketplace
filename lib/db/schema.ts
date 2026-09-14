@@ -1284,6 +1284,32 @@ export const offersStatusTransitions = pgTable(
 // Bookings (state machine: AC-3)
 // ---------------------------------------------------------------------------
 
+/**
+ * Spec 020 §4 — master spec §125's booking states. Authored **once**, here: later specs add
+ * transitions into `bookings_status_transitions`, never a new status name. `protected`/`settled`
+ * are spec 021's to reach, `cancelled` spec 023's, `disputed` spec 031's, `refunded` spec 022's,
+ * `failed` spec 021's — spec 020 seeds none of those transitions (§3 "Payment boundary").
+ */
+export const BOOKING_STATUSES = [
+  'pending',
+  'confirmed',
+  'provider_en_route',
+  'arrived',
+  'in_progress',
+  'completed',
+  'protected',
+  'settled',
+  'cancelled',
+  'disputed',
+  'refunded',
+  'failed',
+] as const;
+
+/** Spec 020 §4 — the agreed price, copied verbatim from the accepted offer row. */
+const bookingPriceColumns = moneyColumns('price');
+/** Spec 020 §4 — resolves spec 016 §8 risk #7: the instant plus the IANA zone it is local to. */
+const bookingScheduledColumns = scheduledTimeColumns('scheduled');
+
 export const bookings = pgTable(
   'bookings',
   {
@@ -1291,9 +1317,55 @@ export const bookings = pgTable(
     offerId: uuid('offer_id')
       .notNull()
       .references(() => offers.id, { onDelete: 'restrict' }),
-    status: text('status').notNull(),
+    status: text('status', { enum: BOOKING_STATUSES }).notNull(),
+    /** Spec 020 §4 — feature columns. The table itself is spec 003's baseline skeleton. */
+    requestId: uuid('request_id')
+      .notNull()
+      .references(() => requests.id, { onDelete: 'restrict' }),
+    serviceId: uuid('service_id')
+      .notNull()
+      .references(() => services.id, { onDelete: 'restrict' }),
+    customerProfileId: uuid('customer_profile_id')
+      .notNull()
+      .references(() => customerProfiles.id, { onDelete: 'restrict' }),
+    providerProfileId: uuid('provider_profile_id')
+      .notNull()
+      .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    addressId: uuid('address_id')
+      .notNull()
+      .references(() => addresses.id, { onDelete: 'restrict' }),
+    scheduledAt: bookingScheduledColumns.scheduledAt.notNull(),
+    /** The provider's `scheduling_timezone` — the zone every window/override/slot was resolved in. */
+    scheduledTimezone: bookingScheduledColumns.scheduledTimezone.notNull(),
+    durationMinutes: integer('duration_minutes').notNull(),
+    priceAmountMinorUnits: bookingPriceColumns.priceAmountMinorUnits.notNull(),
+    priceCurrencyCode: bookingPriceColumns.priceCurrencyCode.notNull(),
+    /** Spec 020 §3 idempotency: scoped per customer by the unique index below, never globally. */
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
-  (t) => [index('bookings_offer_id_idx').on(t.offerId)],
+  (t) => [
+    index('bookings_request_id_idx').on(t.requestId),
+    index('bookings_service_id_idx').on(t.serviceId),
+    index('bookings_customer_profile_id_idx').on(t.customerProfileId),
+    index('bookings_provider_profile_id_idx').on(t.providerProfileId),
+    index('bookings_address_id_idx').on(t.addressId),
+    // Spec 020 §4 I-3: one booking per offer, independent of the application check.
+    uniqueIndex('bookings_offer_id_uq').on(t.offerId),
+    // Spec 020 §4 I-4: idempotency scoped per customer (never globally), as spec 015/018 do.
+    uniqueIndex('bookings_customer_idempotency_key_uq').on(t.customerProfileId, t.idempotencyKey),
+    // The index the spec 016 `BusyIntervalLoader` reads on every reservation.
+    index('bookings_provider_scheduled_at_idx').on(t.providerProfileId, t.scheduledAt),
+    index('bookings_status_idx').on(t.status),
+    index('bookings_customer_scheduled_at_idx').on(t.customerProfileId, t.scheduledAt),
+    ...moneyPairChecks('bookings', 'price'),
+    check('bookings_price_positive_ck', sql`${t.priceAmountMinorUnits} > 0`),
+    check('bookings_duration_positive_ck', sql`${t.durationMinutes} between 1 and 1440`),
+    check(
+      'bookings_status_ck',
+      sql`${t.status} in ('pending','confirmed','provider_en_route','arrived','in_progress','completed','protected','settled','cancelled','disputed','refunded','failed')`,
+    ),
+  ],
 );
 
 export const bookingMilestones = pgTable(
@@ -1317,11 +1389,20 @@ export const bookingsStatusHistory = pgTable(
     fromStatus: text('from_status'),
     toStatus: text('to_status').notNull(),
     actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    /**
+     * Spec 020 §4 — the ONE column this spec adds here. `actor_user_id` is nullable for spec 021's
+     * system-driven `protected`/`settled`, and a user holding both a customer and a provider
+     * profile on one booking would otherwise be unattributable (§3 "Authorization matrix").
+     */
+    actorRole: text('actor_role', { enum: ['customer', 'provider', 'system'] as const }).notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('bookings_status_history_booking_id_idx').on(t.bookingId),
     index('bookings_status_history_actor_user_id_idx').on(t.actorUserId),
+    check('bookings_status_history_actor_role_ck', sql`${t.actorRole} in ('customer','provider','system')`),
+    // Spec 020 §4 I-8: a real user unless the actor is the system.
+    check('bookings_status_history_actor_pairing_ck', sql`(${t.actorUserId} is null) = (${t.actorRole} = 'system')`),
   ],
 );
 

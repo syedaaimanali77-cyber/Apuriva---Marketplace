@@ -46,14 +46,20 @@ describe.skipIf(!dbReachable)('request state machine (spec 015 AC-7, integration
 
     // `offers_open -> provider_selected` is no longer a later spec's: spec 018 seeds it (accepting an
     // offer, master spec §125) in drizzle/0014_add_offer_system_timer.sql, alongside spec 017's
-    // `submitted -> matching` and spec 018's `matching -> offers_open`.
-    for (const shippedTransition of ['submitted->matching', 'matching->offers_open', 'offers_open->provider_selected']) {
+    // `submitted -> matching` and spec 018's `matching -> offers_open`. Likewise
+    // `provider_selected -> booking_created`: spec 020 seeds it (booking creation) in
+    // drizzle/0016_add_booking_creation_state_machine.sql.
+    for (const shippedTransition of [
+      'submitted->matching',
+      'matching->offers_open',
+      'offers_open->provider_selected',
+      'provider_selected->booking_created',
+    ]) {
       expect(present.has(shippedTransition)).toBe(true);
     }
 
     for (const laterSpecTransition of [
       'submitted->provider_selected',
-      'provider_selected->booking_created',
       'booking_created->completed',
       'submitted->expired',
     ]) {

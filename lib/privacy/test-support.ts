@@ -102,9 +102,28 @@ export async function seedBooking(customerUserId: string, status: string): Promi
      RETURNING id`,
     [requestRows[0]!.id, providerProfileId, `privacy-seed-${randomUUID()}`],
   );
+  // Spec 020 §4 gave `bookings` its own not-null feature columns (participants, service, address,
+  // schedule, duration, price, idempotency), so this fixture supplies them. The values are the
+  // minimum that satisfies the constraints — no test should read meaning into them. The status is
+  // written directly because spec 020's transition graph deliberately cannot reach most of these
+  // from `pending`, and this fixture's whole purpose is to place a booking in an arbitrary status.
   const { rows: bookingRows } = await pool.query<{ id: string }>(
-    'INSERT INTO bookings (offer_id, status) VALUES ($1, $2) RETURNING id',
-    [offerRows[0]!.id, status],
+    `INSERT INTO bookings
+       (offer_id, status, request_id, service_id, customer_profile_id, provider_profile_id, address_id,
+        scheduled_at, scheduled_timezone, duration_minutes, price_amount_minor_units, price_currency_code,
+        idempotency_key, idempotency_fingerprint)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, now() + interval '1 day', 'Asia/Karachi', 60, 100000, 'PKR', $8, 'privacy-seed-fingerprint')
+     RETURNING id`,
+    [
+      offerRows[0]!.id,
+      status,
+      requestRows[0]!.id,
+      serviceRows[0]!.id,
+      customerProfileId,
+      providerProfileId,
+      addressRows[0]!.id,
+      `privacy-seed-${randomUUID()}`,
+    ],
   );
 
   return { bookingId: bookingRows[0]!.id, providerUserId };

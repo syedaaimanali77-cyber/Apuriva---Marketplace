@@ -444,4 +444,55 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Compare 2–3 live offers with Top Match and rule-based reasons; available:false when not comparable; session (customer)',
     tags: ['negotiation'],
   },
+  // Spec 020 §3 — booking creation & state machine.
+  {
+    method: 'POST',
+    path: '/bookings',
+    summary:
+      'Create a booking from an accepted offer; full server-side revalidation inside one transaction; requires Idempotency-Key; 422 SLOT_NO_LONGER_AVAILABLE carries up to 3 re-submittable alternatives',
+    tags: ['bookings'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings',
+    summary: "The caller's own bookings; the active mode selects customer or provider role; filter: upcoming/active/completed/cancelled/disputed",
+    tags: ['bookings'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}',
+    summary: 'One booking; either participant, in either mode; a non-participant gets 404, never 403',
+    tags: ['bookings'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/status-history',
+    summary: 'Every status transition with its actor ROLE and time (never a user id); either participant',
+    tags: ['bookings'],
+  },
+  {
+    method: 'POST',
+    path: '/bookings/{id}/provider-en-route',
+    summary: "Provider marks \"On my way\" (optional step); session (provider, the booking's own); 422 BOOKING_NOT_STARTABLE_YET more than 60 minutes early",
+    tags: ['bookings'],
+  },
+  {
+    method: 'POST',
+    path: '/bookings/{id}/arrived',
+    summary: "Provider marks \"I've Arrived\"; reachable from confirmed or provider_en_route; session (provider, the booking's own)",
+    tags: ['bookings'],
+  },
+  {
+    method: 'POST',
+    path: '/bookings/{id}/start-service',
+    summary: "Provider starts the service (arrived -> in_progress); session (provider, the booking's own)",
+    tags: ['bookings'],
+  },
+  {
+    method: 'POST',
+    path: '/bookings/{id}/complete',
+    summary:
+      'Either participant marks an in-progress booking complete — no confirmation from the other party is required; requires Idempotency-Key; 422 COMPLETION_TOO_EARLY before the 60-second dwell',
+    tags: ['bookings'],
+  },
 ];

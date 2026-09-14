@@ -9,6 +9,7 @@ import type { OfferComparisonDto, OfferRevisionDto } from '@/lib/types/negotiati
 import type { OfferDto, VisibleOfferStatus } from '@/lib/types/offers';
 import type { RequestStatus } from '@/lib/types/requests';
 import { apiFetch, mutateHeaders, type ApiErrorBody } from '../api-client';
+import { ConfirmBookingPanel } from '@/app/bookings/_components/ConfirmBookingPanel';
 import styles from '../requests.module.css';
 import negotiation from './negotiation.module.css';
 
@@ -308,6 +309,12 @@ export function OffersPanel({ requestId, requestStatus, requestCreatedAt, onRequ
                     <Badge tone={offer.status === 'accepted' ? 'success' : 'neutral'}>
                       {TERMINAL_LABEL[offer.status as keyof typeof TERMINAL_LABEL]}
                     </Badge>
+                  ) : null}
+
+                  {/* Spec 020 §5: the booking step this panel hands off to. Shown only for the
+                      accepted offer, and only while the request has not already produced a booking. */}
+                  {offer.status === 'accepted' && requestStatus === 'provider_selected' ? (
+                    <ConfirmBookingPanel offerId={offer.id} />
                   ) : null}
 
                   {canRequestChange && !changeOpen ? (

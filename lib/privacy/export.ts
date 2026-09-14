@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, ne, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, or } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import {
   bookings,
+  bookingsStatusHistory,
   conversationParticipants,
   customerProfiles,
   fileAssets,
@@ -63,7 +64,24 @@ export interface DataExportPayload {
     preferredAt: string | null;
     createdAt: string;
   }>;
-  bookings: Array<{ id: string; status: string; createdAt: string }>;
+  /**
+   * Spec 020 §4 "Retention and privacy": the caller's own bookings (as customer or as provider),
+   * with an explicit column allowlist plus the status history that proves who did what and when.
+   * Never `idempotency_key`/`idempotency_fingerprint`, and never a counterparty user id — history
+   * rows carry `actorRole` only.
+   */
+  bookings: Array<{
+    id: string;
+    status: string;
+    serviceId: string;
+    scheduledAt: string;
+    scheduledTimezone: string;
+    durationMinutes: number;
+    priceAmountMinorUnits: number;
+    currencyCode: string;
+    createdAt: string;
+    statusHistory: Array<{ fromStatus: string | null; toStatus: string; actorRole: string; occurredAt: string }>;
+  }>;
   reviews: Array<{ id: string; bookingId: string; createdAt: string }>;
   /** "Permitted messages" (spec 008 §3): messages in a conversation `userId` participates in —
    * the same participant boundary spec 025 uses to authorize a messaging read, never a broader
@@ -198,14 +216,39 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         .where(eq(requests.customerProfileId, customerProfile.id))
     : [];
 
+  // Spec 020 §4: `bookings` now carries its own `customer_profile_id`/`provider_profile_id`, so the
+  // participant test no longer has to travel through `offers` -> `requests`. Same rows, one join
+  // each, and the explicit allowlist below still excludes idempotency data and every user id.
   const bookingRows = await db
-    .select({ id: bookings.id, status: bookings.status, createdAt: bookings.createdAt })
+    .select({
+      id: bookings.id,
+      status: bookings.status,
+      serviceId: bookings.serviceId,
+      scheduledAt: bookings.scheduledAt,
+      scheduledTimezone: bookings.scheduledTimezone,
+      durationMinutes: bookings.durationMinutes,
+      priceAmountMinorUnits: bookings.priceAmountMinorUnits,
+      priceCurrencyCode: bookings.priceCurrencyCode,
+      createdAt: bookings.createdAt,
+    })
     .from(bookings)
-    .innerJoin(offers, eq(offers.id, bookings.offerId))
-    .innerJoin(requests, eq(requests.id, offers.requestId))
-    .innerJoin(customerProfiles, eq(customerProfiles.id, requests.customerProfileId))
-    .innerJoin(providerProfiles, eq(providerProfiles.id, offers.providerProfileId))
+    .innerJoin(customerProfiles, eq(customerProfiles.id, bookings.customerProfileId))
+    .innerJoin(providerProfiles, eq(providerProfiles.id, bookings.providerProfileId))
     .where(or(eq(customerProfiles.userId, userId), eq(providerProfiles.userId, userId)));
+
+  const bookingHistoryRows = bookingRows.length
+    ? await db
+        .select({
+          bookingId: bookingsStatusHistory.bookingId,
+          fromStatus: bookingsStatusHistory.fromStatus,
+          toStatus: bookingsStatusHistory.toStatus,
+          actorRole: bookingsStatusHistory.actorRole,
+          occurredAt: bookingsStatusHistory.occurredAt,
+        })
+        .from(bookingsStatusHistory)
+        .where(inArray(bookingsStatusHistory.bookingId, bookingRows.map((b) => b.id)))
+        .orderBy(asc(bookingsStatusHistory.occurredAt))
+    : [];
 
   const reviewRows = await db
     .select({ id: reviews.id, bookingId: reviews.bookingId, createdAt: reviews.createdAt })
@@ -439,7 +482,25 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
       preferredAt: r.preferredAt ? r.preferredAt.toISOString() : null,
       createdAt: r.createdAt.toISOString(),
     })),
-    bookings: bookingRows.map((b) => ({ id: b.id, status: b.status, createdAt: b.createdAt.toISOString() })),
+    bookings: bookingRows.map((b) => ({
+      id: b.id,
+      status: b.status,
+      serviceId: b.serviceId,
+      scheduledAt: b.scheduledAt.toISOString(),
+      scheduledTimezone: b.scheduledTimezone,
+      durationMinutes: b.durationMinutes,
+      priceAmountMinorUnits: b.priceAmountMinorUnits,
+      currencyCode: b.priceCurrencyCode,
+      createdAt: b.createdAt.toISOString(),
+      statusHistory: bookingHistoryRows
+        .filter((h) => h.bookingId === b.id)
+        .map((h) => ({
+          fromStatus: h.fromStatus,
+          toStatus: h.toStatus,
+          actorRole: h.actorRole,
+          occurredAt: h.occurredAt.toISOString(),
+        })),
+    })),
     reviews: reviewRows.map((r) => ({ id: r.id, bookingId: r.bookingId, createdAt: r.createdAt.toISOString() })),
     messages: messageRows.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),
     preferences: preferences ? { id: preferences.id, createdAt: preferences.createdAt.toISOString() } : null,

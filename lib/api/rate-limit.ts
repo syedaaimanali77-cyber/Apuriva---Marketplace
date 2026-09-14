@@ -20,6 +20,7 @@ export type RateLimitDomain =
   | 'availability'
   | 'matching'
   | 'offers'
+  | 'bookings'
   | 'default';
 
 export interface RateLimitRule {
@@ -53,6 +54,10 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   matching: { limit: 30, windowMs: 60_000 },
   // Spec 018 §3: offer create/read/decide — the same write-surface budget as 'requests'/'matching'.
   offers: { limit: 30, windowMs: 60_000 },
+  // Spec 020 §3: booking creation and the lifecycle/completion transitions — a transactional write
+  // surface, so the same 30/60s budget 'requests'/'matching'/'offers' already use rather than the
+  // looser shared 'default'. It also bounds AC-2's alternatives disclosure per caller.
+  bookings: { limit: 30, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 
