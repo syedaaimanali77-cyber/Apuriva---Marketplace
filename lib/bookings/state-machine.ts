@@ -65,6 +65,49 @@ export function isAllowedBookingTransition(from: BookingStatus, to: BookingStatu
   return ALLOWED.has(`${from}->${to}`);
 }
 
+/**
+ * The extension registry the header above always described in prose: "spec 023, 031 and 022 do the
+ * same for their own transitions, each seeding its own `bookings_status_transitions` rows in its own
+ * migration". `applyBookingTransition()` is the one primitive that writes `bookings.status`, so a
+ * later spec performing a transition IT owns has to be able to pass this guard — otherwise the
+ * guard, which exists to catch a spec 020 programming error, would instead block the collaboration
+ * spec 020 §3 "Payment boundary" explicitly designed for.
+ *
+ * This is NOT a change to spec 020's transition graph. `SPEC_020_TRANSITIONS` is untouched, and
+ * `isAllowedBookingTransition()` still answers only "does spec 020 own this pair?" — so spec 020's
+ * own tests, which assert `completed -> protected` and `protected -> settled` are *not* spec 020's,
+ * keep passing unchanged. The database `bookings_status_transitions` table remains the real
+ * authority in every case: a pair registered here but never seeded is still rejected by the spec
+ * 003 trigger.
+ *
+ * Registration is a module-level side effect performed by the owning spec's barrel (spec 021's
+ * `lib/payments/index.ts`), mirroring how `lib/bookings/index.ts` registers its `BusyIntervalLoader`
+ * with spec 016.
+ */
+const REGISTERED_EXTENSIONS = new Map<string, string>();
+
+export function registerBookingTransitions(
+  owner: string,
+  pairs: ReadonlyArray<readonly [BookingStatus, BookingStatus]>,
+): void {
+  for (const [from, to] of pairs) {
+    if (isAllowedBookingTransition(from, to)) {
+      throw new Error(`${from} -> ${to} is owned by spec 020; it cannot be registered by ${owner}`);
+    }
+    REGISTERED_EXTENSIONS.set(`${from}->${to}`, owner);
+  }
+}
+
+/** Test-only: clears extension registrations so suites cannot leak into each other. */
+export function resetRegisteredBookingTransitions(): void {
+  REGISTERED_EXTENSIONS.clear();
+}
+
+/** True when a later spec has registered `(from, to)` as one it owns and performs. */
+export function isRegisteredBookingTransition(from: BookingStatus, to: BookingStatus): boolean {
+  return REGISTERED_EXTENSIONS.has(`${from}->${to}`);
+}
+
 /** The statuses a provider action can advance a booking out of, in lifecycle order. */
 export const BOOKING_LIFECYCLE_ORDER: readonly BookingStatus[] = [
   'pending',
@@ -114,10 +157,10 @@ export async function applyBookingTransition(
 ): Promise<ApplyTransitionResult> {
   const { bookingId, from, to, actorRole, actorUserId, expectedVersion } = params;
 
-  if (!isAllowedBookingTransition(from, to)) {
-    // A spec-020 caller asking for a transition spec 020 does not own is a programming error, not a
-    // user error: fail loudly here rather than letting the database trigger report it as a 500.
-    throw new Error(`Spec 020 does not own the booking transition ${from} -> ${to}`);
+  if (!isAllowedBookingTransition(from, to) && !isRegisteredBookingTransition(from, to)) {
+    // A caller asking for a transition NOBODY owns is a programming error, not a user error: fail
+    // loudly here rather than letting the database trigger report it as a 500.
+    throw new Error(`No spec owns the booking transition ${from} -> ${to}`);
   }
   if ((actorUserId === null) !== (actorRole === 'system')) {
     throw new Error('actorUserId must be null exactly when actorRole is "system"');

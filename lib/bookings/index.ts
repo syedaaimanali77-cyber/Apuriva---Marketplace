@@ -32,11 +32,21 @@ export {
   applyBookingTransition,
   confirmBooking,
   isAllowedBookingTransition,
+  isRegisteredBookingTransition,
+  registerBookingTransitions,
+  resetRegisteredBookingTransitions,
   BOOKING_STATUSES,
   EARLY_START_GRACE_MINUTES,
   MIN_IN_PROGRESS_SECONDS,
   SPEC_020_TRANSITIONS,
 } from './state-machine';
+export {
+  getBookingConfirmationGate,
+  registerBookingConfirmationGate,
+  resetBookingConfirmationGate,
+  type BookingConfirmationDecision,
+  type BookingConfirmationGate,
+} from './confirmation-gate';
 export {
   getCompletionEvidenceGate,
   registerCompletionEvidenceGate,

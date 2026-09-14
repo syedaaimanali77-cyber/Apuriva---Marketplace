@@ -17,6 +17,7 @@ import {
   providerAvailabilityOverrides,
   providerServiceAreas,
   payments,
+  priceAdjustments,
   providerProfiles,
   refunds,
   requestProviderMatches,
@@ -159,9 +160,37 @@ export interface DataExportPayload {
       createdAt: string;
     }>;
   };
+  /**
+   * Spec 021 §4 "Retention and privacy" — the export boundary for payment data.
+   *
+   * Exported: the caller's own payment amount, currency, status and protection window, plus the
+   * price adjustments proposed on their bookings. NEVER exported, by simply not being selected:
+   * `provider_reference`, `provider_name`, `idempotency_key`, `idempotency_fingerprint` and
+   * attempt-level `failure_code`/`failure_reason` — internal reconciliation and anti-abuse data,
+   * not the user's own personal data.
+   */
   receipts: {
-    payments: Array<{ id: string; bookingId: string; status: string; createdAt: string }>;
+    payments: Array<{
+      id: string;
+      bookingId: string;
+      status: string;
+      chargeAmountMinorUnits: number | null;
+      chargeCurrencyCode: string | null;
+      protectionState: string | null;
+      protectionWindowStartedAt: string | null;
+      createdAt: string;
+    }>;
     refunds: Array<{ id: string; paymentId: string; createdAt: string }>;
+    priceAdjustments: Array<{
+      id: string;
+      bookingId: string;
+      additionalAmountMinorUnits: number | null;
+      additionalCurrencyCode: string | null;
+      reason: string;
+      status: string;
+      approvedAt: string | null;
+      createdAt: string;
+    }>;
   };
 }
 
@@ -274,7 +303,17 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     .where(eq(notificationPreferences.userId, userId));
 
   const paymentRows = await db
-    .select({ id: payments.id, bookingId: payments.bookingId, status: payments.status, createdAt: payments.createdAt })
+    .select({
+      id: payments.id,
+      bookingId: payments.bookingId,
+      status: payments.status,
+      // Spec 021 §4 "Retention and privacy": the caller's own money, and nothing provider-facing.
+      chargeAmountMinorUnits: payments.chargeAmountMinorUnits,
+      chargeCurrencyCode: payments.chargeCurrencyCode,
+      protectionState: payments.protectionState,
+      protectionWindowStartedAt: payments.protectionWindowStartedAt,
+      createdAt: payments.createdAt,
+    })
     .from(payments)
     .innerJoin(bookings, eq(bookings.id, payments.bookingId))
     .innerJoin(offers, eq(offers.id, bookings.offerId))
@@ -290,6 +329,28 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         .from(refunds)
         .where(inArray(refunds.paymentId, paymentIds))
     : [];
+
+  // Spec 021 §4 "Retention and privacy": the price adjustments proposed on the caller's own
+  // bookings — the same ownership-scoped join the payments query above uses, and the same explicit
+  // column allowlist (no idempotency columns, no proposer/approver user ids).
+  const priceAdjustmentRows = await db
+    .select({
+      id: priceAdjustments.id,
+      bookingId: priceAdjustments.bookingId,
+      additionalAmountMinorUnits: priceAdjustments.additionalAmountMinorUnits,
+      additionalCurrencyCode: priceAdjustments.additionalCurrencyCode,
+      reason: priceAdjustments.reason,
+      status: priceAdjustments.status,
+      approvedAt: priceAdjustments.approvedAt,
+      createdAt: priceAdjustments.createdAt,
+    })
+    .from(priceAdjustments)
+    .innerJoin(bookings, eq(bookings.id, priceAdjustments.bookingId))
+    .innerJoin(offers, eq(offers.id, bookings.offerId))
+    .innerJoin(requests, eq(requests.id, offers.requestId))
+    .innerJoin(customerProfiles, eq(customerProfiles.id, requests.customerProfileId))
+    .innerJoin(providerProfiles, eq(providerProfiles.id, offers.providerProfileId))
+    .where(or(eq(customerProfiles.userId, userId), eq(providerProfiles.userId, userId)));
 
   // Spec 016 §4: the caller's own provider-side schedule/coverage, with an explicit column
   // allowlist and an ownership-scoped filter, exactly like every section above. A user with no
@@ -544,8 +605,17 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
       })),
     },
     receipts: {
-      payments: paymentRows.map((p) => ({ ...p, createdAt: p.createdAt.toISOString() })),
+      payments: paymentRows.map((p) => ({
+        ...p,
+        protectionWindowStartedAt: p.protectionWindowStartedAt ? p.protectionWindowStartedAt.toISOString() : null,
+        createdAt: p.createdAt.toISOString(),
+      })),
       refunds: refundRows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+      priceAdjustments: priceAdjustmentRows.map((a) => ({
+        ...a,
+        approvedAt: a.approvedAt ? a.approvedAt.toISOString() : null,
+        createdAt: a.createdAt.toISOString(),
+      })),
     },
   };
 }

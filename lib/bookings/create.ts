@@ -36,6 +36,7 @@ import {
 } from './errors';
 import { loadBookingDto } from './read';
 import { confirmBooking, recordBookingCreated } from './state-machine';
+import { getBookingConfirmationGate } from './confirmation-gate';
 
 /** The default a provider service falls back to — `provider_services.duration_minutes`'s own default. */
 const FALLBACK_DURATION_MINUTES = 60;
@@ -253,16 +254,24 @@ export async function createBooking(
 
       await recordBookingCreated(tx, { bookingId, actorUserId: customerUserId });
 
-      const confirmed = await confirmBooking(tx, {
-        bookingId,
-        actorUserId: customerUserId,
-        expectedVersion: row.version,
-      });
-      if (!confirmed.applied) {
-        // Unreachable in practice: the row was just inserted inside this transaction, so nothing
-        // else can have touched it. Fail loudly rather than returning a `pending` booking as if it
-        // were confirmed (master spec §132.7 — never claim success the backend did not confirm).
-        throw new Error(`booking ${bookingId} could not be confirmed (status ${confirmed.currentStatus})`);
+      // §3 "Why `pending` then `confirmed` in one transaction" — the gate spec 021 registers.
+      // Unregistered (spec 020 standalone) it confirms immediately, exactly as before. Registered,
+      // the booking commits `pending` and spec 021 confirms it only once its payment provider has
+      // actually confirmed an authorization (its AC-1/AC-6). See `confirmation-gate.ts` for why
+      // this is a port and not a call into the payment domain.
+      const decision = await getBookingConfirmationGate()(tx, bookingId);
+      if (decision.confirmNow) {
+        const confirmed = await confirmBooking(tx, {
+          bookingId,
+          actorUserId: customerUserId,
+          expectedVersion: row.version,
+        });
+        if (!confirmed.applied) {
+          // Unreachable in practice: the row was just inserted inside this transaction, so nothing
+          // else can have touched it. Fail loudly rather than returning a `pending` booking as if it
+          // were confirmed (master spec §132.7 — never claim success the backend did not confirm).
+          throw new Error(`booking ${bookingId} could not be confirmed (status ${confirmed.currentStatus})`);
+        }
       }
 
       // Step 16 — the parent request. `booking_created -> completed` is spec 028's and is not seeded.

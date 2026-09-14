@@ -1420,6 +1420,35 @@ export const bookingsStatusTransitions = pgTable(
 // Payments & payouts (state machines: AC-3)
 // ---------------------------------------------------------------------------
 
+/**
+ * Spec 021 §4 — the WHOLE `payments.status` vocabulary, authored once here the way spec 020
+ * authored the booking vocabulary. `refunded`/`partially_refunded` are named here but their
+ * TRANSITIONS are seeded by spec 022 in its own migration; spec 021 seeds only what it performs.
+ */
+export const PAYMENT_STATUSES = [
+  'created',
+  'requires_action',
+  'authorized',
+  'captured',
+  'failed',
+  'refunded',
+  'partially_refunded',
+] as const;
+
+export const PAYMENT_PROTECTION_STATES = ['held', 'released', 'disputed'] as const;
+
+export const PRICE_ADJUSTMENT_STATUSES = ['pending_approval', 'approved', 'rejected', 'charged', 'failed'] as const;
+
+/**
+ * Spec 021 §4 — the baseline `payments` skeleton, now carrying this spec's feature columns.
+ *
+ * ALTERED, never recreated: spec 003 already ships this table, its FK, its index and the
+ * `payments_status_transition_trg` trigger. `0017_add_payment_processing_protection.sql` adds the
+ * columns below; `0001_baseline_schema.sql` is immutable and untouched.
+ *
+ * Money follows spec 003 AC-1's convention — a semantically named `<base>_amount_minor_units` +
+ * `<base>_currency_code` pair, never numeric/float.
+ */
 export const payments = pgTable(
   'payments',
   {
@@ -1427,11 +1456,53 @@ export const payments = pgTable(
     bookingId: uuid('booking_id')
       .notNull()
       .references(() => bookings.id, { onDelete: 'restrict' }),
-    status: text('status').notNull(),
+    status: text('status', { enum: PAYMENT_STATUSES }).notNull(),
+    /** Spec 021 §4 — feature columns. The table itself is spec 003's baseline skeleton. */
+    ...moneyColumns('charge'),
+    /** Null until the protection window opens on booking completion (AC-5a). */
+    protectionState: text('protection_state', { enum: PAYMENT_PROTECTION_STATES }),
+    /** The `in_progress -> completed` history instant — never the sweep's own clock (AC-5a). */
+    protectionWindowStartedAt: timestamp('protection_window_started_at', { withTimezone: true }),
+    protectionWindowHours: integer('protection_window_hours').notNull().default(48),
+    /** Which adapter produced this row, e.g. `sandbox`. Never serialized into a DTO or export. */
+    providerName: text('provider_name').notNull(),
+    /** The provider's opaque handle. Server-side only (spec 021 §4 "Retention and privacy"). */
+    providerReference: text('provider_reference'),
+    /** Spec 021 §3 idempotency: scoped per booking by the unique index below, never globally. */
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
-  (t) => [index('payments_booking_id_idx').on(t.bookingId)],
+  (t) => [
+    // I-1: ONE payment per booking — the structural anti-double-charge guarantee, replacing the
+    // baseline's non-unique index (mirrors spec 020's `bookings_offer_id_uq`).
+    uniqueIndex('payments_booking_id_uq').on(t.bookingId),
+    // I-2: idempotency scoped per booking, the spec 015/018/020 precedent.
+    uniqueIndex('payments_booking_idempotency_key_uq').on(t.bookingId, t.idempotencyKey),
+    // I-15: the sweep's access pattern.
+    index('payments_protection_sweep_idx').on(t.protectionState, t.protectionWindowStartedAt),
+    check(
+      'payments_status_ck',
+      sql`${t.status} in ('created','requires_action','authorized','captured','failed','refunded','partially_refunded')`,
+    ),
+    check('payments_charge_pair_ck', sql`(${t.chargeAmountMinorUnits} is null) = (${t.chargeCurrencyCode} is null)`),
+    check('payments_charge_currency_format_ck', sql`${t.chargeCurrencyCode} is null or ${t.chargeCurrencyCode} ~ '^[A-Z]{3}$'`),
+    check('payments_charge_positive_ck', sql`${t.chargeAmountMinorUnits} > 0`),
+    // I-4: a protection state without a start instant is meaningless.
+    check('payments_protection_pairing_ck', sql`(${t.protectionState} is null) = (${t.protectionWindowStartedAt} is null)`),
+    // I-5: nothing is protected that was never captured (AC-5).
+    check(
+      'payments_protection_requires_capture_ck',
+      sql`${t.protectionState} is null or ${t.status} in ('captured','refunded','partially_refunded')`,
+    ),
+    // I-6: a configurable window, bounded.
+    check('payments_protection_window_hours_ck', sql`${t.protectionWindowHours} between 1 and 720`),
+  ],
 );
 
+/**
+ * Spec 021 §4 — the append-only audit trail behind every provider round trip, success or failure.
+ * `payment_attempts_append_only_trg` (migration 0017) makes "what the provider said" unrewritable.
+ */
 export const paymentAttempts = pgTable(
   'payment_attempts',
   {
@@ -1439,10 +1510,20 @@ export const paymentAttempts = pgTable(
     paymentId: uuid('payment_id')
       .notNull()
       .references(() => payments.id, { onDelete: 'restrict' }),
+    status: text('status', { enum: ['succeeded', 'failed', 'requires_action'] }).notNull(),
+    failureCode: text('failure_code'),
+    failureReason: text('failure_reason'),
+    providerReference: text('provider_reference'),
+    attemptedAt: timestamp('attempted_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('payment_attempts_payment_id_idx').on(t.paymentId)],
+  (t) => [
+    index('payment_attempts_payment_id_idx').on(t.paymentId),
+    index('payment_attempts_payment_attempted_at_idx').on(t.paymentId, t.attemptedAt),
+    check('payment_attempts_status_ck', sql`${t.status} in ('succeeded','failed','requires_action')`),
+  ],
 );
 
+/** Spec 021 §4 — one row per provider authorization, carrying its capture when it happens. */
 export const paymentAuthorizations = pgTable(
   'payment_authorizations',
   {
@@ -1450,8 +1531,84 @@ export const paymentAuthorizations = pgTable(
     paymentId: uuid('payment_id')
       .notNull()
       .references(() => payments.id, { onDelete: 'restrict' }),
+    ...moneyColumns('authorized'),
+    authorizedAt: timestamp('authorized_at', { withTimezone: true }).notNull(),
+    ...moneyColumns('captured'),
+    capturedAt: timestamp('captured_at', { withTimezone: true }),
+    providerReference: text('provider_reference').notNull(),
   },
-  (t) => [index('payment_authorizations_payment_id_idx').on(t.paymentId)],
+  (t) => [
+    index('payment_authorizations_payment_id_idx').on(t.paymentId),
+    check(
+      'payment_authorizations_authorized_pair_ck',
+      sql`(${t.authorizedAmountMinorUnits} is null) = (${t.authorizedCurrencyCode} is null)`,
+    ),
+    check('payment_authorizations_authorized_positive_ck', sql`${t.authorizedAmountMinorUnits} > 0`),
+    // I-9: all three capture columns null, or all three set.
+    check(
+      'payment_authorizations_captured_pair_ck',
+      sql`(${t.capturedAmountMinorUnits} is null) = (${t.capturedCurrencyCode} is null)
+          and (${t.capturedAmountMinorUnits} is null) = (${t.capturedAt} is null)`,
+    ),
+    // I-9: a capture can never exceed its authorization.
+    check(
+      'payment_authorizations_capture_not_over_ck',
+      sql`${t.capturedAmountMinorUnits} is null or ${t.capturedAmountMinorUnits} <= ${t.authorizedAmountMinorUnits}`,
+    ),
+  ],
+);
+
+/**
+ * Spec 021 §4 — the ONLY table this spec creates. Everything else is a baseline skeleton it alters.
+ *
+ * A price adjustment is spec 021's own entity, never an edit to the agreed booking price: spec 020
+ * owns `bookings.price_amount_minor_units` and `bookings_terms_immutable_trg` forbids rewriting it.
+ */
+export const priceAdjustments = pgTable(
+  'price_adjustments',
+  {
+    ...baseColumns(),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'restrict' }),
+    /** Set only once the adjustment has actually been charged (I-14). */
+    paymentId: uuid('payment_id').references(() => payments.id, { onDelete: 'restrict' }),
+    ...moneyColumns('additional'),
+    reason: text('reason').notNull(),
+    status: text('status', { enum: PRICE_ADJUSTMENT_STATUSES }).notNull(),
+    proposedByUserId: uuid('proposed_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    approvedByUserId: uuid('approved_by_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
+  },
+  (t) => [
+    index('price_adjustments_booking_id_idx').on(t.bookingId),
+    index('price_adjustments_payment_id_idx').on(t.paymentId),
+    index('price_adjustments_proposed_by_user_id_idx').on(t.proposedByUserId),
+    index('price_adjustments_approved_by_user_id_idx').on(t.approvedByUserId),
+    uniqueIndex('price_adjustments_booking_idempotency_key_uq').on(t.bookingId, t.idempotencyKey),
+    check('price_adjustments_status_ck', sql`${t.status} in ('pending_approval','approved','rejected','charged','failed')`),
+    check(
+      'price_adjustments_amount_pair_ck',
+      sql`(${t.additionalAmountMinorUnits} is null) = (${t.additionalCurrencyCode} is null)`,
+    ),
+    check('price_adjustments_amount_positive_ck', sql`${t.additionalAmountMinorUnits} > 0`),
+    check(
+      'price_adjustments_currency_format_ck',
+      sql`${t.additionalCurrencyCode} is null or ${t.additionalCurrencyCode} ~ '^[A-Z]{3}$'`,
+    ),
+    // I-11: an approved or charged adjustment always has a named approver AND an instant.
+    check('price_adjustments_approval_pairing_ck', sql`(${t.approvedByUserId} is null) = (${t.approvedAt} is null)`),
+    check(
+      'price_adjustments_approved_requires_instant_ck',
+      sql`${t.status} not in ('approved','charged') or ${t.approvedAt} is not null`,
+    ),
+    // I-14: a charged adjustment always points at the payment that carried it.
+    check('price_adjustments_charged_requires_payment_ck', sql`${t.status} <> 'charged' or ${t.paymentId} is not null`),
+  ],
 );
 
 export const refunds = pgTable(
@@ -1509,11 +1666,20 @@ export const paymentsStatusHistory = pgTable(
     fromStatus: text('from_status'),
     toStatus: text('to_status').notNull(),
     actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    /**
+     * Spec 021 §4 I-7 — added for the same reason spec 020 added it to `bookings_status_history`:
+     * `actor_user_id` is nullable for this spec's `system` (sweep) transitions, so attribution
+     * needs its own column to stay provable.
+     */
+    actorRole: text('actor_role', { enum: ['customer', 'provider', 'system', 'admin'] }).notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('payments_status_history_payment_id_idx').on(t.paymentId),
     index('payments_status_history_actor_user_id_idx').on(t.actorUserId),
+    check('payments_status_history_actor_role_ck', sql`${t.actorRole} in ('customer','provider','system','admin')`),
+    // I-7: a real user unless the actor is the system (spec 021's sweep transitions).
+    check('payments_status_history_actor_pairing_ck', sql`(${t.actorUserId} is null) = (${t.actorRole} = 'system')`),
   ],
 );
 

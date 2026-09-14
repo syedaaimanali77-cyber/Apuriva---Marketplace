@@ -495,4 +495,55 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'Either participant marks an in-progress booking complete — no confirmation from the other party is required; requires Idempotency-Key; 422 COMPLETION_TOO_EARLY before the 60-second dwell',
     tags: ['bookings'],
   },
+  // Spec 021 §3 — payment processing & protection. These routes sit in the bookings URL namespace
+  // because a payment belongs to a booking, but they are spec 021's entirely; spec 020's own
+  // modules and routes contain no payment reference. `/cron/payment-sweep` is excluded by the drift
+  // check, like every other cron route.
+  {
+    method: 'POST',
+    path: '/bookings/{id}/payment/authorize',
+    summary:
+      "Authorize (and capture) the booking's payment through the configured provider adapter; session (customer, the booking's own); requires Idempotency-Key; confirms the booking only on a provider-confirmed capture; 422 PAYMENT_FAILED otherwise",
+    tags: ['payments'],
+  },
+  {
+    method: 'POST',
+    path: '/bookings/{id}/payment/capture',
+    summary:
+      "Capture a previously authorized payment; session (customer, the booking's own); requires Idempotency-Key; 409 PAYMENT_ALREADY_CAPTURED on a duplicate capture under a different key",
+    tags: ['payments'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/payment',
+    summary:
+      "The booking's payment state — backend-confirmed only, never a provider reference; session (either participant, in their own mode)",
+    tags: ['payments'],
+  },
+  {
+    method: 'POST',
+    path: '/bookings/{id}/price-adjustments',
+    summary:
+      "Provider proposes an additional charge; charges nothing; session (provider, the booking's own); requires Idempotency-Key",
+    tags: ['payments'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/price-adjustments',
+    summary: "Price adjustments proposed on a booking; session (either participant, in their own mode)",
+    tags: ['payments'],
+  },
+  {
+    method: 'POST',
+    path: '/price-adjustments/{id}/approve',
+    summary:
+      'Customer approves an additional charge — the only path that may charge one, for exactly the amount and currency shown; requires Idempotency-Key; 409 ADJUSTMENT_ALREADY_RESOLVED on a concurrent decision',
+    tags: ['payments'],
+  },
+  {
+    method: 'POST',
+    path: '/price-adjustments/{id}/reject',
+    summary: 'Customer declines an additional charge; terminal, charges nothing; requires Idempotency-Key',
+    tags: ['payments'],
+  },
 ];

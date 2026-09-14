@@ -28,9 +28,27 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
+/**
+ * Spec 021 owns `/bookings/{id}/payment/**` and `/bookings/{id}/price-adjustments/**`. Those route
+ * files sit in the bookings URL namespace because a payment belongs to a booking, but they are not
+ * SPEC 020 FILES — which is what every assertion below is about ("no spec 020 file transitions a
+ * booking to `protected` or `settled`"), and the boundary they are scoped out of is a URL tree, not
+ * the architectural rule.
+ *
+ * The architectural rule is untouched and still asserted at full strength: `lib/bookings/**` — every
+ * module spec 020 actually owns — reads no payment state and imports no payment module, and so does
+ * every spec 020 route. Spec 021 depends on spec 020 through `applyBookingTransition()` and the
+ * registered `BookingConfirmationGate`; spec 020 depends on spec 021 through nothing at all.
+ */
+const SPEC_021_ROUTE_SEGMENTS = [join('[id]', 'payment'), join('[id]', 'price-adjustments')];
+
+function isSpec021Route(file: string): boolean {
+  return SPEC_021_ROUTE_SEGMENTS.some((segment) => file.includes(segment));
+}
+
 /** Production sources only — the test files themselves legitimately name the forbidden statuses. */
 const PRODUCTION_FILES = [...sourceFiles(DOMAIN_DIR), ...sourceFiles(ROUTES_DIR)].filter(
-  (file) => !/\.test\.tsx?$/.test(file) && !/test-support\.ts$/.test(file),
+  (file) => !/\.test\.tsx?$/.test(file) && !/test-support\.ts$/.test(file) && !isSpec021Route(file),
 );
 
 /**
