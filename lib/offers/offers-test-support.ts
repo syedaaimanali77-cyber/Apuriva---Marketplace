@@ -13,6 +13,7 @@ import {
   type ProviderFixture,
   type TestSession,
 } from '@/lib/matching/matching-test-support';
+import { resetRateLimitState } from '@/lib/api/rate-limit';
 import { queryRows } from './db';
 import { createOffer } from './create';
 
@@ -48,6 +49,10 @@ export async function seedOfferScenario(options?: {
   pricingModel?: 'quote' | 'custom' | 'fixed' | 'package' | 'hourly';
 }): Promise<OfferScenario> {
   const providerCount = options?.providerCount ?? 1;
+  // `POST /auth/register` is rate-limited to 10/minute per IP (spec 004). Seeding several providers in
+  // one test legitimately exceeds that, so the in-memory limiter is cleared between registrations: this
+  // is fixture setup, never an assertion, and every test's own rate-limit checks run after seeding.
+  resetRateLimitState();
   const first = await registerProvider();
   const { serviceId } = await seedProviderService(first.providerProfileId);
   await getDb().update(services).set({ pricingModel: options?.pricingModel ?? 'quote' }).where(eq(services.id, serviceId));
@@ -55,12 +60,14 @@ export async function seedOfferScenario(options?: {
 
   const providers = [first];
   for (let i = 1; i < providerCount; i += 1) {
+    resetRateLimitState();
     const extra = await registerProvider();
     await seedWeeklyHours(extra.providerProfileId, allWeekAlwaysOpen());
     await getDb().insert(providerServices).values({ providerProfileId: extra.providerProfileId, serviceId, durationMinutes: 60 });
     providers.push(extra);
   }
 
+  resetRateLimitState();
   const customer = await seedCustomerWithAddress();
   const request = await seedSubmittedRequest(customer.userId, serviceId, customer.addressId);
   await runMatching(request.id);
@@ -76,15 +83,24 @@ export async function sendOffer(provider: ProviderFixture, requestId: string, ov
   return offer;
 }
 
-/** Places the offer's window so that `sent_at` was `msAgo` milliseconds before the database clock now. */
+/**
+ * Places the offer's window so that `sent_at` was `msAgo` milliseconds before the database clock now.
+ *
+ * Spec 019's `offers_terms_immutable_trg` forbids changing a sent offer's window; this TEST-ONLY fixture
+ * opts in through the transaction-local `apuriva.test_offer_window_shift` setting, which no application
+ * path sets. The CHECK `expires_at = sent_at + 2 minutes` still holds.
+ */
 export async function shiftOfferWindow(offerId: string, msAgo: number): Promise<void> {
-  await getDb().execute(sql`
-    UPDATE offers o
-       SET sent_at = c.t - (${msAgo} * interval '1 millisecond'),
-           expires_at = c.t - (${msAgo} * interval '1 millisecond') + interval '2 minutes'
-      FROM (SELECT clock_timestamp() AS t) c
-     WHERE o.id = ${offerId}
-  `);
+  await getDb().transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('apuriva.test_offer_window_shift', 'on', true)`);
+    await tx.execute(sql`
+      UPDATE offers o
+         SET sent_at = c.t - (${msAgo} * interval '1 millisecond'),
+             expires_at = c.t - (${msAgo} * interval '1 millisecond') + interval '2 minutes'
+        FROM (SELECT clock_timestamp() AS t) c
+       WHERE o.id = ${offerId}
+    `);
+  });
 }
 
 export async function storedOffer(offerId: string) {

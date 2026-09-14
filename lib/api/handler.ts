@@ -33,6 +33,7 @@ export function withApiRoute(
           errors: err.errors,
           retryAfterSeconds: err.retryAfterSeconds,
           status: err.status,
+          details: err.details,
         });
       }
 

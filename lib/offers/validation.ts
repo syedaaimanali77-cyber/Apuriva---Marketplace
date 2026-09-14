@@ -3,6 +3,9 @@
  *
  * Client-supplied `sentAt`, `expiresAt`, `status` or any duration-of-window field is never read:
  * only the fields below are extracted, so anything else in the body has no effect (AC-7).
+ *
+ * Spec 019 §3 reuses the same term bounds for a revision (`validateOfferTerms`), so a revised offer can
+ * never be looser than an original one.
  */
 import { validationError } from '@/lib/api/errors';
 import type { CreateOfferRequest } from '@/lib/types/offers';
@@ -20,8 +23,7 @@ export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_PATTERN.test(value);
 }
 
-export interface ValidatedOfferInput {
-  requestId: string;
+export interface ValidatedOfferTerms {
   priceAmountMinorUnits: number;
   currencyCode: string;
   includedItems: string[];
@@ -29,14 +31,20 @@ export interface ValidatedOfferInput {
   estimatedDurationMinutes: number | null;
 }
 
-export function validateCreateOfferBody(raw: unknown): ValidatedOfferInput {
-  const body = (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : {}) as Partial<
+export interface ValidatedOfferInput extends ValidatedOfferTerms {
+  requestId: string;
+}
+
+type FieldError = { field: string; message: string };
+
+function asObject(raw: unknown): Partial<Record<keyof CreateOfferRequest, unknown>> {
+  return (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : {}) as Partial<
     Record<keyof CreateOfferRequest, unknown>
   >;
-  const errors: { field: string; message: string }[] = [];
+}
 
-  if (!isUuid(body.requestId)) errors.push({ field: 'requestId', message: 'must be a valid request id' });
-
+/** Collects term errors into `errors` (in field order) and returns the extracted terms. */
+function collectOfferTerms(body: Partial<Record<keyof CreateOfferRequest, unknown>>, errors: FieldError[]): ValidatedOfferTerms {
   const price = body.priceAmountMinorUnits;
   if (!Number.isInteger(price) || (price as number) <= 0 || (price as number) > MAX_PRICE_MINOR_UNITS) {
     errors.push({ field: 'priceAmountMinorUnits', message: `must be a positive integer no greater than ${MAX_PRICE_MINOR_UNITS}` });
@@ -89,14 +97,30 @@ export function validateCreateOfferBody(raw: unknown): ValidatedOfferInput {
     }
   }
 
-  if (errors.length > 0) throw validationError(errors);
-
   return {
-    requestId: body.requestId as string,
     priceAmountMinorUnits: price as number,
     currencyCode: body.currencyCode as string,
     includedItems,
     providerMessage,
     estimatedDurationMinutes,
   };
+}
+
+export function validateCreateOfferBody(raw: unknown): ValidatedOfferInput {
+  const body = asObject(raw);
+  const errors: FieldError[] = [];
+
+  if (!isUuid(body.requestId)) errors.push({ field: 'requestId', message: 'must be a valid request id' });
+  const terms = collectOfferTerms(body, errors);
+
+  if (errors.length > 0) throw validationError(errors);
+  return { requestId: body.requestId as string, ...terms };
+}
+
+/** Spec 019 §3 revision body: spec 018's term bounds, no `requestId` (the source offer fixes it). */
+export function validateOfferTerms(raw: unknown): ValidatedOfferTerms {
+  const errors: FieldError[] = [];
+  const terms = collectOfferTerms(asObject(raw), errors);
+  if (errors.length > 0) throw validationError(errors);
+  return terms;
 }

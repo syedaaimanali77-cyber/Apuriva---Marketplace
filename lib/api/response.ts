@@ -33,10 +33,16 @@ export function apiError(
   code: ApiErrorCode | (string & {}),
   message: string,
   correlationId: string,
-  options?: { errors?: { field: string; message: string }[]; retryAfterSeconds?: number; status?: number },
+  options?: {
+    errors?: { field: string; message: string }[];
+    retryAfterSeconds?: number;
+    status?: number;
+    details?: Record<string, unknown>;
+  },
 ): NextResponse {
   const status = options?.status ?? API_ERROR_CODES[code as ApiErrorCode];
   const body: ApiError = { status, code, message, errors: options?.errors, correlationId };
+  if (options?.details !== undefined) body.details = options.details;
   const res = NextResponse.json(body, { status });
   if (options?.retryAfterSeconds !== undefined) {
     res.headers.set('Retry-After', String(Math.max(0, Math.ceil(options.retryAfterSeconds))));

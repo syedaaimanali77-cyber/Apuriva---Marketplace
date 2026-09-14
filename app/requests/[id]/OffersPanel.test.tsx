@@ -22,6 +22,11 @@ const LIVE: OfferDto = {
   decidedAt: null,
   serverNow: '2026-09-14T10:00:30.000Z',
   version: 1,
+  // Spec 019 additive lineage fields.
+  revisionNumber: 0,
+  previousOfferId: null,
+  previousPriceAmountMinorUnits: null,
+  supersededByOfferId: null,
 };
 
 function json(ok: boolean, body: unknown, status = ok ? 200 : 422) {
@@ -145,5 +150,118 @@ describe('OffersPanel (spec 018 §5)', () => {
     expect(screen.getByText('Offer expired')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
     expect(within(document.body).queryByTestId('offer-countdown')).toBeNull();
+  });
+
+  // ---- Spec 019 -----------------------------------------------------------
+
+  const SECOND_LIVE: OfferDto = { ...LIVE, id: 'offer-2', providerProfileId: 'prov-2', providerBusinessName: 'Bilal Services' };
+  const comparison = (available: boolean) => ({
+    requestId: 'req-1',
+    available,
+    unavailableReason: available ? null : 'fewer_than_two_comparable_offers',
+    offers: [],
+    maxOffers: 3,
+    serverNow: LIVE.serverNow,
+  });
+
+  it('AC-6: links to the comparison only when the server says it is available', async () => {
+    mockFetch(json(true, { data: [LIVE, SECOND_LIVE] }), json(true, { data: comparison(true) }));
+    renderPanel();
+
+    const link = await screen.findByRole('link', { name: 'Compare offers' });
+    expect(link).toHaveAttribute('href', '/requests/req-1/compare');
+  });
+
+  it('AC-6: hides Compare offers when the server says the comparison is unavailable', async () => {
+    mockFetch(json(true, { data: [LIVE, SECOND_LIVE] }), json(true, { data: comparison(false) }));
+    renderPanel();
+
+    await screen.findByText('Ali Plumbing');
+    expect(screen.queryByRole('link', { name: 'Compare offers' })).toBeNull();
+  });
+
+  it('AC-6: does not ask for a comparison when fewer than two offers are live', async () => {
+    const fetchMock = mockFetch(json(true, { data: [LIVE] }));
+    renderPanel();
+
+    await screen.findByText('Ali Plumbing');
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/offers/compare'))).toBe(false);
+    expect(screen.queryByRole('link', { name: 'Compare offers' })).toBeNull();
+  });
+
+  it('AC-5: on OFFER_SUPERSEDED shows the revised-price alert and refetches', async () => {
+    const user = userEvent.setup();
+    const revisedHead: OfferDto = { ...LIVE, id: 'offer-3', previousOfferId: 'offer-1', previousPriceAmountMinorUnits: 320_000, revisionNumber: 1 };
+    const fetchMock = mockFetch(
+      json(true, { data: [LIVE] }),
+      json(false, { code: 'OFFER_SUPERSEDED', message: 'replaced', details: { currentOfferId: 'offer-3' } }, 409),
+      json(true, { data: [{ ...LIVE, status: 'revised' }, revisedHead] }),
+    );
+    renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: 'Accept' }));
+
+    expect(await screen.findByText('This offer was revised — review the new price before accepting.')).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(3));
+  });
+
+  it('AC-5: collapses a superseded row into its chain head, which shows the previous price', async () => {
+    const superseded: OfferDto = { ...LIVE, id: 'old', status: 'revised', providerBusinessName: 'Ali Plumbing' };
+    const head: OfferDto = {
+      ...LIVE,
+      id: 'new',
+      priceAmountMinorUnits: 250_000,
+      previousOfferId: 'old',
+      previousPriceAmountMinorUnits: 320_000,
+      revisionNumber: 1,
+    };
+    mockFetch(json(true, { data: [superseded, head] }));
+    renderPanel();
+
+    await screen.findByText('Ali Plumbing');
+    // Only the head is actionable; the superseded row is not rendered as its own card.
+    expect(screen.getAllByRole('button', { name: 'Accept' })).toHaveLength(1);
+    expect(screen.getAllByText(/Revised from/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Price history' })).toBeInTheDocument();
+  });
+
+  it('AC-3: Request change posts a change request with an Idempotency-Key and confirms it', async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockFetch(
+      json(true, { data: [LIVE] }),
+      json(true, { data: { id: 'msg-1', kind: 'change_request' } }, 201),
+      json(true, { data: [LIVE] }),
+    );
+    renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: 'Request change' }));
+    await user.type(screen.getByLabelText(/What would you like changed/), 'Can you do Sunday?');
+    await user.click(screen.getByRole('button', { name: 'Send change request' }));
+
+    expect(await screen.findByText('The provider can now send you a revised offer.')).toBeInTheDocument();
+    const [url, init] = fetchMock.mock.calls.find(([u]) => String(u).includes('/change-requests'))!;
+    expect(url).toBe('/api/v1/offers/offer-1/change-requests');
+    expect((init as RequestInit).headers).toMatchObject({ 'Idempotency-Key': expect.any(String) });
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ note: 'Can you do Sunday?', proposedPriceAmountMinorUnits: null });
+  });
+
+  it('AC-3: a change request can carry a proposed price, and rejects an unparseable one before sending', async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockFetch(json(true, { data: [LIVE] }), json(true, { data: { id: 'msg-1' } }, 201), json(true, { data: [LIVE] }));
+    renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: 'Request change' }));
+    await user.type(screen.getByLabelText(/What would you like changed/), 'Cheaper please');
+    await user.type(screen.getByLabelText(/Proposed price/), 'abc');
+    await user.click(screen.getByRole('button', { name: 'Send change request' }));
+    expect(await screen.findByText('Enter a price greater than zero, with at most two decimal places.')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/change-requests'))).toBe(false);
+
+    await user.clear(screen.getByLabelText(/Proposed price/));
+    await user.type(screen.getByLabelText(/Proposed price/), '2500');
+    await user.click(screen.getByRole('button', { name: 'Send change request' }));
+
+    const [, init] = fetchMock.mock.calls.find(([u]) => String(u).includes('/change-requests'))!;
+    expect(JSON.parse((init as RequestInit).body as string).proposedPriceAmountMinorUnits).toBe(250_000);
   });
 });

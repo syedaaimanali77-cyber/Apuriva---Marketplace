@@ -367,19 +367,20 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
   {
     method: 'POST',
     path: '/offers/{id}/accept',
-    summary: 'Accept a live offer (server clock strictly before expiresAt); single-accept invariant; requires Idempotency-Key',
+    summary:
+      'Accept a live offer (server clock strictly before expiresAt); single-accept invariant; requires Idempotency-Key; 409 OFFER_SUPERSEDED for a revised offer (spec 019)',
     tags: ['offers'],
   },
   {
     method: 'POST',
     path: '/offers/{id}/decline',
-    summary: "Decline a live offer; request owner only",
+    summary: 'Decline a live offer; request owner only; 409 OFFER_SUPERSEDED for a revised offer (spec 019)',
     tags: ['offers'],
   },
   {
     method: 'POST',
     path: '/offers/{id}/withdraw',
-    summary: "Withdraw the caller's own live offer before it expires; session (provider)",
+    summary: "Withdraw the caller's own live offer before it expires; session (provider); 409 OFFER_SUPERSEDED for a revised offer (spec 019)",
     tags: ['offers'],
   },
   {
@@ -387,5 +388,60 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     path: '/requests/{id}/offers',
     summary: "Every offer on the caller's own request, terminal ones included; session (customer)",
     tags: ['offers'],
+  },
+  // Spec 019 §3 — offer negotiation & comparison.
+  {
+    method: 'GET',
+    path: '/requests/{id}/message-threads',
+    summary: "Pre-selection threads the request's customer may see (providers with an offer or a message); session (customer)",
+    tags: ['negotiation'],
+  },
+  {
+    method: 'GET',
+    path: '/requests/{id}/message-threads/{providerProfileId}/messages',
+    summary: 'Messages in one pre-selection thread; readable after it closes; session (customer, request owner)',
+    tags: ['negotiation'],
+  },
+  {
+    method: 'POST',
+    path: '/requests/{id}/message-threads/{providerProfileId}/messages',
+    summary: 'Customer posts a request-specific message; contact details removed before storage; 5 per sender per thread per 10 min; requires Idempotency-Key',
+    tags: ['negotiation'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/requests/{id}/messages',
+    summary: "The caller's own thread on a request distributed to them; session (provider)",
+    tags: ['negotiation'],
+  },
+  {
+    method: 'POST',
+    path: '/providers/me/requests/{id}/messages',
+    summary: 'Distributed provider posts a request-specific message (before or after offering); contact details removed; requires Idempotency-Key',
+    tags: ['negotiation'],
+  },
+  {
+    method: 'POST',
+    path: '/offers/{id}/change-requests',
+    summary: "Customer requests a change to the provider's current offer; never alters the offer or its timer; requires Idempotency-Key",
+    tags: ['negotiation'],
+  },
+  {
+    method: 'POST',
+    path: '/offers/{id}/revisions',
+    summary: 'Provider sends a revised offer: a NEW offer row with its own database-computed 2-minute window, audited in offer_revisions; requires Idempotency-Key',
+    tags: ['negotiation'],
+  },
+  {
+    method: 'GET',
+    path: '/offers/{id}/revisions',
+    summary: "The revision chain containing an offer; the request's customer or the offer's provider only",
+    tags: ['negotiation'],
+  },
+  {
+    method: 'GET',
+    path: '/requests/{id}/offers/compare',
+    summary: 'Compare 2–3 live offers with Top Match and rule-based reasons; available:false when not comparable; session (customer)',
+    tags: ['negotiation'],
   },
 ];

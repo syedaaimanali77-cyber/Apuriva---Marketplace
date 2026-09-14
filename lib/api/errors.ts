@@ -33,11 +33,18 @@ export class ApiRouteError extends Error {
   readonly errors?: { field: string; message: string }[];
   /** Only set for RATE_LIMITED — seconds until the caller may retry. */
   readonly retryAfterSeconds?: number;
+  /** Optional machine-readable context for a domain code (spec 019: `OFFER_SUPERSEDED.currentOfferId`). */
+  readonly details?: Record<string, unknown>;
 
   constructor(
     code: ApiErrorCode | (string & {}),
     message: string,
-    options?: { errors?: { field: string; message: string }[]; retryAfterSeconds?: number; status?: number },
+    options?: {
+      errors?: { field: string; message: string }[];
+      retryAfterSeconds?: number;
+      status?: number;
+      details?: Record<string, unknown>;
+    },
   ) {
     super(message);
     this.name = 'ApiRouteError';
@@ -45,6 +52,7 @@ export class ApiRouteError extends Error {
     this.status = options?.status ?? API_ERROR_CODES[code as ApiErrorCode];
     this.errors = options?.errors;
     this.retryAfterSeconds = options?.retryAfterSeconds;
+    this.details = options?.details;
   }
 }
 

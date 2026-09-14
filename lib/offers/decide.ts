@@ -6,9 +6,14 @@
  * The expiry check reads `clock_timestamp()` in a statement issued AFTER the lock is held — never
  * `now()`, which is frozen at transaction start: a transaction that waited on a lock past `expires_at`
  * must see the offer as expired.
+ *
+ * Spec 019 §3 "Spec 018 path extensions": a stored `revised` row answers `409 OFFER_SUPERSEDED` with the
+ * current offer id, checked right after the locks and BEFORE the expiry check, so a superseded offer is
+ * never reported as expired and its (immutable) price can never be accepted.
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
+import { offerSupersededError } from '@/lib/negotiation/errors';
 import type { OfferDto } from '@/lib/types/offers';
 import { isUniqueViolation, queryRows, type Executor } from './db';
 import {
@@ -18,6 +23,7 @@ import {
   requestAlreadyClaimedError,
   requestNotActionableError,
 } from './errors';
+import { currentOfferIdFor } from './lineage';
 import { loadOfferDto } from './read';
 import { isUuid } from './validation';
 
@@ -33,6 +39,11 @@ async function isLiveNow(tx: Executor, offerId: string): Promise<boolean> {
     sql`SELECT (status IN ('sent', 'viewed') AND clock_timestamp() < expires_at) AS live FROM offers WHERE id = ${offerId}`,
   );
   return Boolean(row?.live);
+}
+
+/** Spec 019: a superseded row can never be decided. */
+async function rejectIfSuperseded(tx: Executor, offerId: string, offer: LockedOffer): Promise<void> {
+  if (offer.status === 'revised') throw offerSupersededError(await currentOfferIdFor(tx, offerId));
 }
 
 /** Resolves the offer's request for a customer action; 404 for a missing offer or a non-owner. */
@@ -70,6 +81,12 @@ async function recordOfferTransition(tx: Executor, offerId: string, from: string
   `);
 }
 
+function logSupersededRejection(action: string, offerId: string, err: unknown): void {
+  if ((err as { code?: string })?.code === 'OFFER_SUPERSEDED') {
+    console.log(JSON.stringify({ event: 'negotiation.superseded_action_rejected', action, offerId }));
+  }
+}
+
 /** `POST /api/v1/offers/{id}/accept` — requires `Idempotency-Key`. Creates no booking (spec 020). */
 export async function acceptOffer(customerUserId: string, offerId: string, idempotencyKey: string): Promise<OfferDto> {
   const requestId = await customerOfferRequestId(customerUserId, offerId);
@@ -80,6 +97,8 @@ export async function acceptOffer(customerUserId: string, offerId: string, idemp
 
       // Step 3 — idempotent replay of this very accept.
       if (offer.status === 'accepted' && offer.accept_idempotency_key === idempotencyKey) return;
+      // Spec 019 — a revised row's price is never acceptable.
+      await rejectIfSuperseded(tx, offerId, offer);
       // Step 4 — already decided another way.
       if (offer.status === 'accepted' || offer.status === 'declined' || offer.status === 'withdrawn') {
         throw offerAlreadyDecidedError(offer.status);
@@ -110,6 +129,7 @@ export async function acceptOffer(customerUserId: string, offerId: string, idemp
       `);
     });
   } catch (err) {
+    logSupersededRejection('accept', offerId, err);
     // Database backstop: the partial unique index on accepted offers per request.
     if (isUniqueViolation(err, 'offers_request_accepted_uq')) throw requestAlreadyClaimedError();
     throw err;
@@ -122,22 +142,28 @@ export async function acceptOffer(customerUserId: string, offerId: string, idemp
 export async function declineOffer(customerUserId: string, offerId: string): Promise<OfferDto> {
   const requestId = await customerOfferRequestId(customerUserId, offerId);
 
-  await getDb().transaction(async (tx) => {
-    const { requestStatus, offer } = await lockRequestThenOffer(tx, requestId, offerId);
+  try {
+    await getDb().transaction(async (tx) => {
+      const { requestStatus, offer } = await lockRequestThenOffer(tx, requestId, offerId);
 
-    if (offer.status === 'declined') return;
-    if (offer.status === 'accepted' || offer.status === 'withdrawn') throw offerAlreadyDecidedError(offer.status);
-    if (!(await isLiveNow(tx, offerId))) throw offerExpiredError();
-    if (requestStatus !== 'offers_open') {
-      throw requestNotActionableError(`This request is no longer open for responses (status: ${requestStatus}).`);
-    }
+      if (offer.status === 'declined') return;
+      await rejectIfSuperseded(tx, offerId, offer);
+      if (offer.status === 'accepted' || offer.status === 'withdrawn') throw offerAlreadyDecidedError(offer.status);
+      if (!(await isLiveNow(tx, offerId))) throw offerExpiredError();
+      if (requestStatus !== 'offers_open') {
+        throw requestNotActionableError(`This request is no longer open for responses (status: ${requestStatus}).`);
+      }
 
-    await tx.execute(sql`
-      UPDATE offers SET status = 'declined', decided_at = clock_timestamp(), updated_at = clock_timestamp(), version = version + 1
-       WHERE id = ${offerId}
-    `);
-    await recordOfferTransition(tx, offerId, offer.status, 'declined', customerUserId);
-  });
+      await tx.execute(sql`
+        UPDATE offers SET status = 'declined', decided_at = clock_timestamp(), updated_at = clock_timestamp(), version = version + 1
+         WHERE id = ${offerId}
+      `);
+      await recordOfferTransition(tx, offerId, offer.status, 'declined', customerUserId);
+    });
+  } catch (err) {
+    logSupersededRejection('decline', offerId, err);
+    throw err;
+  }
 
   return loadOfferDto(offerId);
 }
@@ -146,24 +172,30 @@ export async function declineOffer(customerUserId: string, offerId: string): Pro
 export async function withdrawOffer(providerUserId: string, providerProfileId: string, offerId: string): Promise<OfferDto> {
   if (!isUuid(offerId)) throw offerNotFoundError();
 
-  await getDb().transaction(async (tx) => {
-    const [offer] = await queryRows<LockedOffer>(
-      tx,
-      sql`SELECT status, accept_idempotency_key FROM offers
-           WHERE id = ${offerId} AND provider_profile_id = ${providerProfileId} AND status <> 'draft' FOR UPDATE`,
-    );
-    if (!offer) throw offerNotFoundError();
+  try {
+    await getDb().transaction(async (tx) => {
+      const [offer] = await queryRows<LockedOffer>(
+        tx,
+        sql`SELECT status, accept_idempotency_key FROM offers
+             WHERE id = ${offerId} AND provider_profile_id = ${providerProfileId} AND status <> 'draft' FOR UPDATE`,
+      );
+      if (!offer) throw offerNotFoundError();
 
-    if (offer.status === 'withdrawn') return;
-    if (offer.status === 'accepted' || offer.status === 'declined') throw offerAlreadyDecidedError(offer.status);
-    if (!(await isLiveNow(tx, offerId))) throw offerExpiredError();
+      if (offer.status === 'withdrawn') return;
+      await rejectIfSuperseded(tx, offerId, offer);
+      if (offer.status === 'accepted' || offer.status === 'declined') throw offerAlreadyDecidedError(offer.status);
+      if (!(await isLiveNow(tx, offerId))) throw offerExpiredError();
 
-    await tx.execute(sql`
-      UPDATE offers SET status = 'withdrawn', decided_at = clock_timestamp(), updated_at = clock_timestamp(), version = version + 1
-       WHERE id = ${offerId}
-    `);
-    await recordOfferTransition(tx, offerId, offer.status, 'withdrawn', providerUserId);
-  });
+      await tx.execute(sql`
+        UPDATE offers SET status = 'withdrawn', decided_at = clock_timestamp(), updated_at = clock_timestamp(), version = version + 1
+         WHERE id = ${offerId}
+      `);
+      await recordOfferTransition(tx, offerId, offer.status, 'withdrawn', providerUserId);
+    });
+  } catch (err) {
+    logSupersededRejection('withdraw', offerId, err);
+    throw err;
+  }
 
   return loadOfferDto(offerId);
 }

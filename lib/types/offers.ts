@@ -49,6 +49,14 @@ export interface OfferDto {
    *  drift. Never used by the server for any decision. */
   serverNow: string;
   version: number;
+  /** Spec 019 §3 lineage (additive). 0 for an offer not created by a revision. */
+  revisionNumber: number;
+  /** Spec 019: the row this offer revised, if any. */
+  previousOfferId: string | null;
+  /** Spec 019: the revised row's price, if this offer is a revision. */
+  previousPriceAmountMinorUnits: number | null;
+  /** Spec 019: set when this row is `revised` — the row that superseded it. */
+  supersededByOfferId: string | null;
 }
 
 /** Spec 018 §3 "Provider inbox integration" — the caller's own most recent offer on a request. */

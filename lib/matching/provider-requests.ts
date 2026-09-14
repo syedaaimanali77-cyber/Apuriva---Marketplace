@@ -30,8 +30,9 @@ import type { StructuredAddress } from '@/lib/types/location';
 
 const METERS_PER_KM = 1000;
 
-/** Rounded to one decimal place: a provider sees roughly how far, never an exact position. */
-function approxKm(meters: number): number {
+/** Rounded to one decimal place: a provider sees roughly how far, never an exact position.
+ *  Exported for spec 019's comparison, which shows the customer the same coarse distance. */
+export function approxKm(meters: number): number {
   return Math.round((meters / METERS_PER_KM) * 10) / 10;
 }
 

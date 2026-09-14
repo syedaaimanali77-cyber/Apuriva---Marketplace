@@ -128,6 +128,14 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
          AND provider_profile_id IN (SELECT id FROM provider_profiles WHERE user_id = ${id})
     `);
 
+    // Spec 019 §4 "Retention and privacy": pre-selection thread rows are retained (every FK is
+    // `restrict`); only the bodies THIS user authored are redacted. Proposed prices, kinds, timestamps,
+    // every offer_revisions row and the counterparty's own messages stay.
+    await db.execute(sql`
+      UPDATE offer_messages SET body = ${REDACTED_DESCRIPTION}, updated_at = clock_timestamp()
+       WHERE sender_user_id = ${id} AND body <> ${REDACTED_DESCRIPTION}
+    `);
+
     // Spec 015 §4: redact the request's free-text PII, keeping the row itself. `not null` on the
     // column means a sentinel rather than NULL; every read path treats it as ordinary text, so a
     // redacted description can never break the status view.

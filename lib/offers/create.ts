@@ -4,12 +4,17 @@
  * `sent_at` and `expires_at` are written from ONE `clock_timestamp()` read in ONE statement, so the
  * database CHECK `expires_at = sent_at + interval '2 minutes'` always holds and no application or
  * client clock is involved. Nothing in the request body can influence either value.
+ *
+ * Spec 019 §3: free text (`providerMessage`, `includedItems`) is contact-redacted before storage, and the
+ * insert + `draft -> sent` step is shared with revisions (`insertSentOffer`) rather than duplicated.
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { idempotencyFingerprint } from '@/lib/api/idempotency';
 import { validationError } from '@/lib/api/errors';
 import { actionForPricingModel } from '@/lib/matching/actions';
+import { redactItems, redactOptional } from '@/lib/negotiation/contact-redaction';
+import { logContactRedaction } from '@/lib/negotiation/redaction-log';
 import type { OfferDto } from '@/lib/types/offers';
 import { isUniqueViolation, queryRows, type Executor } from './db';
 import {
@@ -22,11 +27,12 @@ import {
 import { expireStaleOffersFor } from './expiry';
 import { loadOfferDto } from './read';
 import { OFFER_WINDOW_SQL } from './timer';
-import { validateCreateOfferBody } from './validation';
+import { validateCreateOfferBody, type ValidatedOfferTerms } from './validation';
 
-type IdempotencyHit = { kind: 'replay'; offerId: string } | { kind: 'conflict' } | null;
+export type IdempotencyHit = { kind: 'replay'; offerId: string } | { kind: 'conflict' } | null;
 
-async function findByIdempotencyKey(
+/** Offer idempotency keys are scoped per provider (`offers_provider_idempotency_key_uq`). */
+export async function findOfferByIdempotencyKey(
   db: Executor,
   providerProfileId: string,
   idempotencyKey: string,
@@ -41,6 +47,58 @@ async function findByIdempotencyKey(
   return row.idempotency_fingerprint === fingerprint ? { kind: 'replay', offerId: row.id } : { kind: 'conflict' };
 }
 
+/** Spec 019 §3: redacts an offer's free text before storage. Returns which fields changed. */
+export function redactOfferTerms<T extends ValidatedOfferTerms>(terms: T): { terms: T; redactedFields: ('providerMessage' | 'includedItems')[] } {
+  const message = redactOptional(terms.providerMessage);
+  const items = redactItems(terms.includedItems);
+  const redactedFields: ('providerMessage' | 'includedItems')[] = [];
+  if (message.count > 0) redactedFields.push('providerMessage');
+  if (items.count > 0) redactedFields.push('includedItems');
+  return { terms: { ...terms, providerMessage: message.text, includedItems: items.items }, redactedFields };
+}
+
+/**
+ * Inserts an offer as `draft`, then `draft -> sent` exercising the status trigger, with `sent_at` and
+ * `expires_at` from ONE `clock_timestamp()` read, plus both history rows. Must run inside a transaction
+ * that already holds the request lock. Returns the new offer id.
+ */
+export async function insertSentOffer(
+  tx: Executor,
+  args: {
+    requestId: string;
+    providerProfileId: string;
+    providerUserId: string;
+    terms: ValidatedOfferTerms;
+    idempotencyKey: string;
+    fingerprint: string;
+  },
+): Promise<string> {
+  const { terms } = args;
+  const [inserted] = await queryRows<{ id: string }>(
+    tx,
+    sql`INSERT INTO offers
+          (request_id, provider_profile_id, status, price_amount_minor_units, price_currency_code,
+           included_items, provider_message, estimated_duration_minutes, idempotency_key, idempotency_fingerprint)
+        VALUES (${args.requestId}, ${args.providerProfileId}, 'draft', ${terms.priceAmountMinorUnits}, ${terms.currencyCode},
+                ${JSON.stringify(terms.includedItems)}::jsonb, ${terms.providerMessage}, ${terms.estimatedDurationMinutes},
+                ${args.idempotencyKey}, ${args.fingerprint})
+        RETURNING id`,
+  );
+  const offerId = inserted!.id;
+
+  await tx.execute(sql`
+    UPDATE offers o
+       SET status = 'sent', sent_at = c.t, expires_at = c.t + ${OFFER_WINDOW_SQL}, updated_at = c.t
+      FROM (SELECT clock_timestamp() AS t) c
+     WHERE o.id = ${offerId}
+  `);
+  await tx.execute(sql`
+    INSERT INTO offers_status_history (offer_id, from_status, to_status, actor_user_id)
+    VALUES (${offerId}, NULL, 'draft', ${args.providerUserId}), (${offerId}, 'draft', 'sent', ${args.providerUserId})
+  `);
+  return offerId;
+}
+
 export async function createOffer(
   providerUserId: string,
   providerProfileId: string,
@@ -48,13 +106,15 @@ export async function createOffer(
   body: unknown,
 ): Promise<{ offer: OfferDto; replayed: boolean }> {
   // Rule 1 — idempotency, before any other rule, so a retry replays even if the request has moved on.
+  // The fingerprint covers the RAW body, so redaction never breaks a replay.
   const fingerprint = idempotencyFingerprint(body);
-  const earlyHit = await findByIdempotencyKey(getDb(), providerProfileId, idempotencyKey, fingerprint);
+  const earlyHit = await findOfferByIdempotencyKey(getDb(), providerProfileId, idempotencyKey, fingerprint);
   if (earlyHit?.kind === 'conflict') throw idempotencyKeyConflictError();
   if (earlyHit?.kind === 'replay') return { offer: await loadOfferDto(earlyHit.offerId), replayed: true };
 
-  // Rule 2 — body validation (only whitelisted fields are ever read).
-  const input = validateCreateOfferBody(body);
+  // Rule 2 — body validation (only whitelisted fields are ever read), then spec 019 contact redaction.
+  const validated = validateCreateOfferBody(body);
+  const { terms: input, redactedFields } = redactOfferTerms(validated);
 
   let outcome: { offerId: string; replayed: boolean };
   try {
@@ -69,7 +129,7 @@ export async function createOffer(
       if (!request) throw notDistributedToProviderError();
 
       // A concurrent retry with the same key is decided here, under the lock.
-      const lockedHit = await findByIdempotencyKey(tx, providerProfileId, idempotencyKey, fingerprint);
+      const lockedHit = await findOfferByIdempotencyKey(tx, providerProfileId, idempotencyKey, fingerprint);
       if (lockedHit?.kind === 'conflict') throw idempotencyKeyConflictError();
       if (lockedHit?.kind === 'replay') return { offerId: lockedHit.offerId, replayed: true };
 
@@ -105,7 +165,7 @@ export async function createOffer(
         throw validationError([{ field: 'currencyCode', message: `must be ${request.budget_currency}, the request budget's currency` }]);
       }
 
-      // Rule 9 — a customer "no" is final for this spec (re-negotiation is spec 019's).
+      // Rule 9 — a customer "no" is final (spec 018 D-3; spec 019 negotiates via Request change).
       const [declined] = await queryRows<{ id: string }>(
         tx,
         sql`SELECT id FROM offers WHERE request_id = ${input.requestId}
@@ -125,28 +185,14 @@ export async function createOffer(
       if (live) throw liveOfferExistsError();
 
       // Rule 12 — insert as `draft`, then `draft -> sent` exercising the trigger, one clock read.
-      const [inserted] = await queryRows<{ id: string }>(
-        tx,
-        sql`INSERT INTO offers
-              (request_id, provider_profile_id, status, price_amount_minor_units, price_currency_code,
-               included_items, provider_message, estimated_duration_minutes, idempotency_key, idempotency_fingerprint)
-            VALUES (${input.requestId}, ${providerProfileId}, 'draft', ${input.priceAmountMinorUnits}, ${input.currencyCode},
-                    ${JSON.stringify(input.includedItems)}::jsonb, ${input.providerMessage}, ${input.estimatedDurationMinutes},
-                    ${idempotencyKey}, ${fingerprint})
-            RETURNING id`,
-      );
-      const offerId = inserted!.id;
-
-      await tx.execute(sql`
-        UPDATE offers o
-           SET status = 'sent', sent_at = c.t, expires_at = c.t + ${OFFER_WINDOW_SQL}, updated_at = c.t
-          FROM (SELECT clock_timestamp() AS t) c
-         WHERE o.id = ${offerId}
-      `);
-      await tx.execute(sql`
-        INSERT INTO offers_status_history (offer_id, from_status, to_status, actor_user_id)
-        VALUES (${offerId}, NULL, 'draft', ${providerUserId}), (${offerId}, 'draft', 'sent', ${providerUserId})
-      `);
+      const offerId = await insertSentOffer(tx, {
+        requestId: input.requestId,
+        providerProfileId,
+        providerUserId,
+        terms: input,
+        idempotencyKey,
+        fingerprint,
+      });
 
       // Spec 017 reserved `offer_sent` for this spec.
       if (match.provider_response === 'none') {
@@ -174,7 +220,7 @@ export async function createOffer(
   } catch (err) {
     // Database backstops for races the locks already prevent in practice.
     if (isUniqueViolation(err, 'offers_provider_idempotency_key_uq')) {
-      const hit = await findByIdempotencyKey(getDb(), providerProfileId, idempotencyKey, fingerprint);
+      const hit = await findOfferByIdempotencyKey(getDb(), providerProfileId, idempotencyKey, fingerprint);
       if (hit?.kind === 'replay') return { offer: await loadOfferDto(hit.offerId), replayed: true };
       throw idempotencyKeyConflictError();
     }
@@ -182,5 +228,8 @@ export async function createOffer(
     throw err;
   }
 
+  if (!outcome.replayed) {
+    for (const field of redactedFields) await logContactRedaction(providerUserId, input.requestId, field);
+  }
   return { offer: await loadOfferDto(outcome.offerId), replayed: outcome.replayed };
 }

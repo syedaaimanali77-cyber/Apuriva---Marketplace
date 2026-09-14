@@ -8,6 +8,8 @@ import {
   fileAssets,
   messages,
   notificationPreferences,
+  offerMessages,
+  offerRevisions,
   offers,
   providerAvailabilities,
   providerAvailabilityNotificationRequests,
@@ -108,6 +110,36 @@ export interface DataExportPayload {
   offers: {
     asCustomer: ExportedOffer[];
     asProvider: ExportedOffer[];
+  };
+  /**
+   * Spec 019 §4 "Retention and privacy": pre-selection threads the caller took part in (as the request's
+   * customer or as the thread's provider — counterparty messages included, since they were sent to the
+   * caller) and revisions on the caller's requests / by the caller's provider profile. Explicit column
+   * allowlists: never `sender_user_id`/`actor_user_id`, idempotency keys or fingerprints, and a provider
+   * never exports another provider's thread.
+   */
+  negotiation: {
+    messages: Array<{
+      id: string;
+      requestId: string;
+      providerProfileId: string;
+      offerId: string | null;
+      kind: string;
+      senderRole: string;
+      body: string;
+      contactRedacted: boolean;
+      proposedPrice: { amountMinorUnits: number; currencyCode: string } | null;
+      createdAt: string;
+    }>;
+    revisions: Array<{
+      id: string;
+      previousOfferId: string;
+      offerId: string;
+      revisionNumber: number;
+      previousPrice: { amountMinorUnits: number; currencyCode: string };
+      newPrice: { amountMinorUnits: number; currencyCode: string };
+      createdAt: string;
+    }>;
   };
   receipts: {
     payments: Array<{ id: string; bookingId: string; status: string; createdAt: string }>;
@@ -319,6 +351,56 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
   });
 
+  // Spec 019 §4: threads and revisions, ownership-scoped through the same profile joins as `offers`.
+  const messageScopes = [
+    ...(customerProfile ? [eq(requests.customerProfileId, customerProfile.id)] : []),
+    ...(providerProfile ? [eq(offerMessages.providerProfileId, providerProfile.id)] : []),
+  ];
+  const negotiationMessageRows =
+    messageScopes.length > 0
+      ? await db
+          .select({
+            id: offerMessages.id,
+            requestId: offerMessages.requestId,
+            providerProfileId: offerMessages.providerProfileId,
+            offerId: offerMessages.offerId,
+            kind: offerMessages.kind,
+            senderRole: offerMessages.senderRole,
+            body: offerMessages.body,
+            contactRedacted: offerMessages.contactRedacted,
+            proposedAmount: offerMessages.proposedPriceAmountMinorUnits,
+            proposedCurrency: offerMessages.proposedPriceCurrencyCode,
+            createdAt: offerMessages.createdAt,
+          })
+          .from(offerMessages)
+          .innerJoin(requests, eq(requests.id, offerMessages.requestId))
+          .where(or(...messageScopes))
+          .orderBy(offerMessages.createdAt, offerMessages.id)
+      : [];
+  const revisionScopes = [
+    ...(customerProfile ? [eq(requests.customerProfileId, customerProfile.id)] : []),
+    ...(providerProfile ? [eq(offerRevisions.providerProfileId, providerProfile.id)] : []),
+  ];
+  const negotiationRevisionRows =
+    revisionScopes.length > 0
+      ? await db
+          .select({
+            id: offerRevisions.id,
+            previousOfferId: offerRevisions.offerId,
+            offerId: offerRevisions.newOfferId,
+            revisionNumber: offerRevisions.revisionNumber,
+            previousAmount: offerRevisions.previousPriceAmountMinorUnits,
+            previousCurrency: offerRevisions.previousPriceCurrencyCode,
+            newAmount: offerRevisions.newPriceAmountMinorUnits,
+            newCurrency: offerRevisions.newPriceCurrencyCode,
+            createdAt: offerRevisions.createdAt,
+          })
+          .from(offerRevisions)
+          .innerJoin(requests, eq(requests.id, offerRevisions.requestId))
+          .where(or(...revisionScopes))
+          .orderBy(offerRevisions.createdAt, offerRevisions.id)
+      : [];
+
   const availabilityNotificationRows = customerProfile
     ? await db
         .select({
@@ -386,6 +468,19 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     offers: {
       asCustomer: offersAsCustomerRows.map(toExportedOffer),
       asProvider: offersAsProviderRows.map(toExportedOffer),
+    },
+    negotiation: {
+      messages: negotiationMessageRows.map(({ proposedAmount, proposedCurrency, createdAt, ...row }) => ({
+        ...row,
+        proposedPrice: proposedAmount !== null && proposedCurrency !== null ? { amountMinorUnits: proposedAmount, currencyCode: proposedCurrency } : null,
+        createdAt: createdAt.toISOString(),
+      })),
+      revisions: negotiationRevisionRows.map(({ previousAmount, previousCurrency, newAmount, newCurrency, createdAt, ...row }) => ({
+        ...row,
+        previousPrice: { amountMinorUnits: previousAmount, currencyCode: previousCurrency },
+        newPrice: { amountMinorUnits: newAmount, currencyCode: newCurrency },
+        createdAt: createdAt.toISOString(),
+      })),
     },
     receipts: {
       payments: paymentRows.map((p) => ({ ...p, createdAt: p.createdAt.toISOString() })),

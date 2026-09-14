@@ -259,15 +259,15 @@ describe.skipIf(!dbReachable)('lib/offers/create (spec 018 AC-5, AC-7, AC-9, int
       ).rejects.toThrow();
     });
 
-    it('the trigger rejects transitions this spec does not seed: into revised, and out of expired/accepted', async () => {
+    it('the trigger rejects unseeded transitions: into revised from a non-live state, and out of expired/accepted', async () => {
       const { providers, requestId } = await seedOfferScenario();
       const offer = await sendOffer(providers[0]!, requestId);
       // Drizzle wraps the driver error; the trigger's own message is on `cause`.
       const triggerRejection = { cause: expect.objectContaining({ message: expect.stringMatching(/Invalid offers status transition/) }) };
 
-      await expect(getDb().execute(sql`UPDATE offers SET status = 'revised' WHERE id = ${offer.id}`)).rejects.toMatchObject(triggerRejection);
-
       await getDb().execute(sql`UPDATE offers SET status = 'expired' WHERE id = ${offer.id}`);
+      // Spec 019 seeds only `sent|viewed -> revised`; an expired row can never become revised.
+      await expect(getDb().execute(sql`UPDATE offers SET status = 'revised' WHERE id = ${offer.id}`)).rejects.toMatchObject(triggerRejection);
       await expect(
         getDb().execute(sql`UPDATE offers SET status = 'accepted', decided_at = clock_timestamp(), accept_idempotency_key = 'k' WHERE id = ${offer.id}`),
       ).rejects.toMatchObject(triggerRejection);

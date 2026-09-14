@@ -22,6 +22,11 @@ import {
   seedWeeklyHours,
 } from '@/lib/matching/matching-test-support';
 import { seedOfferScenario, sendOffer } from '@/lib/offers/offers-test-support';
+import { createChangeRequest } from '@/lib/negotiation/change-requests';
+import { sendCustomerMessage, sendProviderMessage } from '@/lib/negotiation/messages';
+import { reviseOffer } from '@/lib/negotiation/revise';
+import { reviseBody, seedOffersFromEachProvider } from '@/lib/negotiation/negotiation-test-support';
+import { randomUUID } from 'node:crypto';
 
 const dbReachable = await isDatabaseReachable();
 
@@ -238,5 +243,60 @@ describe.skipIf(!dbReachable)('lib/privacy/export (spec 008 AC-3, integration)',
     const userId = await seedUser();
     const payload = await generateExportPayload(userId);
     expect(payload.matching).toEqual({ asCustomer: [], asProvider: [] });
+  });
+
+  // Spec 019 §4 "Retention and privacy" / AC-12 — pre-selection threads and revisions.
+  it('negotiation section includes own threads and revisions with no idempotency data or user ids', async () => {
+    const { customer, providers, requestId, offerIds } = await seedOffersFromEachProvider(2);
+    const provider = providers[0]!;
+    await sendCustomerMessage(customer.userId, requestId, provider.providerProfileId, randomUUID(), { body: 'Is the AC on the second floor?' });
+    await sendProviderMessage(provider.userId, provider.providerProfileId, requestId, randomUUID(), { body: 'Second floor is fine.' });
+    await createChangeRequest(customer.userId, offerIds[0]!, randomUUID(), { note: 'Cheaper please', proposedPriceAmountMinorUnits: 250_000 });
+    await reviseOffer(provider.userId, provider.providerProfileId, offerIds[0]!, randomUUID(), reviseBody({ priceAmountMinorUnits: 250_000 }));
+
+    const customerPayload = await generateExportPayload(customer.userId);
+    // The customer took part in the thread, so both sides' messages are theirs to export.
+    expect(customerPayload.negotiation.messages).toHaveLength(3);
+    expect(customerPayload.negotiation.messages.map((m) => m.senderRole).sort()).toEqual(['customer', 'customer', 'provider']);
+    expect(customerPayload.negotiation.revisions).toHaveLength(1);
+    expect(customerPayload.negotiation.revisions[0]).toMatchObject({
+      previousOfferId: offerIds[0],
+      revisionNumber: 1,
+      previousPrice: { amountMinorUnits: 300_000, currencyCode: 'PKR' },
+      newPrice: { amountMinorUnits: 250_000, currencyCode: 'PKR' },
+    });
+
+    const messageKeys = Object.keys(customerPayload.negotiation.messages[0]!).sort();
+    expect(messageKeys).toEqual(
+      ['body', 'contactRedacted', 'createdAt', 'id', 'kind', 'offerId', 'proposedPrice', 'providerProfileId', 'requestId', 'senderRole'].sort(),
+    );
+    expect(Object.keys(customerPayload.negotiation.revisions[0]!).sort()).toEqual(
+      ['createdAt', 'id', 'newPrice', 'offerId', 'previousOfferId', 'previousPrice', 'revisionNumber'].sort(),
+    );
+    const serialized = JSON.stringify(customerPayload.negotiation);
+    expect(serialized).not.toMatch(/idempotency|fingerprint|senderUserId|actorUserId/i);
+    expect(serialized).not.toContain(customer.userId);
+    expect(serialized).not.toContain(provider.userId);
+  });
+
+  it('a provider never exports another provider’s thread', async () => {
+    const { customer, providers, requestId } = await seedOffersFromEachProvider(2);
+    const [mine, theirs] = providers;
+    await sendCustomerMessage(customer.userId, requestId, mine!.providerProfileId, randomUUID(), { body: 'To the first provider' });
+    await sendCustomerMessage(customer.userId, requestId, theirs!.providerProfileId, randomUUID(), { body: 'To the second provider' });
+
+    const providerPayload = await generateExportPayload(mine!.userId);
+    expect(providerPayload.negotiation.messages.map((m) => m.body)).toEqual(['To the first provider']);
+    expect(providerPayload.negotiation.messages.every((m) => m.providerProfileId === mine!.providerProfileId)).toBe(true);
+
+    // The customer, who is a party to both threads, exports both.
+    const customerPayload = await generateExportPayload(customer.userId);
+    expect(customerPayload.negotiation.messages).toHaveLength(2);
+  });
+
+  it('a user with no negotiation history exports empty arrays, not an error', async () => {
+    const userId = await seedUser();
+    const payload = await generateExportPayload(userId);
+    expect(payload.negotiation).toEqual({ messages: [], revisions: [] });
   });
 });

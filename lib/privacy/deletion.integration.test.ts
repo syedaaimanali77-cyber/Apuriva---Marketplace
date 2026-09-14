@@ -5,6 +5,10 @@ import { getDb, getPool } from '@/lib/db';
 import { offers, users } from '@/lib/db/schema';
 import { isDatabaseReachable } from '@/lib/db/test-support';
 import { seedOfferScenario, sendOffer } from '@/lib/offers/offers-test-support';
+import { createChangeRequest } from '@/lib/negotiation/change-requests';
+import { sendCustomerMessage, sendProviderMessage } from '@/lib/negotiation/messages';
+import { reviseOffer } from '@/lib/negotiation/revise';
+import { messageRows, reviseBody, revisionRows, seedOffersFromEachProvider } from '@/lib/negotiation/negotiation-test-support';
 import { cancelDeletion, getGracePeriodDays, REDACTED_DESCRIPTION, requestDeletion, sweepDeletions } from './deletion';
 import { seedBooking, seedUser } from './test-support';
 
@@ -153,5 +157,35 @@ describe.skipIf(!dbReachable)('lib/privacy/deletion (spec 008 AC-4, integration)
     expect(row!.priceCurrencyCode).toBe('PKR');
     expect(row!.sentAt).not.toBeNull();
     expect(row!.expiresAt).not.toBeNull();
+  });
+
+  // Spec 019 §4 "Retention and privacy" / AC-12.
+  it("spec 019 §4: redacts only the deleted user's message bodies and keeps revisions and counterparty messages", async () => {
+    const { customer, providers, requestId, offerIds } = await seedOffersFromEachProvider(1);
+    const provider = providers[0]!;
+    await sendCustomerMessage(customer.userId, requestId, provider.providerProfileId, randomUUID(), { body: 'Customer question' });
+    await sendProviderMessage(provider.userId, provider.providerProfileId, requestId, randomUUID(), { body: 'Provider answer' });
+    await createChangeRequest(customer.userId, offerIds[0]!, randomUUID(), { note: 'Cheaper please', proposedPriceAmountMinorUnits: 250_000 });
+    await reviseOffer(provider.userId, provider.providerProfileId, offerIds[0]!, randomUUID(), reviseBody({ priceAmountMinorUnits: 250_000 }));
+
+    await getDb()
+      .update(users)
+      .set({ lifecycleStatus: 'deletion_pending', deletionGraceEndsAt: new Date(Date.now() - 1000) })
+      .where(eq(users.id, customer.userId));
+    await sweepDeletions();
+
+    const rows = await messageRows(requestId, provider.providerProfileId);
+    const byRole = Object.fromEntries(rows.map((row) => [`${row.sender_role}:${row.kind}`, row]));
+    // The deleted customer's own bodies are redacted; the provider's message is untouched.
+    expect(byRole['customer:message']!.body).toBe(REDACTED_DESCRIPTION);
+    expect(byRole['customer:change_request']!.body).toBe(REDACTED_DESCRIPTION);
+    expect(byRole['provider:message']!.body).toBe('Provider answer');
+    // The commercial record survives: proposed price, kinds and timestamps stay.
+    expect(byRole['customer:change_request']!.proposed_price_amount_minor_units).toBe(250_000);
+    expect(rows).toHaveLength(3);
+
+    const revisions = await revisionRows(requestId);
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]).toMatchObject({ previous_price_amount_minor_units: 300_000, new_price_amount_minor_units: 250_000 });
   });
 });

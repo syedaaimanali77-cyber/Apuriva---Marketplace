@@ -19,6 +19,7 @@ import { isCancellable } from '@/lib/types/requests';
 import { apiFetch, mutateHeaders } from '../api-client';
 import styles from '../requests.module.css';
 import { OffersPanel } from './OffersPanel';
+import { RequestThreadsPanel } from './MessageThread';
 
 type PageStatus = 'loading' | 'error' | 'ready';
 
@@ -189,6 +190,9 @@ export default function RequestStatusPage() {
           onRequestChanged={refreshRequest}
         />
       ) : null}
+
+      {/* Spec 019 §5: pre-selection threads (only providers who offered or asked). */}
+      {request.status !== 'draft' ? <RequestThreadsPanel requestId={request.id} /> : null}
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>What you asked for</h2>

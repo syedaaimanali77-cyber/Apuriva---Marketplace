@@ -1133,6 +1133,18 @@ export const offers = pgTable(
   ],
 );
 
+/** Spec 019 §4 — the most revisions a provider may make on one request. */
+export const MAX_REVISIONS_PER_REQUEST_PROVIDER = 5;
+
+const revisionPreviousPrice = moneyColumns('previous_price');
+const revisionNewPrice = moneyColumns('new_price');
+
+/**
+ * Spec 019 §4 — extends spec 003's baseline skeleton. One row per revision: `offer_id` is the
+ * superseded SOURCE offer (the baseline column), `new_offer_id` the row the revision created. Rows are
+ * append-only (trigger `offer_revisions_append_only_trg`, migration 0015) — they are the audit record
+ * behind every price change and behind spec 020's accepted price.
+ */
 export const offerRevisions = pgTable(
   'offer_revisions',
   {
@@ -1140,24 +1152,103 @@ export const offerRevisions = pgTable(
     offerId: uuid('offer_id')
       .notNull()
       .references(() => offers.id, { onDelete: 'restrict' }),
+    newOfferId: uuid('new_offer_id')
+      .notNull()
+      .references(() => offers.id, { onDelete: 'restrict' }),
+    requestId: uuid('request_id')
+      .notNull()
+      .references(() => requests.id, { onDelete: 'restrict' }),
+    providerProfileId: uuid('provider_profile_id')
+      .notNull()
+      .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    revisionNumber: integer('revision_number').notNull(),
+    previousPriceAmountMinorUnits: revisionPreviousPrice.previous_priceAmountMinorUnits.notNull(),
+    previousPriceCurrencyCode: revisionPreviousPrice.previous_priceCurrencyCode.notNull(),
+    newPriceAmountMinorUnits: revisionNewPrice.new_priceAmountMinorUnits.notNull(),
+    newPriceCurrencyCode: revisionNewPrice.new_priceCurrencyCode.notNull(),
+    actorUserId: uuid('actor_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    changeRequestMessageId: uuid('change_request_message_id').references((): AnyPgColumn => offerMessages.id, {
+      onDelete: 'restrict',
+    }),
   },
-  (t) => [index('offer_revisions_offer_id_idx').on(t.offerId)],
+  (t) => [
+    index('offer_revisions_offer_id_idx').on(t.offerId),
+    // A row is revised at most once — no forked chains.
+    uniqueIndex('offer_revisions_offer_id_uq').on(t.offerId),
+    uniqueIndex('offer_revisions_new_offer_id_uq').on(t.newOfferId),
+    index('offer_revisions_request_id_idx').on(t.requestId),
+    index('offer_revisions_provider_profile_id_idx').on(t.providerProfileId),
+    index('offer_revisions_actor_user_id_idx').on(t.actorUserId),
+    index('offer_revisions_change_request_message_id_idx').on(t.changeRequestMessageId),
+    uniqueIndex('offer_revisions_request_provider_number_uq').on(t.requestId, t.providerProfileId, t.revisionNumber),
+    check('offer_revisions_number_ck', sql`${t.revisionNumber} between 1 and 5`),
+    check('offer_revisions_distinct_offers_ck', sql`${t.offerId} <> ${t.newOfferId}`),
+    ...moneyPairChecks('offer_revisions', 'previous_price'),
+    ...moneyPairChecks('offer_revisions', 'new_price'),
+    check('offer_revisions_prices_positive_ck', sql`${t.previousPriceAmountMinorUnits} > 0 and ${t.newPriceAmountMinorUnits} > 0`),
+    check('offer_revisions_same_currency_ck', sql`${t.previousPriceCurrencyCode} = ${t.newPriceCurrencyCode}`),
+  ],
 );
 
+/** Spec 019 §3 — who wrote a pre-selection thread row, and what kind of row it is. */
+export const NEGOTIATION_SENDER_ROLES = ['customer', 'provider'] as const;
+export const OFFER_MESSAGE_KINDS = ['message', 'change_request'] as const;
+
+const proposedPrice = moneyColumns('proposed_price');
+
+/**
+ * Spec 019 §4 — extends spec 003's baseline skeleton into the pre-selection thread. A thread is the
+ * (request, provider) pair; `offer_id` is set only for a `change_request`. `body` is always stored
+ * ALREADY REDACTED (lib/negotiation/contact-redaction.ts) — the unredacted text is never persisted.
+ */
 export const offerMessages = pgTable(
   'offer_messages',
   {
     ...baseColumns(),
-    offerId: uuid('offer_id')
-      .notNull()
-      .references(() => offers.id, { onDelete: 'restrict' }),
+    offerId: uuid('offer_id').references(() => offers.id, { onDelete: 'restrict' }),
     senderUserId: uuid('sender_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    requestId: uuid('request_id')
+      .notNull()
+      .references(() => requests.id, { onDelete: 'restrict' }),
+    providerProfileId: uuid('provider_profile_id')
+      .notNull()
+      .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    senderRole: text('sender_role', { enum: NEGOTIATION_SENDER_ROLES }).notNull(),
+    kind: text('kind', { enum: OFFER_MESSAGE_KINDS }).notNull(),
+    body: text('body').notNull(),
+    contactRedacted: boolean('contact_redacted').notNull().default(false),
+    proposedPriceAmountMinorUnits: proposedPrice.proposed_priceAmountMinorUnits,
+    proposedPriceCurrencyCode: proposedPrice.proposed_priceCurrencyCode,
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('offer_messages_offer_id_idx').on(t.offerId),
     index('offer_messages_sender_user_id_idx').on(t.senderUserId),
+    index('offer_messages_request_id_idx').on(t.requestId),
+    index('offer_messages_provider_profile_id_idx').on(t.providerProfileId),
+    // Thread reads and the per-sender anti-spam count (spec 019 §3).
+    index('offer_messages_thread_created_at_idx').on(t.requestId, t.providerProfileId, t.createdAt),
+    uniqueIndex('offer_messages_sender_idempotency_key_uq').on(t.senderUserId, t.idempotencyKey),
+    uniqueIndex('offer_messages_change_request_per_offer_uq').on(t.offerId).where(sql`${t.kind} = 'change_request'`),
+    check('offer_messages_sender_role_ck', sql`${t.senderRole} in ('customer','provider')`),
+    check('offer_messages_kind_ck', sql`${t.kind} in ('message','change_request')`),
+    check('offer_messages_body_length_ck', sql`char_length(${t.body}) between 1 and 1100`),
+    check('offer_messages_change_request_offer_ck', sql`(${t.kind} = 'change_request') = (${t.offerId} is not null)`),
+    check(
+      'offer_messages_proposed_price_kind_ck',
+      sql`${t.kind} = 'change_request' or ${t.proposedPriceAmountMinorUnits} is null`,
+    ),
+    check('offer_messages_change_request_sender_ck', sql`${t.kind} = 'message' or ${t.senderRole} = 'customer'`),
+    ...moneyPairChecks('offer_messages', 'proposed_price'),
+    check(
+      'offer_messages_proposed_price_positive_ck',
+      sql`${t.proposedPriceAmountMinorUnits} is null or ${t.proposedPriceAmountMinorUnits} > 0`,
+    ),
   ],
 );
 

@@ -218,4 +218,138 @@ describe('ProviderRequestsPage (spec 017 §5 / spec 018 §5)', () => {
       expect(screen.queryByTestId('offer-countdown')).toBeNull();
     });
   });
+
+  // ---- Spec 019: negotiation (AC-3, AC-4, AC-13) --------------------------
+  describe('negotiation (spec 019 §5)', () => {
+    const LIVE_OFFER_REQUEST: IncomingRequestDto = {
+      ...QUOTE_REQUEST,
+      providerResponse: 'offer_sent',
+      currentOffer: { offerId: 'offer-1', status: 'sent', expiresAt: '2026-09-14T10:02:00.000Z', serverNow: '2026-09-14T10:00:30.000Z' },
+    };
+
+    const CURRENT_OFFER = {
+      id: 'offer-1',
+      requestId: 'req-2',
+      providerProfileId: 'prov-1',
+      providerBusinessName: 'Ali Plumbing',
+      status: 'sent',
+      priceAmountMinorUnits: 300_000,
+      currencyCode: 'PKR',
+      includedItems: ['Labour'],
+      providerMessage: 'Can come today.',
+      estimatedDurationMinutes: 90,
+      sentAt: '2026-09-14T10:00:00.000Z',
+      expiresAt: '2026-09-14T10:02:00.000Z',
+      viewedAt: null,
+      decidedAt: null,
+      serverNow: '2026-09-14T10:00:30.000Z',
+      version: 1,
+      revisionNumber: 0,
+      previousOfferId: null,
+      previousPriceAmountMinorUnits: null,
+      supersededByOfferId: null,
+    };
+
+    const CHANGE_REQUEST = {
+      id: 'msg-1',
+      requestId: 'req-2',
+      providerProfileId: 'prov-1',
+      offerId: 'offer-1',
+      kind: 'change_request',
+      senderRole: 'customer',
+      body: 'Can you do it on Sunday?',
+      contactRedacted: false,
+      proposedPrice: { amountMinorUnits: 250_000, currencyCode: 'PKR' },
+      createdAt: '2026-09-14T10:01:00.000Z',
+    };
+
+    /** Routes by URL, so polling or an extra refetch never breaks the sequence. */
+    function stubProviderFetch(overrides?: { messages?: unknown[]; revision?: { ok: boolean; status: number; body: unknown } }) {
+      const calls: { url: string; init?: RequestInit }[] = [];
+      const reply = (body: unknown, status = 200, ok = true) =>
+        Promise.resolve({ ok, status, json: async () => body, headers: { get: () => null } });
+      const fn = vi.fn((url: string, init?: RequestInit) => {
+        calls.push({ url, init });
+        if (url.includes('/messages')) return reply({ data: overrides?.messages ?? [CHANGE_REQUEST] });
+        if (url.includes('/revisions')) {
+          const revision = overrides?.revision;
+          return revision
+            ? Promise.resolve({ ok: revision.ok, status: revision.status, json: async () => revision.body, headers: { get: () => null } })
+            : reply({ data: { ...CURRENT_OFFER, id: 'offer-2', priceAmountMinorUnits: 250_000, revisionNumber: 1 } }, 201);
+        }
+        if (/\/api\/v1\/offers\/[^/]+$/.test(url)) return reply({ data: CURRENT_OFFER });
+        return reply({ data: [LIVE_OFFER_REQUEST] });
+      });
+      vi.stubGlobal('fetch', fn);
+      return { fn, calls };
+    }
+
+    it('AC-3: shows the change request and pre-fills the revision form with the proposed price', async () => {
+      const user = userEvent.setup();
+      stubProviderFetch();
+      render(<ProviderRequestsPage />);
+
+      await user.click(await screen.findByRole('button', { name: 'Messages' }));
+      expect(await screen.findByText('The customer asked for a change')).toBeInTheDocument();
+      expect(screen.getAllByText('Can you do it on Sunday?').length).toBeGreaterThan(0);
+
+      await user.click(screen.getByRole('button', { name: 'Send revised offer' }));
+
+      const form = await screen.findByRole('form', { name: 'Send a revised offer for Custom Renovation' });
+      // 250_000 minor units, pre-filled from the customer's proposed price.
+      expect(within(form).getByLabelText('Price')).toHaveValue('2500.00');
+      expect(within(form).getByLabelText('Currency')).toBeDisabled();
+      expect(within(form).getByText(/Revisions used: 0 of 5/)).toBeInTheDocument();
+    });
+
+    it('AC-4: sends the revision to /revisions with a fresh Idempotency-Key and no requestId', async () => {
+      const user = userEvent.setup();
+      const { calls } = stubProviderFetch();
+      render(<ProviderRequestsPage />);
+
+      await user.click(await screen.findByRole('button', { name: 'Send revised offer' }));
+      const form = await screen.findByRole('form', { name: 'Send a revised offer for Custom Renovation' });
+      // Without opening the thread, the form starts from the current offer's own price.
+      expect(within(form).getByLabelText('Price')).toHaveValue('3000.00');
+      await user.clear(within(form).getByLabelText('Price'));
+      await user.type(within(form).getByLabelText('Price'), '2500');
+      await user.click(within(form).getByRole('button', { name: 'Send revised offer' }));
+
+      expect(await screen.findByText('Revised offer sent. The customer has 2 minutes to respond.')).toBeInTheDocument();
+      const post = calls.find((c) => c.url.includes('/revisions') && c.init?.method === 'POST')!;
+      expect(post.url).toBe('/api/v1/offers/offer-1/revisions');
+      expect((post.init!.headers as Record<string, string>)['Idempotency-Key']).toEqual(expect.any(String));
+      const body = JSON.parse(post.init!.body as string);
+      expect(body).toMatchObject({ priceAmountMinorUnits: 250_000, currencyCode: 'PKR' });
+      expect(body).not.toHaveProperty('requestId');
+    });
+
+    it('AC-13: surfaces REVISION_LIMIT_REACHED and REVISION_UNCHANGED in the provider’s own words', async () => {
+      const user = userEvent.setup();
+      stubProviderFetch({ revision: { ok: false, status: 422, body: { code: 'REVISION_LIMIT_REACHED', message: 'limit' } } });
+      render(<ProviderRequestsPage />);
+
+      await user.click(await screen.findByRole('button', { name: 'Send revised offer' }));
+      const form = await screen.findByRole('form', { name: 'Send a revised offer for Custom Renovation' });
+      await user.click(within(form).getByRole('button', { name: 'Send revised offer' }));
+
+      expect(await screen.findByText("You've reached the limit of 5 revisions on this request.")).toBeInTheDocument();
+    });
+
+    it('AC-1: the provider can open the request thread and send a message', async () => {
+      const user = userEvent.setup();
+      const { calls } = stubProviderFetch({ messages: [] });
+      render(<ProviderRequestsPage />);
+
+      await user.click(await screen.findByRole('button', { name: 'Messages' }));
+      await screen.findByText('No messages yet — ask a question about this request.');
+
+      await user.type(screen.getByLabelText(/Your message/), 'Which floor?');
+      await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+      const post = calls.find((c) => c.url.includes('/messages') && c.init?.method === 'POST')!;
+      expect(post.url).toBe('/api/v1/providers/me/requests/req-2/messages');
+      expect((post.init!.headers as Record<string, string>)['Idempotency-Key']).toEqual(expect.any(String));
+    });
+  });
 });

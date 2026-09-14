@@ -1,0 +1,77 @@
+/*
+ * Spec 019 §5 — the pre-selection message thread shared by the customer request view and the provider
+ * inbox. Every value is an APURIVA Design System token (app/styles/apuriva-tokens.css); no hex, font
+ * size, radius, shadow or spacing is written by hand.
+ */
+
+.thread {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+}
+
+.own {
+  background: var(--surface-brand-subtle);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.body {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-body);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.composer {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
