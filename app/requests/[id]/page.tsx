@@ -18,6 +18,7 @@ import type { CancelPreviewDto, RequestDto } from '@/lib/types/requests';
 import { isCancellable } from '@/lib/types/requests';
 import { apiFetch, mutateHeaders } from '../api-client';
 import styles from '../requests.module.css';
+import { OffersPanel } from './OffersPanel';
 
 type PageStatus = 'loading' | 'error' | 'ready';
 
@@ -69,6 +70,12 @@ export default function RequestStatusPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  /** Spec 018: re-read the request after an offer decision without unmounting the page. */
+  const refreshRequest = useCallback(async () => {
+    const result = await apiFetch<RequestDto>(`/api/v1/requests/${encodeURIComponent(requestId)}`);
+    if (result.ok && result.data) setRequest(result.data);
+  }, [requestId]);
 
   async function openCancelDialog() {
     setCancelError(null);
@@ -173,6 +180,15 @@ export default function RequestStatusPage() {
           />
         )}
       </section>
+
+      {request.status !== 'draft' ? (
+        <OffersPanel
+          requestId={request.id}
+          requestStatus={request.status}
+          requestCreatedAt={request.createdAt}
+          onRequestChanged={refreshRequest}
+        />
+      ) : null}
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>What you asked for</h2>

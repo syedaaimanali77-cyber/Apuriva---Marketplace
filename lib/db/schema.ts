@@ -1066,6 +1066,18 @@ export const requestsStatusTransitions = pgTable(
 // Offers (state machine: AC-3)
 // ---------------------------------------------------------------------------
 
+/** Spec 018 §3 / master spec §125 offer vocabulary. `revised` is RESERVED for spec 019 and never
+ * written by spec 018; `draft` never leaves the creating transaction. */
+export const OFFER_STATUSES = ['draft', 'sent', 'viewed', 'revised', 'accepted', 'declined', 'expired', 'withdrawn'] as const;
+
+const offerPrice = moneyColumns('price');
+
+/**
+ * Spec 018 §4 — extends spec 003's baseline skeleton. The 2-minute window is enforced by the
+ * database itself: `expires_at` must equal `sent_at + interval '2 minutes'` (CHECK below), and both
+ * are written from a single `clock_timestamp()` read in one statement (lib/offers/create.ts) — never
+ * computed in application code or supplied by a client.
+ */
 export const offers = pgTable(
   'offers',
   {
@@ -1076,11 +1088,48 @@ export const offers = pgTable(
     providerProfileId: uuid('provider_profile_id')
       .notNull()
       .references(() => providerProfiles.id, { onDelete: 'restrict' }),
-    status: text('status').notNull(),
+    status: text('status', { enum: OFFER_STATUSES }).notNull(),
+    priceAmountMinorUnits: offerPrice.priceAmountMinorUnits.notNull(),
+    priceCurrencyCode: offerPrice.priceCurrencyCode.notNull(),
+    includedItems: jsonb('included_items').$type<string[]>().notNull().default([]),
+    providerMessage: text('provider_message'),
+    estimatedDurationMinutes: integer('estimated_duration_minutes'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    viewedAt: timestamp('viewed_at', { withTimezone: true }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
+    acceptIdempotencyKey: text('accept_idempotency_key'),
   },
   (t) => [
     index('offers_request_id_idx').on(t.requestId),
     index('offers_provider_profile_id_idx').on(t.providerProfileId),
+    ...moneyPairChecks('offers', 'price'),
+    check('offers_price_positive_ck', sql`${t.priceAmountMinorUnits} > 0`),
+    check('offers_status_ck', sql`${t.status} in ('draft','sent','viewed','revised','accepted','declined','expired','withdrawn')`),
+    check(
+      'offers_estimated_duration_ck',
+      sql`${t.estimatedDurationMinutes} is null or ${t.estimatedDurationMinutes} between 1 and 1440`,
+    ),
+    check('offers_draft_unsent_ck', sql`(${t.status} = 'draft') = (${t.sentAt} is null)`),
+    check('offers_sent_expires_pair_ck', sql`(${t.sentAt} is null) = (${t.expiresAt} is null)`),
+    // Master spec §32: exactly 2 minutes, never configurable, never extended.
+    check('offers_two_minute_window_ck', sql`${t.expiresAt} is null or ${t.expiresAt} = ${t.sentAt} + interval '2 minutes'`),
+    check(
+      'offers_decided_pairing_ck',
+      sql`(${t.decidedAt} is not null) = (${t.status} in ('accepted','declined','withdrawn'))`,
+    ),
+    check('offers_accept_key_pairing_ck', sql`(${t.acceptIdempotencyKey} is not null) = (${t.status} = 'accepted')`),
+    uniqueIndex('offers_provider_idempotency_key_uq').on(t.providerProfileId, t.idempotencyKey),
+    // At most one live offer per provider per request (spec 018 AC-5).
+    uniqueIndex('offers_request_provider_live_uq')
+      .on(t.requestId, t.providerProfileId)
+      .where(sql`${t.status} in ('draft','sent','viewed')`),
+    // At most one accepted offer per request (spec 018 AC-6) — independent of the application lock.
+    uniqueIndex('offers_request_accepted_uq').on(t.requestId).where(sql`${t.status} = 'accepted'`),
+    index('offers_status_expires_at_idx').on(t.status, t.expiresAt),
+    index('offers_request_sent_at_idx').on(t.requestId, t.sentAt),
   ],
 );
 

@@ -21,6 +21,7 @@ import {
   seedSubmittedRequest,
   seedWeeklyHours,
 } from '@/lib/matching/matching-test-support';
+import { seedOfferScenario, sendOffer } from '@/lib/offers/offers-test-support';
 
 const dbReachable = await isDatabaseReachable();
 
@@ -209,6 +210,28 @@ describe.skipIf(!dbReachable)('lib/privacy/export (spec 008 AC-3, integration)',
     const matchingRow = payload.matching.asProvider[0]!;
     expect(Object.keys(matchingRow).sort()).toEqual(['notifiedAt', 'providerResponse', 'rank', 'requestId'].sort());
     expect(JSON.stringify(payload.matching)).not.toMatch(/scoreMicros|scoreBreakdown|exclusionReason/i);
+  });
+
+  // Spec 018 §4 "Retention and privacy" — offers.
+  it('generateExportPayload exports offers made on the customer\'s own requests and only the provider\'s own offers, never idempotency data', async () => {
+    const { customer, providers, requestId } = await seedOfferScenario({ providerCount: 2 });
+    const mine = await sendOffer(providers[0]!, requestId, { providerMessage: 'Can come today.' });
+    const theirs = await sendOffer(providers[1]!, requestId);
+
+    const customerPayload = await generateExportPayload(customer.userId);
+    expect(customerPayload.offers.asCustomer.map((o) => o.id).sort()).toEqual([mine.id, theirs.id].sort());
+    expect(customerPayload.offers.asProvider).toEqual([]);
+
+    const providerPayload = await generateExportPayload(providers[0]!.userId);
+    expect(providerPayload.offers.asProvider.map((o) => o.id)).toEqual([mine.id]);
+    expect(providerPayload.offers.asCustomer).toEqual([]);
+
+    const exported = providerPayload.offers.asProvider[0]!;
+    expect(Object.keys(exported).sort()).toEqual(
+      ['currencyCode', 'decidedAt', 'estimatedDurationMinutes', 'expiresAt', 'id', 'includedItems', 'priceAmountMinorUnits', 'providerMessage', 'requestId', 'sentAt', 'status'].sort(),
+    );
+    expect(exported).toMatchObject({ priceAmountMinorUnits: 320_000, currencyCode: 'PKR', providerMessage: 'Can come today.' });
+    expect(JSON.stringify(providerPayload.offers)).not.toMatch(/idempotency|fingerprint/i);
   });
 
   it('a user with no requests and no provider profile exports empty matching arrays, not an error', async () => {

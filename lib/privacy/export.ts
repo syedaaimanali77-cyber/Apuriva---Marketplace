@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, or } from 'drizzle-orm';
+import { and, eq, inArray, ne, or } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import {
   bookings,
@@ -25,6 +25,20 @@ import type { DataExportStatusDto } from '@/lib/types/privacy';
 import { buildDownloadUrl, verifyDownloadToken } from './download-token';
 import { getFileAssetStorage } from './file-asset-storage';
 import { NOT_FOUND_ERROR } from './not-found';
+
+export interface ExportedOffer {
+  id: string;
+  requestId: string;
+  status: string;
+  priceAmountMinorUnits: number;
+  currencyCode: string;
+  includedItems: string[];
+  providerMessage: string | null;
+  estimatedDurationMinutes: number | null;
+  sentAt: string | null;
+  expiresAt: string | null;
+  decidedAt: string | null;
+}
 
 export interface DataExportPayload {
   generatedAt: string;
@@ -85,6 +99,15 @@ export interface DataExportPayload {
   matching: {
     asCustomer: Array<{ requestId: string; rank: number | null; providerResponse: string; notifiedAt: string | null }>;
     asProvider: Array<{ requestId: string; rank: number | null; providerResponse: string; notifiedAt: string | null }>;
+  };
+  /**
+   * Spec 018 §4 "Retention and privacy": offers made on the caller's own requests (`asCustomer` — offers
+   * made TO them, from any provider) and offers the caller sent (`asProvider` — only their own, never
+   * another provider's). Explicit column allowlist: idempotency keys and fingerprints are never exported.
+   */
+  offers: {
+    asCustomer: ExportedOffer[];
+    asProvider: ExportedOffer[];
   };
   receipts: {
     payments: Array<{ id: string; bookingId: string; status: string; createdAt: string }>;
@@ -261,6 +284,41 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         .where(eq(requestProviderMatches.providerProfileId, providerProfile.id))
     : [];
 
+  // Spec 018 §4: explicit allowlist; `draft` never commits, so it is excluded defensively.
+  const offerColumns = {
+    id: offers.id,
+    requestId: offers.requestId,
+    status: offers.status,
+    priceAmountMinorUnits: offers.priceAmountMinorUnits,
+    currencyCode: offers.priceCurrencyCode,
+    includedItems: offers.includedItems,
+    providerMessage: offers.providerMessage,
+    estimatedDurationMinutes: offers.estimatedDurationMinutes,
+    sentAt: offers.sentAt,
+    expiresAt: offers.expiresAt,
+    decidedAt: offers.decidedAt,
+  };
+  const offersAsCustomerRows = customerProfile
+    ? await db
+        .select(offerColumns)
+        .from(offers)
+        .innerJoin(requests, eq(requests.id, offers.requestId))
+        .where(and(eq(requests.customerProfileId, customerProfile.id), ne(offers.status, 'draft')))
+    : [];
+  const offersAsProviderRows = providerProfile
+    ? await db
+        .select(offerColumns)
+        .from(offers)
+        .where(and(eq(offers.providerProfileId, providerProfile.id), ne(offers.status, 'draft')))
+    : [];
+  const toExportedOffer = (row: (typeof offersAsProviderRows)[number]): ExportedOffer => ({
+    ...row,
+    includedItems: row.includedItems ?? [],
+    sentAt: row.sentAt ? row.sentAt.toISOString() : null,
+    expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
+    decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
+  });
+
   const availabilityNotificationRows = customerProfile
     ? await db
         .select({
@@ -324,6 +382,10 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         ...row,
         notifiedAt: row.notifiedAt ? row.notifiedAt.toISOString() : null,
       })),
+    },
+    offers: {
+      asCustomer: offersAsCustomerRows.map(toExportedOffer),
+      asProvider: offersAsProviderRows.map(toExportedOffer),
     },
     receipts: {
       payments: paymentRows.map((p) => ({ ...p, createdAt: p.createdAt.toISOString() })),

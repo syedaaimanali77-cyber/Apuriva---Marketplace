@@ -50,10 +50,24 @@ export function availableActionFor(
   pricingModel: string,
   requestStatus: string,
   providerResponse: ProviderResponse,
+  offerState?: { hasLiveOffer: boolean; hasDeclinedOffer: boolean },
 ): AvailableAction {
   const actionable = (ACTIONABLE_REQUEST_STATUSES as readonly string[]).includes(requestStatus);
-  if (!actionable || providerResponse !== 'none') return 'decline_only';
-  return actionForPricingModel(pricingModel);
+  if (!actionable) return 'decline_only';
+  if (providerResponse === 'none') return actionForPricingModel(pricingModel);
+  // Spec 018 §3 "Provider inbox integration" / AC-5 (master spec §32: a provider can send a new
+  // offer if the request remains active) — narrowed to `offer_sent` on quote/custom services only:
+  // a fresh offer is available once the previous one is no longer live, unless the customer declined.
+  if (
+    providerResponse === 'offer_sent' &&
+    actionForPricingModel(pricingModel) === 'send_offer' &&
+    offerState !== undefined &&
+    !offerState.hasLiveOffer &&
+    !offerState.hasDeclinedOffer
+  ) {
+    return 'send_offer';
+  }
+  return 'decline_only';
 }
 
 export function isActionableStatus(requestStatus: string): boolean {

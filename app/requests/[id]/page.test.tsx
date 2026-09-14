@@ -59,6 +59,8 @@ function stubFetch(options: { preview?: CancelPreviewDto; request?: RequestDto }
     vi.fn((url: string, init?: RequestInit) => {
       calls.push({ url, method: init?.method ?? 'GET' });
       if (url.includes('/cancel-preview')) return Promise.resolve(jsonResponse(true, { data: preview }));
+      // Spec 018: the page's offers panel lists offers; none exist in these cancellation scenarios.
+      if (url.endsWith('/offers')) return Promise.resolve(jsonResponse(true, { data: [] }));
       if (url.endsWith('/cancel')) {
         return Promise.resolve(
           jsonResponse(true, { data: { ...request, status: 'cancelled', customerFacingStep: 'Cancelled', version: request.version + 1 } }),

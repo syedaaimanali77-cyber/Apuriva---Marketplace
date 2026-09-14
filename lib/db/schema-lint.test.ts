@@ -97,6 +97,10 @@ describe('schema lint (spec 003)', () => {
       // never queried or filtered on in SQL. `score_micros` (the queryable/sortable part) is a
       // real integer column precisely because it IS core/queryable data.
       request_provider_matches: ['score_breakdown'],
+      // Spec 018 §4: an offer's "what's included" — a bounded list (≤ 20) of short display strings,
+      // read back whole and never queried or filtered on in SQL. Price, currency and every timer
+      // column are real relational columns precisely because they ARE core/queryable data.
+      offers: ['included_items'],
     };
 
     const offenders: string[] = [];

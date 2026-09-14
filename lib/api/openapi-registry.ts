@@ -350,4 +350,42 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Reject a suggestion — never applied; admin, risk-tier medium',
     tags: ['matching'],
   },
+  // Spec 018 §3 — offer system & 2-minute timer. `/cron/offer-expiry-sweep` is excluded by the drift
+  // check, like the other cron routes.
+  {
+    method: 'POST',
+    path: '/offers',
+    summary: 'Send an offer on a distributed quote/custom request; database-computed 2-minute window; requires Idempotency-Key',
+    tags: ['offers'],
+  },
+  {
+    method: 'GET',
+    path: '/offers/{id}',
+    summary: "One offer, with effective status; the request's customer or the offer's provider only",
+    tags: ['offers'],
+  },
+  {
+    method: 'POST',
+    path: '/offers/{id}/accept',
+    summary: 'Accept a live offer (server clock strictly before expiresAt); single-accept invariant; requires Idempotency-Key',
+    tags: ['offers'],
+  },
+  {
+    method: 'POST',
+    path: '/offers/{id}/decline',
+    summary: "Decline a live offer; request owner only",
+    tags: ['offers'],
+  },
+  {
+    method: 'POST',
+    path: '/offers/{id}/withdraw',
+    summary: "Withdraw the caller's own live offer before it expires; session (provider)",
+    tags: ['offers'],
+  },
+  {
+    method: 'GET',
+    path: '/requests/{id}/offers',
+    summary: "Every offer on the caller's own request, terminal ones included; session (customer)",
+    tags: ['offers'],
+  },
 ];

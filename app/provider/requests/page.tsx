@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Skeleton } from '@/components';
+import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, FormField, Input, Skeleton, Textarea } from '@/components';
+import { OfferCountdown } from '@/app/_components/OfferCountdown';
+import { parseMajorAmountToMinorUnits } from '@/lib/offers/price-input';
 import type { AvailableAction, IncomingRequestDto, ProviderResponse } from '@/lib/types/matching';
+import type { OfferDto, VisibleOfferStatus } from '@/lib/types/offers';
 import styles from './requests.module.css';
 
 interface ApiErrorBody {
@@ -35,6 +38,20 @@ function describeError(error: ApiErrorBody | undefined, fallback: string): strin
   return error.message ?? fallback;
 }
 
+/** Spec 018 §5: specific messages for the offer error codes. */
+function describeOfferError(error: ApiErrorBody | undefined, fallback: string): string {
+  switch (error?.code) {
+    case 'LIVE_OFFER_EXISTS':
+      return 'You already have an offer waiting on this request.';
+    case 'REQUEST_NOT_ACTIONABLE':
+      return 'This request is no longer open for offers.';
+    case 'OFFER_EXPIRED':
+      return 'Your offer expired — you can send a new one.';
+    default:
+      return describeError(error, fallback);
+  }
+}
+
 const RESPONSE_LABEL: Record<ProviderResponse, string> = {
   none: '',
   accepted: 'You accepted this request',
@@ -42,30 +59,44 @@ const RESPONSE_LABEL: Record<ProviderResponse, string> = {
   offer_sent: 'You sent an offer',
 };
 
-/** AC-5: fixed/package/hourly -> Accept, quote/custom -> Send Offer (a state only — spec 018 owns
- * the endpoint), always Decline while actionable. */
-function actionLabel(action: AvailableAction): string {
-  switch (action) {
-    case 'accept':
-      return 'Accept';
-    case 'send_offer':
-      return 'Send offer';
-    default:
-      return 'Decline';
-  }
+const OFFER_STATUS_LABEL: Record<VisibleOfferStatus, string> = {
+  sent: 'Offer sent',
+  viewed: 'Offer viewed',
+  revised: 'Offer revised',
+  accepted: 'Offer accepted',
+  declined: 'Offer declined',
+  expired: 'Offer expired',
+  withdrawn: 'Offer withdrawn',
+};
+
+function isLiveOfferStatus(status: VisibleOfferStatus): boolean {
+  return status === 'sent' || status === 'viewed';
 }
 
 type PageStatus = 'loading' | 'error' | 'ready';
 
+interface OfferDraft {
+  price: string;
+  currencyCode: string;
+  includedItems: string;
+  message: string;
+  duration: string;
+}
+
+function emptyDraft(request: IncomingRequestDto): OfferDraft {
+  // Default to the request budget's currency when it has one (the server requires a match); otherwise
+  // the provider states it — no country-specific default (master spec §132.19).
+  return { price: '', currencyCode: request.budget?.currencyCode ?? '', includedItems: '', message: '', duration: '' };
+}
+
 /**
- * Spec 017 §5, `app/provider/requests` — the provider's incoming-request inbox. Replaces the
- * spec-014 `PlaceholderPage`. `GET /providers/me/requests` is itself distributed-to-only
- * server-side (spec 017 §3), so this page never receives a request the provider was not matched
- * into. Per CLAUDE.md's branding rule, no logo/header of its own — the global AppHeader already
- * provides the page's one brand placement.
+ * Spec 017 §5 / spec 018 §5, `app/provider/requests` — the provider's incoming-request inbox.
  *
- * "Send offer" itself is spec 018's — a quote/custom-priced request shows its action state as
- * informational only (§7 "Out of scope": this spec exposes the action state, not the endpoint).
+ * Fixed/package/hourly requests keep spec 017's Accept/Decline. Quote/custom requests now get a working
+ * "Send offer" form (spec 018): each submission sends a fresh `Idempotency-Key`. A live offer shows the
+ * display-only countdown and Withdraw; an expired/withdrawn offer shows its status and — when the server
+ * reports `send_offer` again — the form (AC-5). Every availability decision comes from the server.
+ * Per CLAUDE.md's branding rule, no logo/header of its own.
  */
 export default function ProviderRequestsPage() {
   const [pageStatus, setPageStatus] = useState<PageStatus>('loading');
@@ -75,13 +106,14 @@ export default function ProviderRequestsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
   const [declineTarget, setDeclineTarget] = useState<IncomingRequestDto | null>(null);
+  const [offerFormFor, setOfferFormFor] = useState<string | null>(null);
+  const [draft, setDraft] = useState<OfferDraft | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setPageStatus('loading');
-    setPageError(null);
     const res = await apiFetch<IncomingRequestDto[]>('/api/v1/providers/me/requests');
     if (!res.ok) {
-      setPageStatus('error');
+      setPageStatus((current) => (current === 'ready' ? current : 'error'));
       setPageError(describeError(res.error, "Couldn't load your requests."));
       return;
     }
@@ -91,6 +123,19 @@ export default function ProviderRequestsPage() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Spec 018 §5: no WebSocket layer — refetch while a live offer is displayed, and on focus.
+  const anyLiveOffer = requests.some((r) => r.currentOffer && isLiveOfferStatus(r.currentOffer.status));
+  useEffect(() => {
+    if (!anyLiveOffer) return;
+    const handle = setInterval(load, 10_000);
+    return () => clearInterval(handle);
+  }, [anyLiveOffer, load]);
+  useEffect(() => {
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [load]);
 
   async function respond(requestId: string, action: 'accept' | 'decline') {
@@ -114,6 +159,73 @@ export default function ProviderRequestsPage() {
       prev.map((r) => (r.requestId === requestId ? { ...r, providerResponse: res.data!.providerResponse } : r)),
     );
     setAnnouncement(action === 'accept' ? 'Request accepted.' : 'Request declined.');
+  }
+
+  function openOfferForm(request: IncomingRequestDto) {
+    setFormError(null);
+    setOfferFormFor(request.requestId);
+    setDraft(emptyDraft(request));
+  }
+
+  async function submitOffer(request: IncomingRequestDto) {
+    if (!draft) return;
+    setFormError(null);
+    const priceAmountMinorUnits = parseMajorAmountToMinorUnits(draft.price);
+    if (priceAmountMinorUnits === null) {
+      setFormError('Enter a price greater than zero, with at most two decimal places.');
+      return;
+    }
+    const includedItems = draft.includedItems
+      .split('\n')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    const duration = draft.duration.trim();
+
+    setPendingRequestId(request.requestId);
+    const res = await apiFetch<OfferDto>('/api/v1/offers', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-csrf-token': readCsrfCookie(),
+        // One fresh key per form submission (spec 018 §5).
+        'Idempotency-Key': crypto.randomUUID(),
+      },
+      body: JSON.stringify({
+        requestId: request.requestId,
+        priceAmountMinorUnits,
+        currencyCode: draft.currencyCode.trim().toUpperCase(),
+        includedItems,
+        providerMessage: draft.message,
+        estimatedDurationMinutes: duration === '' ? null : Number(duration),
+      }),
+    });
+    setPendingRequestId(null);
+    if (!res.ok) {
+      setFormError(describeOfferError(res.error, "Couldn't send that offer."));
+      await load();
+      return;
+    }
+    setOfferFormFor(null);
+    setDraft(null);
+    setAnnouncement('Offer sent. The customer has 2 minutes to respond.');
+    await load();
+  }
+
+  async function withdraw(request: IncomingRequestDto) {
+    if (!request.currentOffer) return;
+    setActionError(null);
+    setPendingRequestId(request.requestId);
+    const res = await apiFetch<OfferDto>(`/api/v1/offers/${encodeURIComponent(request.currentOffer.offerId)}/withdraw`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-csrf-token': readCsrfCookie() },
+    });
+    setPendingRequestId(null);
+    if (!res.ok) {
+      setActionError(describeOfferError(res.error, "Couldn't withdraw that offer."));
+    } else {
+      setAnnouncement('Offer withdrawn.');
+    }
+    await load();
   }
 
   if (pageStatus === 'loading') {
@@ -168,6 +280,10 @@ export default function ProviderRequestsPage() {
           {requests.map((request) => {
             const responded = request.providerResponse !== 'none';
             const isPending = pendingRequestId === request.requestId;
+            const offer = request.currentOffer;
+            const offerLive = offer !== null && isLiveOfferStatus(offer.status);
+            const action: AvailableAction = request.availableAction;
+            const formOpen = offerFormFor === request.requestId && draft !== null;
             return (
               <Card key={request.requestId} elevation="flat" className={styles.requestCard}>
                 <div className={styles.requestHeader}>
@@ -179,7 +295,11 @@ export default function ProviderRequestsPage() {
                       </Badge>
                     ) : null}
                   </div>
-                  {responded ? (
+                  {offer ? (
+                    <Badge tone={offer.status === 'accepted' ? 'success' : 'neutral'} size="sm">
+                      {OFFER_STATUS_LABEL[offer.status]}
+                    </Badge>
+                  ) : responded ? (
                     <Badge tone={request.providerResponse === 'accepted' ? 'success' : 'neutral'} size="sm">
                       {RESPONSE_LABEL[request.providerResponse]}
                     </Badge>
@@ -201,20 +321,97 @@ export default function ProviderRequestsPage() {
                   {request.preferredAt ? <span>Preferred: {new Date(request.preferredAt).toLocaleString()}</span> : null}
                 </div>
 
-                {!responded ? (
+                {offer && offerLive ? (
                   <div className={styles.requestActions}>
-                    {request.availableAction === 'accept' ? (
+                    <OfferCountdown expiresAt={offer.expiresAt} serverNow={offer.serverNow} onElapsed={load} />
+                    <Button variant="ghost" loading={isPending} onClick={() => withdraw(request)}>
+                      Withdraw offer
+                    </Button>
+                  </div>
+                ) : null}
+
+                {formOpen ? (
+                  <form
+                    className={styles.requestCard}
+                    aria-label={`Send an offer for ${request.serviceName}`}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      submitOffer(request);
+                    }}
+                  >
+                    {formError ? (
+                      <Alert tone="error" title="Offer not sent">
+                        {formError}
+                      </Alert>
+                    ) : null}
+                    <FormField label="Price" htmlFor={`offer-price-${request.requestId}`} help="e.g. 3200 or 3200.50">
+                      <Input
+                        id={`offer-price-${request.requestId}`}
+                        inputMode="decimal"
+                        value={draft.price}
+                        onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+                      />
+                    </FormField>
+                    <FormField label="Currency" htmlFor={`offer-currency-${request.requestId}`} help="3-letter code, e.g. PKR">
+                      <Input
+                        id={`offer-currency-${request.requestId}`}
+                        maxLength={3}
+                        value={draft.currencyCode}
+                        onChange={(e) => setDraft({ ...draft, currencyCode: e.target.value })}
+                      />
+                    </FormField>
+                    <FormField label="What's included" htmlFor={`offer-items-${request.requestId}`} help="One item per line" optional>
+                      <Textarea
+                        id={`offer-items-${request.requestId}`}
+                        value={draft.includedItems}
+                        onChange={(e) => setDraft({ ...draft, includedItems: e.target.value })}
+                      />
+                    </FormField>
+                    <FormField label="Message to the customer" htmlFor={`offer-message-${request.requestId}`} optional>
+                      <Textarea
+                        id={`offer-message-${request.requestId}`}
+                        maxLength={1000}
+                        value={draft.message}
+                        onChange={(e) => setDraft({ ...draft, message: e.target.value })}
+                      />
+                    </FormField>
+                    <FormField label="Estimated duration (minutes)" htmlFor={`offer-duration-${request.requestId}`} optional>
+                      <Input
+                        id={`offer-duration-${request.requestId}`}
+                        type="number"
+                        min={1}
+                        max={1440}
+                        value={draft.duration}
+                        onChange={(e) => setDraft({ ...draft, duration: e.target.value })}
+                      />
+                    </FormField>
+                    <div className={styles.requestActions}>
+                      <Button type="submit" variant="primary" loading={isPending}>
+                        Send offer
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={() => setOfferFormFor(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                ) : null}
+
+                {!formOpen && (action === 'accept' || action === 'send_offer') ? (
+                  <div className={styles.requestActions}>
+                    {action === 'accept' ? (
                       <Button variant="primary" loading={isPending} onClick={() => respond(request.requestId, 'accept')}>
                         Accept
                       </Button>
-                    ) : request.availableAction === 'send_offer' ? (
-                      <Button variant="primary" disabled title="Sending offers is coming soon">
-                        {actionLabel(request.availableAction)} (coming soon)
+                    ) : (
+                      <Button variant="primary" onClick={() => openOfferForm(request)}>
+                        {offer ? 'Send a new offer' : 'Send offer'}
+                      </Button>
+                    )}
+                    {!responded ? (
+                      <Button variant="ghost" onClick={() => setDeclineTarget(request)}>
+                        Decline
                       </Button>
                     ) : null}
-                    <Button variant="ghost" onClick={() => setDeclineTarget(request)}>
-                      Decline
-                    </Button>
                   </div>
                 ) : null}
               </Card>
@@ -227,9 +424,7 @@ export default function ProviderRequestsPage() {
         open={declineTarget !== null}
         title="Decline this request?"
         description={
-          declineTarget
-            ? `You won't be able to accept "${declineTarget.serviceName}" after declining it.`
-            : undefined
+          declineTarget ? `You won't be able to accept "${declineTarget.serviceName}" after declining it.` : undefined
         }
         confirmLabel="Decline"
         cancelLabel="Keep it"

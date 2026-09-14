@@ -93,9 +93,14 @@ export async function seedBooking(customerUserId: string, status: string): Promi
       'privacy-seed-fingerprint',
     ],
   );
+  // Spec 018 §4 gave `offers` its own not-null price and idempotency columns; a `draft` row needs no
+  // `sent_at`/`expires_at` (the 2-minute window starts only at `draft -> sent`).
   const { rows: offerRows } = await pool.query<{ id: string }>(
-    'INSERT INTO offers (request_id, provider_profile_id, status) VALUES ($1, $2, $3) RETURNING id',
-    [requestRows[0]!.id, providerProfileId, 'draft'],
+    `INSERT INTO offers
+       (request_id, provider_profile_id, status, price_amount_minor_units, price_currency_code, idempotency_key, idempotency_fingerprint)
+     VALUES ($1, $2, 'draft', 100000, 'PKR', $3, 'privacy-seed-fingerprint')
+     RETURNING id`,
+    [requestRows[0]!.id, providerProfileId, `privacy-seed-${randomUUID()}`],
   );
   const { rows: bookingRows } = await pool.query<{ id: string }>(
     'INSERT INTO bookings (offer_id, status) VALUES ($1, $2) RETURNING id',

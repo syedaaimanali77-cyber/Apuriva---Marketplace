@@ -1,0 +1,28 @@
+/*
+ * Spec 018 §5 — layout-only wrapper around the DS `OfferTimer`. No token override, no restyle: it only
+ * honours `prefers-reduced-motion` for the timer's progress-bar transition.
+ */
+
+.countdown {
+  display: inline-grid;
+  min-width: 120px;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

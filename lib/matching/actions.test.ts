@@ -61,4 +61,22 @@ describe('lib/matching/actions (spec 017 AC-5)', () => {
       expect(availableActionFor('fixed', 'provider_selected', 'none')).toBe('decline_only');
     });
   });
+
+  describe('availableActionFor after an offer (spec 018 AC-5)', () => {
+    const NONE = { hasLiveOffer: false, hasDeclinedOffer: false };
+
+    it('offer_sent yields send_offer again only without a live or declined offer', () => {
+      expect(availableActionFor('quote', 'offers_open', 'offer_sent', NONE)).toBe('send_offer');
+      expect(availableActionFor('custom', 'matching', 'offer_sent', NONE)).toBe('send_offer');
+      expect(availableActionFor('quote', 'offers_open', 'offer_sent', { ...NONE, hasLiveOffer: true })).toBe('decline_only');
+      expect(availableActionFor('quote', 'offers_open', 'offer_sent', { ...NONE, hasDeclinedOffer: true })).toBe('decline_only');
+    });
+
+    it('never re-opens an action for fixed/package/hourly, a non-actionable request, or without offer state', () => {
+      expect(availableActionFor('fixed', 'offers_open', 'offer_sent', NONE)).toBe('decline_only');
+      expect(availableActionFor('quote', 'provider_selected', 'offer_sent', NONE)).toBe('decline_only');
+      expect(availableActionFor('quote', 'offers_open', 'offer_sent')).toBe('decline_only');
+      expect(availableActionFor('quote', 'offers_open', 'declined', NONE)).toBe('decline_only');
+    });
+  });
 });

@@ -40,6 +40,9 @@ export * from './Icon';
 export * from './IconButton';
 export * from './Input';
 export * from './IntentChip';
+// Spec 018 §5: thin re-exports of the DS's existing `ui/components/marketplace/OfferCard`/`OfferTimer`.
+export * from './OfferCard';
+export * from './OfferTimer';
 export * from './Map';
 export * from './OtpInput';
 export * from './PackageCard';

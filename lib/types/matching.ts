@@ -5,6 +5,7 @@
  * spec 012's `location.ts`, spec 015's `requests.ts` and spec 016's `availability.ts`.
  */
 import type { RequestBudget } from './requests';
+import type { CurrentOfferSummary } from './offers';
 
 /** The nine master-spec §23 ranking factors, as a closed union — never a loose string key. */
 export type RankingFactor =
@@ -114,6 +115,9 @@ export interface IncomingRequestDto {
   preferredAt: string | null;
   distributedAt: string;
   providerResponse: ProviderResponse;
+  /** Spec 018 §3: the caller's own most recent offer on this request (effective status), never another
+   *  provider's. `null` when the provider has sent none. */
+  currentOffer: CurrentOfferSummary | null;
 }
 
 export interface ProviderResponseDto {

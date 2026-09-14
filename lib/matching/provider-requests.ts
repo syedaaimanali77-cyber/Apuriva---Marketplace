@@ -24,6 +24,7 @@ import {
   requestNotActionableError,
 } from './errors';
 import { loadProviderCenterPoints } from './repository';
+import { loadProviderOfferStates, NO_OFFER_STATE, type ProviderOfferState } from '@/lib/offers/provider-state';
 import type { IncomingRequestDto, ProviderResponse, ProviderResponseDto } from '@/lib/types/matching';
 import type { StructuredAddress } from '@/lib/types/location';
 
@@ -80,7 +81,11 @@ const INBOX_COLUMNS = {
  * or exact coordinates (spec 012 forbids those before booking). It also carries no score, rank or
  * exclusion reason — those are admin-only (AC-6).
  */
-function toIncomingRequestDto(row: InboxRow, centerPoint?: { latitude: number; longitude: number }): IncomingRequestDto {
+function toIncomingRequestDto(
+  row: InboxRow,
+  centerPoint: { latitude: number; longitude: number } | undefined,
+  offerState: ProviderOfferState,
+): IncomingRequestDto {
   const structured = row.structured as StructuredAddress;
   const hasPoint = row.latitude !== null && row.longitude !== null;
   const originPoint = hasPoint
@@ -91,7 +96,7 @@ function toIncomingRequestDto(row: InboxRow, centerPoint?: { latitude: number; l
     requestId: row.requestId,
     serviceId: row.serviceId,
     serviceName: row.serviceName,
-    availableAction: availableActionFor(row.pricingModel, row.status, row.providerResponse as ProviderResponse),
+    availableAction: availableActionFor(row.pricingModel, row.status, row.providerResponse as ProviderResponse, offerState),
     approxDistanceKm: originPoint && centerPoint ? approxKm(distanceMeters(originPoint, centerPoint)) : null,
     approxAreaLabel: approxAreaLabel(structured),
     description: row.description,
@@ -105,6 +110,7 @@ function toIncomingRequestDto(row: InboxRow, centerPoint?: { latitude: number; l
     preferredAt: row.preferredAt ? row.preferredAt.toISOString() : null,
     distributedAt: (row.notifiedAt ?? new Date(0)).toISOString(),
     providerResponse: row.providerResponse as ProviderResponse,
+    currentOffer: offerState.currentOffer,
   };
 }
 
@@ -150,8 +156,12 @@ export async function listIncomingRequests(
     if (point) centers.set(serviceId, point);
   }
 
+  const offerStates = await loadProviderOfferStates(providerProfileId, rows.map((row) => row.requestId));
+
   return {
-    items: rows.map((row) => toIncomingRequestDto(row, centers.get(row.serviceId))),
+    items: rows.map((row) =>
+      toIncomingRequestDto(row, centers.get(row.serviceId), offerStates.get(row.requestId) ?? NO_OFFER_STATE),
+    ),
     total: Number(count),
   };
 }
@@ -177,7 +187,8 @@ export async function getIncomingRequest(providerProfileId: string, requestId: s
   // 403 for a non-existent id too, so ids cannot be probed by comparing statuses.
   if (!row) throw notDistributedToProviderError();
   const centers = await loadProviderCenterPoints([providerProfileId], row.serviceId);
-  return toIncomingRequestDto(row, centers.get(providerProfileId));
+  const offerStates = await loadProviderOfferStates(providerProfileId, [requestId]);
+  return toIncomingRequestDto(row, centers.get(providerProfileId), offerStates.get(requestId) ?? NO_OFFER_STATE);
 }
 
 /**

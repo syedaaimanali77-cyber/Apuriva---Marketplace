@@ -1,4 +1,4 @@
-import { and, eq, lte } from 'drizzle-orm';
+import { and, eq, lte, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { customerProfiles, providerAvailabilityNotificationRequests, providerProfiles, requests, users } from '@/lib/db/schema';
 import { hasActiveBooking } from './booking-lifecycle-adapter';
@@ -117,6 +117,16 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
     // own — they carry no PII once `provider_profiles.business_name` is nulled above, and every
     // FK on that table is `restrict`, so the rows are retained keyed to the now-anonymized user
     // exactly like every other provider-owned row in this schema.
+    //
+    // Spec 018 §4 "Retention and privacy": offers are retained (every FK is `restrict`, and an accepted
+    // offer is the parent of spec 020's booking); only the provider's free-text message is redacted,
+    // with the same sentinel spec 015 uses for request descriptions. Price, currency, included items
+    // and timestamps stay as the commercial record.
+    await db.execute(sql`
+      UPDATE offers SET provider_message = ${REDACTED_DESCRIPTION}, updated_at = clock_timestamp()
+       WHERE provider_message IS NOT NULL
+         AND provider_profile_id IN (SELECT id FROM provider_profiles WHERE user_id = ${id})
+    `);
 
     // Spec 015 §4: redact the request's free-text PII, keeping the row itself. `not null` on the
     // column means a sentinel rather than NULL; every read path treats it as ordinary text, so a

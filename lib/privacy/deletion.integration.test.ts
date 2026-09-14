@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb, getPool } from '@/lib/db';
-import { users } from '@/lib/db/schema';
+import { offers, users } from '@/lib/db/schema';
 import { isDatabaseReachable } from '@/lib/db/test-support';
-import { cancelDeletion, getGracePeriodDays, requestDeletion, sweepDeletions } from './deletion';
+import { seedOfferScenario, sendOffer } from '@/lib/offers/offers-test-support';
+import { cancelDeletion, getGracePeriodDays, REDACTED_DESCRIPTION, requestDeletion, sweepDeletions } from './deletion';
 import { seedBooking, seedUser } from './test-support';
 
 const dbReachable = await isDatabaseReachable();
@@ -132,5 +133,25 @@ describe.skipIf(!dbReachable)('lib/privacy/deletion (spec 008 AC-4, integration)
     await sweepDeletions();
 
     await expect(cancelDeletion(userId)).rejects.toMatchObject({ code: 'DELETION_NOT_PENDING' });
+  });
+
+  it("spec 018 §4: a swept provider's offers are retained with provider_message redacted; price and timestamps kept", async () => {
+    const { providers, requestId } = await seedOfferScenario();
+    const provider = providers[0]!;
+    const offer = await sendOffer(provider, requestId, { providerMessage: 'Call me on 0300-1234567' });
+
+    await getDb()
+      .update(users)
+      .set({ lifecycleStatus: 'deletion_pending', deletionGraceEndsAt: new Date(Date.now() - 1000) })
+      .where(eq(users.id, provider.userId));
+    await sweepDeletions();
+
+    const [row] = await getDb().select().from(offers).where(eq(offers.id, offer.id));
+    expect(row).toBeDefined();
+    expect(row!.providerMessage).toBe(REDACTED_DESCRIPTION);
+    expect(row!.priceAmountMinorUnits).toBe(320_000);
+    expect(row!.priceCurrencyCode).toBe('PKR');
+    expect(row!.sentAt).not.toBeNull();
+    expect(row!.expiresAt).not.toBeNull();
   });
 });

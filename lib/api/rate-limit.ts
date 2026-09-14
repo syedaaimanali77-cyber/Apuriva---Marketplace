@@ -19,6 +19,7 @@ export type RateLimitDomain =
   | 'location'
   | 'availability'
   | 'matching'
+  | 'offers'
   | 'default';
 
 export interface RateLimitRule {
@@ -50,6 +51,8 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   // Spec 017 §3: a provider write surface (accept/decline, admin weight configuration) — the
   // same 30/60s budget spec 015 chose for 'requests', its closest analogue.
   matching: { limit: 30, windowMs: 60_000 },
+  // Spec 018 §3: offer create/read/decide — the same write-surface budget as 'requests'/'matching'.
+  offers: { limit: 30, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 
