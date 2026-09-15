@@ -308,9 +308,13 @@ describe.skipIf(!dbReachable)('financial flows (spec 021 §6, master spec §113)
     const { booking } = await createBooking(scenario.customer.userId, randomUUID(), createBookingBody(scenario.offerId));
     await authorizePayment(scenario.customer.userId, booking.id, freshKey());
 
-    // `captured -> refunded` is spec 022's and is deliberately unseeded here.
+    // `captured -> created` is owned by NOBODY and is seeded by no spec, so the spec 003 trigger
+    // rejects it. (`captured -> refunded` was this test's original example; spec 022 has now shipped
+    // and seeds it in its own migration, exactly as §4 said it would, so it is no longer an
+    // unseeded pair. What this test proves — that the trigger is an independent second line of
+    // defence against any unseeded transition — is unchanged.)
     await expect(
-      getDb().execute(sql`UPDATE payments SET status = 'refunded' WHERE booking_id = ${booking.id}`),
+      getDb().execute(sql`UPDATE payments SET status = 'created' WHERE booking_id = ${booking.id}`),
     ).rejects.toThrow();
   });
 });

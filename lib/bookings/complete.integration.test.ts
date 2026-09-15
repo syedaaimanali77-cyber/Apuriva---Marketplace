@@ -251,16 +251,15 @@ describe.skipIf(!dbReachable)('booking completion (spec 020 AC-5/AC-8/AC-10/AC-1
     await completeBooking(scenario.customer.userId, bookingId, 'customer');
 
     // No outgoing transition seeded by THIS spec, so even a raw UPDATE is refused by the spec 003
-    // trigger. `protected` is deliberately absent from this list: spec 021 has now shipped and
-    // seeds `completed -> protected` in its own migration, exactly as §3 "Payment boundary" always
-    // said it would ("spec 021 seeds both transition rows in its own migration and is the only
-    // caller that performs them"). Every target below is still owned by a spec that has not
-    // shipped — `cancelled` (023), `disputed` (031), `refunded` (022) — or by nobody at all
-    // (`in_progress`), and `completed -> settled` stays unseeded because spec 021 reaches `settled`
-    // only from `protected`. What this spec guarantees is unchanged and still asserted: no spec 020
-    // code path moves a completed booking anywhere, which `payment-boundary.test.ts` proves at the
-    // source level.
-    for (const target of ['in_progress', 'settled', 'cancelled', 'disputed', 'refunded']) {
+    // trigger. Two targets are deliberately absent from this list because the specs that own them
+    // have now shipped and seed them in their own migrations, exactly as spec 020 always said they
+    // would: `protected` (spec 021, §3 "Payment boundary") and `refunded` (spec 022, §4 "any →
+    // refunded | 022 | spec 022's migration"). Every target below is still owned by a spec that has
+    // not shipped — `cancelled` (023), `disputed` (031) — or by nobody at all (`in_progress`), and
+    // `completed -> settled` stays unseeded because spec 021 reaches `settled` only from
+    // `protected`. What this spec guarantees is unchanged and still asserted: no spec 020 code path
+    // moves a completed booking anywhere, which `payment-boundary.test.ts` proves at source level.
+    for (const target of ['in_progress', 'settled', 'cancelled', 'disputed']) {
       await expect(
         getDb().execute(sql`UPDATE bookings SET status = ${target} WHERE id = ${bookingId}`),
       ).rejects.toThrow();

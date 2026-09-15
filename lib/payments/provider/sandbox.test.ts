@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   SANDBOX_DECLINE_AMOUNT_SUFFIX,
   SANDBOX_REFERENCE_PREFIX,
+  SANDBOX_REFUND_DECLINE_AMOUNT_SUFFIX,
+  SANDBOX_REFUND_UNKNOWN_AMOUNT_SUFFIX,
   SANDBOX_REQUIRES_ACTION_AMOUNT_SUFFIX,
   getSandboxPaymentProvider,
 } from './sandbox';
@@ -100,5 +102,105 @@ describe('sandbox payment provider (spec 021 §3)', () => {
     });
     expect(unknown.outcome).toBe('failed');
     expect(unknown.failureCode).toBe('unknown_reference');
+  });
+});
+
+/** Spec 022 §3 "Provider seam extension" — the refund primitives added to spec 021's adapter. */
+describe('sandbox refunds (spec 022 §3)', () => {
+  beforeEach(() => provider.reset());
+
+  async function capturedPayment(paymentAmount = amount(0)): Promise<string> {
+    const authorized = await provider.authorize({
+      idempotencyKey: `auth-${Math.random()}`,
+      amountMinorUnits: paymentAmount,
+      currencyCode: PKR,
+      reference: 'r',
+    });
+    await provider.capture({
+      idempotencyKey: `cap-${Math.random()}`,
+      amountMinorUnits: paymentAmount,
+      currencyCode: PKR,
+      providerReference: authorized.providerReference,
+    });
+    return authorized.providerReference;
+  }
+
+  it('refunds a captured payment and issues its own reference', async () => {
+    const providerReference = await capturedPayment();
+    const result = await provider.refund({
+      idempotencyKey: 'r1',
+      providerReference,
+      amountMinorUnits: 10_000,
+      currencyCode: PKR,
+    });
+
+    expect(result.outcome).toBe('refunded');
+    // A refund reference is distinct from the payment's, and self-describing as a sandbox handle.
+    expect(result.refundReference).not.toBe(providerReference);
+    expect(result.refundReference?.startsWith(SANDBOX_REFERENCE_PREFIX)).toBe(true);
+  });
+
+  it('declines the reserved refund-decline amount with a machine code', async () => {
+    const providerReference = await capturedPayment();
+    const result = await provider.refund({
+      idempotencyKey: 'r1',
+      providerReference,
+      amountMinorUnits: amount(SANDBOX_REFUND_DECLINE_AMOUNT_SUFFIX),
+      currencyCode: PKR,
+    });
+
+    expect(result.outcome).toBe('failed');
+    expect(result.failureCode).toBe('refund_declined');
+  });
+
+  /**
+   * AC-7's adapter half, and the most important behaviour in this file: `unknown` is a real
+   * outcome, and the refund IS settled on the provider side even though the caller never learned
+   * it. That is exactly the shape that makes auto-failing dangerous.
+   */
+  it('reports unknown for the reserved ambiguity amount, while having actually refunded', async () => {
+    const providerReference = await capturedPayment();
+    const result = await provider.refund({
+      idempotencyKey: 'r1',
+      providerReference,
+      amountMinorUnits: amount(SANDBOX_REFUND_UNKNOWN_AMOUNT_SUFFIX),
+      currencyCode: PKR,
+    });
+
+    expect(result.outcome).toBe('unknown');
+    expect(result.refundReference).not.toBeNull();
+
+    // The status READ tells the truth — which is how the sweep resolves it without refunding twice.
+    const status = await provider.getRefundStatus(result.refundReference!);
+    expect(status.outcome).toBe('refunded');
+  });
+
+  /** AC-8's provider half: one key ⇒ one refund, replayed verbatim. */
+  it('replays one refund per idempotency key rather than refunding twice', async () => {
+    const providerReference = await capturedPayment();
+    const first = await provider.refund({ idempotencyKey: 'same', providerReference, amountMinorUnits: 10_000, currencyCode: PKR });
+    const second = await provider.refund({ idempotencyKey: 'same', providerReference, amountMinorUnits: 10_000, currencyCode: PKR });
+
+    expect(second).toEqual(first);
+    expect(second.refundReference).toBe(first.refundReference);
+  });
+
+  it('fails a refund against an unknown payment reference, issuing no refund reference', async () => {
+    const result = await provider.refund({
+      idempotencyKey: 'r1',
+      providerReference: 'sandbox_nope',
+      amountMinorUnits: 10_000,
+      currencyCode: PKR,
+    });
+
+    expect(result.outcome).toBe('failed');
+    expect(result.failureCode).toBe('unknown_reference');
+    expect(result.refundReference).toBeNull();
+  });
+
+  /** An unresolvable reference stays `unknown` — never guessed into `failed`. */
+  it('reports unknown for a refund reference it cannot resolve', async () => {
+    const status = await provider.getRefundStatus('sandbox_refund_missing');
+    expect(status.outcome).toBe('unknown');
   });
 });

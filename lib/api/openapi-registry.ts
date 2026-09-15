@@ -546,4 +546,35 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Customer declines an additional charge; terminal, charges nothing; requires Idempotency-Key',
     tags: ['payments'],
   },
+  // Spec 022 §3 — refunds. Approval listing and decisions reuse spec 009's existing
+  // `/admin/approvals/*` routes; this spec adds none of its own. `/cron/refund-reconcile-sweep` is
+  // excluded by the drift check, like every other cron route.
+  {
+    method: 'POST',
+    path: '/bookings/{id}/refunds',
+    summary:
+      "Request the booking's policy refund; session (customer, the booking's own); requires Idempotency-Key; takes NO amount — the amount comes from spec 023's eligibility decision server-side; 422 REFUND_NOT_ELIGIBLE when no policy allows it",
+    tags: ['refunds'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/refunds',
+    summary:
+      'Refunds issued on a booking — amounts, status and line reasons, never a provider reference or failure code; session (either participant, in their own mode)',
+    tags: ['refunds'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/refunds',
+    summary:
+      'Finance Admin refund override. Without adminActionId: initiates and returns 202 pending a second, distinct admin (risk tier high). With adminActionId: executes an approved override; 422 APPROVAL_REQUIRED while still pending. Requires Idempotency-Key',
+    tags: ['refunds'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/refunds',
+    summary:
+      'Finance Admin refund listing, paged and filterable by status and reconciliationState; requires the refunds/read permission',
+    tags: ['refunds'],
+  },
 ];

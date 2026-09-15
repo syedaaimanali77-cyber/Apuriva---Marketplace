@@ -45,6 +45,45 @@ export function isAllowedPaymentTransition(from: PaymentStatus, to: PaymentStatu
   return ALLOWED.has(`${from}->${to}`);
 }
 
+/**
+ * The extension registry the header above always described in prose: "`captured -> refunded` and
+ * `captured -> partially_refunded` (spec 022)". `applyPaymentTransition()` is the one primitive that
+ * writes `payments.status`, so a later spec performing a transition IT owns has to be able to pass
+ * this guard — otherwise the guard, which exists to catch a spec 021 programming error, would
+ * instead block the collaboration §4 explicitly designed for.
+ *
+ * This is NOT a change to spec 021's transition graph. `SPEC_021_PAYMENT_TRANSITIONS` is untouched
+ * and `isAllowedPaymentTransition()` still answers only "does spec 021 own this pair?", so spec
+ * 021's own tests — which assert the refund pairs are NOT spec 021's — keep passing unchanged. The
+ * database `payments_status_transitions` table remains the real authority either way: a pair
+ * registered here but never seeded is still rejected by the spec 003 trigger.
+ *
+ * Mirrors `registerBookingTransitions` in `lib/bookings/state-machine.ts` exactly.
+ */
+const REGISTERED_EXTENSIONS = new Map<string, string>();
+
+export function registerPaymentTransitions(
+  owner: string,
+  pairs: ReadonlyArray<readonly [PaymentStatus, PaymentStatus]>,
+): void {
+  for (const [from, to] of pairs) {
+    if (isAllowedPaymentTransition(from, to)) {
+      throw new Error(`${from} -> ${to} is owned by spec 021; it cannot be registered by ${owner}`);
+    }
+    REGISTERED_EXTENSIONS.set(`${from}->${to}`, owner);
+  }
+}
+
+/** Test-only: clears extension registrations so suites cannot leak into each other. */
+export function resetRegisteredPaymentTransitions(): void {
+  REGISTERED_EXTENSIONS.clear();
+}
+
+/** True when a later spec has registered `(from, to)` as one it owns and performs. */
+export function isRegisteredPaymentTransition(from: PaymentStatus, to: PaymentStatus): boolean {
+  return REGISTERED_EXTENSIONS.has(`${from}->${to}`);
+}
+
 /** Statuses from which no further movement is possible in this spec. */
 export const TERMINAL_PAYMENT_STATUSES: readonly PaymentStatus[] = ['captured', 'failed'] as const;
 
@@ -88,10 +127,10 @@ export async function applyPaymentTransition(
 ): Promise<ApplyPaymentTransitionResult> {
   const { paymentId, from, to, actorRole, actorUserId, expectedVersion, set } = params;
 
-  if (!isAllowedPaymentTransition(from, to)) {
-    // A caller asking for a transition spec 021 does not own is a programming error, not a user
-    // error: fail loudly here rather than letting the database trigger report it as a 500.
-    throw new Error(`Spec 021 does not own the payment transition ${from} -> ${to}`);
+  if (!isAllowedPaymentTransition(from, to) && !isRegisteredPaymentTransition(from, to)) {
+    // A caller asking for a transition NOBODY owns is a programming error, not a user error: fail
+    // loudly here rather than letting the database trigger report it as a 500.
+    throw new Error(`No spec owns the payment transition ${from} -> ${to}`);
   }
   if ((actorUserId === null) !== (actorRole === 'system')) {
     throw new Error('actorUserId must be null exactly when actorRole is "system"');

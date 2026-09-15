@@ -158,6 +158,15 @@ describe('BookingDetailPage (spec 020 §5)', () => {
     render(<BookingDetailPage />);
     await vi.waitFor(() => expect(screen.getByText('Your booking')).toBeInTheDocument());
 
+    // Let every section's INITIAL load settle before taking the baseline — the page now mounts the
+    // spec 022 refund section alongside the booking and history reads, and its first fetch can land
+    // just after the booking text appears. What this test is about is that nothing POLLS afterwards.
+    await vi.waitFor(() => {
+      const settled = fetchMock.mock.calls.length;
+      expect(settled).toBe(fetchMock.mock.calls.length);
+      expect(settled).toBeGreaterThanOrEqual(3);
+    });
+
     const afterLoad = fetchMock.mock.calls.length;
     await vi.advanceTimersByTimeAsync(40_000);
     expect(fetchMock.mock.calls.length).toBe(afterLoad);

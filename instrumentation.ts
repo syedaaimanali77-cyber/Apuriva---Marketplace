@@ -10,4 +10,8 @@
 export async function register(): Promise<void> {
   const { registerPaymentIntegration } = await import('@/lib/payments');
   registerPaymentIntegration();
+
+  // Spec 022 registers the three payment transitions and four booking transitions it owns.
+  const { registerRefundIntegration } = await import('@/lib/refunds');
+  registerRefundIntegration();
 }

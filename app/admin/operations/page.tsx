@@ -7,10 +7,12 @@ export default function AdminOperationsPage() {
   return (
     <PlaceholderPage
       title="Operations"
+      density="dense"
       description="Approvals and post-action reviews already exist — reachable here rather than as orphaned routes now that Operations is its own nav item."
       links={[
         { href: '/admin/approvals', label: 'Pending approvals' },
         { href: '/admin/actions/review', label: 'Post-action review' },
+        { href: '/admin/operations/refunds', label: 'Refunds' },
       ]}
     />
   );

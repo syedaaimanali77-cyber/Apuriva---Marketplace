@@ -19,6 +19,7 @@ import {
   payments,
   priceAdjustments,
   providerProfiles,
+  refundLines,
   refunds,
   requestProviderMatches,
   requests,
@@ -180,7 +181,27 @@ export interface DataExportPayload {
       protectionWindowStartedAt: string | null;
       createdAt: string;
     }>;
-    refunds: Array<{ id: string; paymentId: string; createdAt: string }>;
+    /**
+     * Spec 022 §4 "Retention and privacy" — the export boundary for refund data.
+     *
+     * Exported: the caller's own refund amount, currency, status, completion instant and each
+     * line's reason. NEVER exported, by simply not being selected: `provider_reference`,
+     * `refund_reference`, `failure_code`, `failure_reason`, `idempotency_key`,
+     * `idempotency_fingerprint`, `admin_action_id`, `initiated_by_user_id` and
+     * `eligibility_decision_ref` — provider handles, internal reconciliation data, and
+     * admin/security detail beyond the user's own record.
+     */
+    refunds: Array<{
+      id: string;
+      paymentId: string;
+      bookingId: string;
+      status: string;
+      totalAmountMinorUnits: number | null;
+      totalCurrencyCode: string | null;
+      completedAt: string | null;
+      createdAt: string;
+      lines: Array<{ lineAmountMinorUnits: number | null; lineCurrencyCode: string | null; reason: string }>;
+    }>;
     priceAdjustments: Array<{
       id: string;
       bookingId: string;
@@ -325,9 +346,33 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
   const paymentIds = paymentRows.map((p) => p.id);
   const refundRows = paymentIds.length
     ? await db
-        .select({ id: refunds.id, paymentId: refunds.paymentId, createdAt: refunds.createdAt })
+        .select({
+          id: refunds.id,
+          paymentId: refunds.paymentId,
+          // Spec 022 §4: the caller's own money and its explanation — nothing provider-facing,
+          // nothing about the admin approval chain.
+          bookingId: refunds.bookingId,
+          status: refunds.status,
+          totalAmountMinorUnits: refunds.totalAmountMinorUnits,
+          totalCurrencyCode: refunds.totalCurrencyCode,
+          completedAt: refunds.completedAt,
+          createdAt: refunds.createdAt,
+        })
         .from(refunds)
         .where(inArray(refunds.paymentId, paymentIds))
+    : [];
+
+  const refundIds = refundRows.map((r) => r.id);
+  const refundLineRows = refundIds.length
+    ? await db
+        .select({
+          refundId: refundLines.refundId,
+          lineAmountMinorUnits: refundLines.lineAmountMinorUnits,
+          lineCurrencyCode: refundLines.lineCurrencyCode,
+          reason: refundLines.reason,
+        })
+        .from(refundLines)
+        .where(inArray(refundLines.refundId, refundIds))
     : [];
 
   // Spec 021 §4 "Retention and privacy": the price adjustments proposed on the caller's own
@@ -610,7 +655,14 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         protectionWindowStartedAt: p.protectionWindowStartedAt ? p.protectionWindowStartedAt.toISOString() : null,
         createdAt: p.createdAt.toISOString(),
       })),
-      refunds: refundRows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+      refunds: refundRows.map((r) => ({
+        ...r,
+        completedAt: r.completedAt ? r.completedAt.toISOString() : null,
+        createdAt: r.createdAt.toISOString(),
+        lines: refundLineRows
+          .filter((line) => line.refundId === r.id)
+          .map(({ lineAmountMinorUnits, lineCurrencyCode, reason }) => ({ lineAmountMinorUnits, lineCurrencyCode, reason })),
+      })),
       priceAdjustments: priceAdjustmentRows.map((a) => ({
         ...a,
         approvedAt: a.approvedAt ? a.approvedAt.toISOString() : null,

@@ -68,8 +68,9 @@ describe.skipIf(!dbReachable)('protection window (spec 021 AC-5/AC-5a/AC-5b/AC-5
     const completedAt = await completionInstantOf(bookingId);
     expect(await bookingStatus(bookingId)).toBe('completed');
 
-    const result = await runPaymentSweep();
-    expect(result.protectionOpened).toBe(1);
+    // The sweep's counts are database-wide and this suite shares one with every other spec that
+    // creates completed, captured bookings — so assert on THIS booking, which is the guarantee.
+    await runPaymentSweep();
 
     const payment = await storedPayment(bookingId);
     expect(payment!.protection_state).toBe('held');
@@ -191,10 +192,11 @@ describe.skipIf(!dbReachable)('protection window (spec 021 AC-5/AC-5a/AC-5b/AC-5
   it('never protects a booking with no captured payment', async () => {
     const scenario = await seedBookingScenario();
     const { booking } = await createBooking(scenario.customer.userId, randomUUID(), createBookingBody(scenario.offerId));
-    // No payment at all: the booking stays `pending` and the sweep has nothing to protect.
-    const result = await runPaymentSweep();
-    expect(result.protectionOpened).toBe(0);
+    // No payment at all: the booking stays `pending` and the sweep has nothing to protect HERE.
+    // Asserted on this booking rather than on a database-wide count, which other suites also move.
+    await runPaymentSweep();
     expect(await storedPayment(booking.id)).toBeUndefined();
+    expect(await bookingStatus(booking.id)).toBe('pending');
   });
 
   /** The sweep is idempotent: re-running opens nothing new and releases nothing twice. */
@@ -202,12 +204,29 @@ describe.skipIf(!dbReachable)('protection window (spec 021 AC-5/AC-5a/AC-5b/AC-5
     const scenario = await seedBookingScenario();
     const bookingId = await completedPaidBooking(scenario, 'provider');
 
-    expect((await runPaymentSweep()).protectionOpened).toBe(1);
-    expect((await runPaymentSweep()).protectionOpened).toBe(0);
+    // Asserted on THIS booking's state and version rather than on database-wide counts: the test
+    // database is shared with every other spec that creates completed, captured bookings, so a
+    // global count was never the guarantee this test makes. Idempotency means the second run
+    // changes nothing HERE — which an unchanged version proves exactly.
+    await runPaymentSweep();
+    const opened = (await storedPayment(bookingId))!;
+    expect(opened.protection_state).toBe('held');
+
+    await runPaymentSweep();
+    const afterSecondOpen = (await storedPayment(bookingId))!;
+    expect(afterSecondOpen.protection_state).toBe('held');
+    expect(afterSecondOpen.version).toBe(opened.version);
 
     await backdateProtectionWindow(bookingId, 49);
-    expect((await runPaymentSweep()).protectionReleased).toBe(1);
-    expect((await runPaymentSweep()).protectionReleased).toBe(0);
+    await runPaymentSweep();
+    const released = (await storedPayment(bookingId))!;
+    expect(released.protection_state).toBe('released');
+    expect(await bookingStatus(bookingId)).toBe('settled');
+
+    await runPaymentSweep();
+    const afterSecondRelease = (await storedPayment(bookingId))!;
+    expect(afterSecondRelease.protection_state).toBe('released');
+    expect(afterSecondRelease.version).toBe(released.version);
     expect(await bookingStatus(bookingId)).toBe('settled');
   });
 });

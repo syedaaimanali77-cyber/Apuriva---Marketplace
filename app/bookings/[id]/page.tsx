@@ -15,6 +15,7 @@ import {
   mutateHeaders,
   progressionIndex,
 } from '../booking-client';
+import { RefundSection } from '../_components/RefundSection';
 import styles from '../bookings.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
@@ -222,6 +223,9 @@ export default function BookingDetailPage() {
           </p>
         </Card>
       )}
+
+      {/* Spec 022 §5 — renders nothing when the booking has no refunds. */}
+      <RefundSection bookingId={booking.id} scheduledTimezone={booking.scheduledTimezone} />
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Activity</h2>

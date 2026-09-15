@@ -1611,6 +1611,21 @@ export const priceAdjustments = pgTable(
   ],
 );
 
+/** Spec 022 §3 "Refund lifecycle". `requested`/`processing` in-flight; `completed`/`failed` terminal. */
+export const REFUND_STATUSES = ['requested', 'processing', 'completed', 'failed'] as const;
+
+/** Spec 022 §3 "Reconciliation seam" — spec 022 only ever writes `pending`; `reconciled` is 024's. */
+export const REFUND_RECONCILIATION_STATES = ['pending', 'reconciled'] as const;
+
+export const REFUND_SOURCES = ['policy', 'admin_override'] as const;
+
+/**
+ * Spec 022 §4 — the baseline `refunds` skeleton, now carrying this spec's feature columns.
+ *
+ * ALTERED, never recreated: spec 003 already ships this table, its FK and its index.
+ * `0018_add_refunds.sql` adds the columns below and attaches spec 003's EXISTING
+ * `enforce_status_transition()` function via a new `refunds_status_transitions` lookup table.
+ */
 export const refunds = pgTable(
   'refunds',
   {
@@ -1618,10 +1633,76 @@ export const refunds = pgTable(
     paymentId: uuid('payment_id')
       .notNull()
       .references(() => payments.id, { onDelete: 'restrict' }),
+    /** Spec 022 §4 — feature columns. The table itself is spec 003's baseline skeleton. */
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'restrict' }),
+    status: text('status', { enum: REFUND_STATUSES }).notNull(),
+    ...moneyColumns('total'),
+    source: text('source', { enum: REFUND_SOURCES }).notNull(),
+    isOverride: boolean('is_override').notNull().default(false),
+    /** Null for a system-initiated policy refund; the acting user otherwise. */
+    initiatedByUserId: uuid('initiated_by_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 009's approval chain. Non-null exactly when `is_override` (C-5). */
+    adminActionId: uuid('admin_action_id').references(() => adminActions.id, { onDelete: 'restrict' }),
+    /** Spec 023's opaque decision handle, stored for audit. Never interpreted here. */
+    eligibilityDecisionRef: text('eligibility_decision_ref'),
+    /** The payment's provider handle, copied at execution time. Server-side only. */
+    providerReference: text('provider_reference'),
+    /** The provider's handle for THIS refund. Null until the provider issues one. */
+    refundReference: text('refund_reference'),
+    failureCode: text('failure_code'),
+    failureReason: text('failure_reason'),
+    /** Spec 022 §3 idempotency: scoped per payment by the unique index below, never globally. */
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
+    reconciliationState: text('reconciliation_state', { enum: REFUND_RECONCILIATION_STATES }).notNull().default('pending'),
+    reconciledAt: timestamp('reconciled_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
   },
-  (t) => [index('refunds_payment_id_idx').on(t.paymentId)],
+  (t) => [
+    index('refunds_payment_id_idx').on(t.paymentId),
+    index('refunds_booking_id_idx').on(t.bookingId),
+    index('refunds_status_idx').on(t.status),
+    index('refunds_initiated_by_user_id_idx').on(t.initiatedByUserId),
+    index('refunds_admin_action_id_idx').on(t.adminActionId),
+    // C-12: the index spec 024's reconciliation consumer reads.
+    index('refunds_reconciliation_idx').on(t.reconciliationState, t.completedAt),
+    // C-1 / AC-8: one refund per idempotency key, scoped per payment.
+    uniqueIndex('refunds_payment_idempotency_key_uq').on(t.paymentId, t.idempotencyKey),
+    check('refunds_status_ck', sql`${t.status} in ('requested','processing','completed','failed')`),
+    check('refunds_source_ck', sql`${t.source} in ('policy','admin_override')`),
+    check('refunds_reconciliation_state_ck', sql`${t.reconciliationState} in ('pending','reconciled')`),
+    check('refunds_total_pair_ck', sql`(${t.totalAmountMinorUnits} is null) = (${t.totalCurrencyCode} is null)`),
+    check('refunds_total_currency_format_ck', sql`${t.totalCurrencyCode} is null or ${t.totalCurrencyCode} ~ '^[A-Z]{3}$'`),
+    // I-3 / I-4: no zero, no negative.
+    check('refunds_total_positive_ck', sql`${t.totalAmountMinorUnits} > 0`),
+    // C-5: an override is always traceable to its approval chain.
+    check(
+      'refunds_override_pairing_ck',
+      sql`(${t.isOverride} = true) = (${t.adminActionId} is not null)
+          and (${t.isOverride} = true) = (${t.source} = 'admin_override')`,
+    ),
+    // C-6: a completed refund always has its instant.
+    check('refunds_completed_pairing_ck', sql`(${t.status} = 'completed') = (${t.completedAt} is not null)`),
+    // C-7: nothing unreconcilable is marked reconciled.
+    check(
+      'refunds_reconciled_pairing_ck',
+      sql`(${t.reconciliationState} = 'reconciled') = (${t.reconciledAt} is not null)
+          and (${t.reconciliationState} <> 'reconciled' or ${t.status} = 'completed')`,
+    ),
+    // C-8: failure detail only on failures.
+    check('refunds_failure_pairing_ck', sql`${t.failureCode} is null or ${t.status} = 'failed'`),
+  ],
 );
 
+/**
+ * Spec 022 §4 — the immutable explanation of a refund's amount.
+ *
+ * Lines belong to exactly ONE refund (one refund record = one execution attempt = one provider
+ * call). Multiple partial refunds against a payment are multiple `refunds` rows, each with its own
+ * lines. `refund_lines_append_only_trg` makes the recorded reason unrewritable (AC-2).
+ */
 export const refundLines = pgTable(
   'refund_lines',
   {
@@ -1629,8 +1710,58 @@ export const refundLines = pgTable(
     refundId: uuid('refund_id')
       .notNull()
       .references(() => refunds.id, { onDelete: 'restrict' }),
+    ...moneyColumns('line'),
+    reason: text('reason').notNull(),
   },
-  (t) => [index('refund_lines_refund_id_idx').on(t.refundId)],
+  (t) => [
+    index('refund_lines_refund_id_idx').on(t.refundId),
+    check('refund_lines_amount_pair_ck', sql`(${t.lineAmountMinorUnits} is null) = (${t.lineCurrencyCode} is null)`),
+    check('refund_lines_amount_positive_ck', sql`${t.lineAmountMinorUnits} > 0`),
+    check('refund_lines_currency_format_ck', sql`${t.lineCurrencyCode} is null or ${t.lineCurrencyCode} ~ '^[A-Z]{3}$'`),
+  ],
+);
+
+/**
+ * Spec 022 §4 / C-9 — the attribution record behind every refund transition. Append-only at the
+ * database, so "who refunded this, when, and why" can never be rewritten.
+ */
+export const refundsStatusHistory = pgTable(
+  'refunds_status_history',
+  {
+    ...baseColumns(),
+    refundId: uuid('refund_id')
+      .notNull()
+      .references(() => refunds.id, { onDelete: 'restrict' }),
+    fromStatus: text('from_status'),
+    toStatus: text('to_status').notNull(),
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    actorRole: text('actor_role', { enum: ['customer', 'provider', 'admin', 'system'] }).notNull(),
+    detail: text('detail'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('refunds_status_history_refund_id_idx').on(t.refundId),
+    index('refunds_status_history_actor_user_id_idx').on(t.actorUserId),
+    check('refunds_status_history_actor_role_ck', sql`${t.actorRole} in ('customer','provider','admin','system')`),
+    // C-9: a real user unless the actor is the system (the reconcile sweep).
+    check('refunds_status_history_actor_pairing_ck', sql`(${t.actorUserId} is null) = (${t.actorRole} = 'system')`),
+  ],
+);
+
+/**
+ * Spec 022 §4 — the lookup table spec 003's EXISTING `enforce_status_transition()` function derives
+ * by name (`<table>_status_transitions`). Creating it and attaching the trigger is what puts
+ * `refunds` under the same enforcement the other five state-machine tables already have, without
+ * writing a new trigger function.
+ */
+export const refundsStatusTransitions = pgTable(
+  'refunds_status_transitions',
+  {
+    ...baseColumns(),
+    fromStatus: text('from_status').notNull(),
+    toStatus: text('to_status').notNull(),
+  },
+  (t) => [uniqueIndex('refunds_status_transitions_from_to_uq').on(t.fromStatus, t.toStatus)],
 );
 
 export const payouts = pgTable(

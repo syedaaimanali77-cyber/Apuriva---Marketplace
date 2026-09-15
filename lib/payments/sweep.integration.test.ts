@@ -11,6 +11,7 @@ import { SLOT_RELEASING_BOOKING_STATUSES } from '@/lib/bookings/busy-intervals';
 import { bookingHistory } from '@/lib/bookings/bookings-test-support';
 import { authorizePayment } from './authorize';
 import { SANDBOX_DECLINE_AMOUNT_SUFFIX } from './provider';
+import { SPEC_021_PAYMENT_TRANSITIONS } from './state-machine';
 import { DEFAULT_PAYMENT_AUTHORIZATION_WINDOW_MINUTES, paymentAuthorizationWindowMinutes, runPaymentSweep } from './sweep';
 import {
   amountWithSandboxSuffix,
@@ -150,18 +151,25 @@ describe.skipIf(!dbReachable)('pending-payment expiry sweep (spec 021 AC-9)', { 
   });
 
   /** §4 — and the payment graph 0017 seeds is exactly the nine transitions this spec performs. */
+  /**
+   * Scoped to the pairs SPEC 021 owns. The table is shared: spec 022 has now shipped and seeds
+   * `captured -> refunded`, `captured -> partially_refunded` and `partially_refunded -> refunded`
+   * in its own migration, exactly as §4 reserved for it — so a bare row count would grow with every
+   * spec that legitimately adds one. What this spec guarantees is that ITS nine are present and
+   * that it seeds none of the refund pairs itself, and that is what is asserted.
+   */
   it('seeds exactly the nine payment transitions this spec performs', async () => {
-    const rows = await queryRows<{ count: string }>(
+    const rows = await queryRows<{ from_status: string; to_status: string }>(
       getDb(),
-      sql`SELECT COUNT(*)::text AS count FROM payments_status_transitions`,
+      sql`SELECT from_status, to_status FROM payments_status_transitions
+           WHERE to_status NOT IN ('refunded','partially_refunded')`,
     );
-    expect(Number(rows[0]!.count)).toBe(9);
+    expect(rows).toHaveLength(9);
 
-    const refundRows = await queryRows<{ count: string }>(
-      getDb(),
-      sql`SELECT COUNT(*)::text AS count FROM payments_status_transitions
-           WHERE to_status IN ('refunded','partially_refunded')`,
-    );
-    expect(Number(refundRows[0]!.count)).toBe(0);
+    for (const [from, to] of SPEC_021_PAYMENT_TRANSITIONS) {
+      expect(rows.some((row) => row.from_status === from && row.to_status === to)).toBe(true);
+    }
+    // Spec 021's own graph names no refund transition.
+    expect(SPEC_021_PAYMENT_TRANSITIONS.some(([, to]) => to === 'refunded' || to === 'partially_refunded')).toBe(false);
   });
 });

@@ -58,6 +58,38 @@ export interface VoidInput {
   providerReference: string;
 }
 
+/**
+ * Spec 022 §3 "Provider seam extension" — the refund primitives, ADDED to this interface rather
+ * than given a parallel abstraction of their own, so refunds keep one payment adapter and one
+ * credential boundary.
+ *
+ * `'unknown'` is the load-bearing value and the reason this is its own union rather than a reuse of
+ * `ProviderOutcome`: a timeout, a dropped connection or an unrecognised provider response maps to
+ * `unknown`, and spec 022 AC-7 forbids collapsing it into `'failed'`. Claiming a refund failed when
+ * the provider may in fact have executed it is the same class of error as claiming a payment
+ * succeeded when it did not (master spec §132.7), and it strands the customer's money.
+ */
+export type ProviderRefundOutcome = 'refunded' | 'failed' | 'unknown';
+
+export interface RefundInput extends MoneyInput {
+  /** Forwarded to the provider as ITS idempotency key, so both levels deduplicate. */
+  idempotencyKey: string;
+  /** The authorization/capture handle spec 021 stored on the payment. */
+  providerReference: string;
+}
+
+export interface ProviderRefundResult {
+  outcome: ProviderRefundOutcome;
+  /**
+   * The provider's own handle for THIS refund, distinct from the payment's reference. `null` when
+   * the provider never got far enough to issue one (spec 022 §3 "Provider ambiguity"). Stored
+   * server-side only and never serialized into a DTO, a log line or a privacy export.
+   */
+  refundReference: string | null;
+  failureCode?: string;
+  failureMessage?: string;
+}
+
 export interface PaymentProvider {
   /** Stored on `payments.provider_name` so a row always records which adapter produced it. */
   readonly name: string;
@@ -72,4 +104,11 @@ export interface PaymentProvider {
   voidAuthorization(input: VoidInput): Promise<ProviderResult>;
   /** Reconciliation read — the escape hatch for a crash between the call and recording it. */
   getStatus(providerReference: string): Promise<ProviderResult>;
+  /** Spec 022: executes a full or partial refund against a captured payment. */
+  refund(input: RefundInput): Promise<ProviderRefundResult>;
+  /**
+   * Spec 022 AC-7's recovery path. A READ, never a second `refund()` call — which is precisely what
+   * makes resolving an ambiguous outcome incapable of refunding twice.
+   */
+  getRefundStatus(refundReference: string): Promise<ProviderRefundResult>;
 }
