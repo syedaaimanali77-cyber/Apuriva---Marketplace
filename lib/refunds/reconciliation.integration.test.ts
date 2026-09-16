@@ -109,10 +109,10 @@ describe.skipIf(!dbReachable)('refund reconciliation and audit (spec 022 AC-4)',
     allowRefund(50_000);
     await requestPolicyRefund(scenario.customer.userId, bookingId, freshKey());
 
-    const rows = await getDb().execute(
-      sql`SELECT COUNT(*)::int AS n FROM refunds WHERE reconciliation_state = 'reconciled'`,
-    );
-    expect((rows as unknown as { rows: { n: number }[] }).rows[0]!.n).toBe(0);
+    // Scoped to this booking: spec 024's suites legitimately reconcile refunds in the shared test database.
+    const refunds = await storedRefunds(bookingId);
+    expect(refunds).toHaveLength(1);
+    expect(refunds.filter((r) => r.reconciliation_state === 'reconciled')).toHaveLength(0);
   });
 
   /** §15 — the notification seam fires for a completed refund, after the transaction commits. */

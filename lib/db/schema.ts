@@ -1771,6 +1771,14 @@ export const refundsStatusTransitions = pgTable(
   (t) => [uniqueIndex('refunds_status_transitions_from_to_uq').on(t.fromStatus, t.toStatus)],
 );
 
+/** Spec 024 §3.5 — the WHOLE payout status vocabulary, authored once. */
+export const PAYOUT_STATUS_VALUES = ['pending', 'eligible', 'processing', 'paid', 'failed'] as const;
+
+/**
+ * Spec 024 §3.5/§4.1 — the transfer record and the ONLY payout status machine. One open `pending`
+ * batch per provider per currency (I-18); items freeze when it closes (I-25). The table and its
+ * `payouts_status_transition_trg` are spec 003's baseline; migration `0020` adds the columns below.
+ */
 export const payouts = pgTable(
   'payouts',
   {
@@ -1778,11 +1786,52 @@ export const payouts = pgTable(
     providerProfileId: uuid('provider_profile_id')
       .notNull()
       .references(() => providerProfiles.id, { onDelete: 'restrict' }),
-    status: text('status').notNull(),
+    status: text('status', { enum: PAYOUT_STATUS_VALUES }).notNull(),
+    /** May be negative only while `pending` (I-2): recoveries can outweigh earnings. */
+    payoutAmountMinorUnits: integer('payout_amount_minor_units').notNull().default(0),
+    payoutCurrencyCode: text('payout_currency_code').notNull(),
+    /** Snapshotted at close; a later method change cannot redirect a closed payout. */
+    payoutMethodId: uuid('payout_method_id').references((): AnyPgColumn => payoutMethods.id, { onDelete: 'restrict' }),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    /** The rail's handle for the current attempt. Server-side only (§4.4). */
+    payoutReference: text('payout_reference'),
+    /** The rail adapter's name. Server-side only (§4.4). */
+    providerName: text('provider_name').notNull(),
+    failureCode: text('failure_code'),
+    failureReason: text('failure_reason'),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    escalatedAt: timestamp('escalated_at', { withTimezone: true }),
   },
-  (t) => [index('payouts_provider_profile_id_idx').on(t.providerProfileId)],
+  (t) => [
+    index('payouts_provider_profile_id_idx').on(t.providerProfileId),
+    index('payouts_payout_method_id_idx').on(t.payoutMethodId),
+    index('payouts_provider_status_idx').on(t.providerProfileId, t.status),
+    index('payouts_status_updated_idx').on(t.status, t.updatedAt),
+    uniqueIndex('payouts_open_batch_uq').on(t.providerProfileId, t.payoutCurrencyCode).where(sql`status = 'pending'`),
+    check('payouts_status_ck', sql`${t.status} in ('pending','eligible','processing','paid','failed')`),
+    ...moneyPairChecks('payouts', 'payout'),
+    check('payouts_amount_positive_when_closed_ck', sql`${t.status} = 'pending' or ${t.payoutAmountMinorUnits} > 0`),
+    check('payouts_closed_pairing_ck', sql`(${t.status} = 'pending') = (${t.closedAt} is null)`),
+    check('payouts_paid_pairing_ck', sql`(${t.status} = 'paid') = (${t.paidAt} is not null)`),
+    check('payouts_failure_pairing_ck', sql`${t.failureCode} is null or ${t.status} in ('failed','eligible','processing')`),
+    check(
+      'payouts_failure_code_ck',
+      sql`${t.failureCode} is null or ${t.failureCode} in ('destination_invalid','destination_unavailable','rail_temporarily_unavailable','transfer_rejected','transfer_not_received','unknown_failure')`,
+    ),
+    check('payouts_method_required_ck', sql`${t.status} = 'pending' or ${t.payoutMethodId} is not null`),
+    check(
+      'payouts_attempts_ck',
+      sql`${t.attemptCount} >= 0 and (${t.status} not in ('processing','paid','failed') or ${t.attemptCount} >= 1)`,
+    ),
+  ],
 );
 
+/**
+ * Spec 024 §3.9 — a payout destination. The platform stores NO credential: only what the rail
+ * returned (`type`, `masked_detail`, `institution_label`) and the rail's opaque destination token,
+ * AES-256-GCM encrypted at rest. `masked_detail` can hold at most four digits (I-15).
+ */
 export const payoutMethods = pgTable(
   'payout_methods',
   {
@@ -1790,8 +1839,176 @@ export const payoutMethods = pgTable(
     providerProfileId: uuid('provider_profile_id')
       .notNull()
       .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    type: text('type', { enum: ['bank', 'mobile_wallet'] }).notNull(),
+    maskedDetail: text('masked_detail').notNull(),
+    institutionLabel: text('institution_label').notNull(),
+    payoutCurrencyCode: text('payout_currency_code').notNull(),
+    /** Never leaves the server (§4.4). */
+    destinationTokenEncrypted: text('destination_token_encrypted').notNull(),
+    providerName: text('provider_name').notNull(),
+    verificationState: text('verification_state', { enum: ['pending', 'verified', 'rejected'] }).notNull().default('pending'),
+    isDefault: boolean('is_default').notNull().default(false),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
-  (t) => [index('payout_methods_provider_profile_id_idx').on(t.providerProfileId)],
+  (t) => [
+    index('payout_methods_provider_profile_id_idx').on(t.providerProfileId),
+    index('payout_methods_provider_removed_idx').on(t.providerProfileId, t.removedAt),
+    uniqueIndex('payout_methods_default_uq')
+      .on(t.providerProfileId, t.payoutCurrencyCode)
+      .where(sql`is_default and removed_at is null`),
+    uniqueIndex('payout_methods_idempotency_uq').on(t.providerProfileId, t.idempotencyKey),
+    check('payout_methods_type_ck', sql`${t.type} in ('bank','mobile_wallet')`),
+    check('payout_methods_verification_state_ck', sql`${t.verificationState} in ('pending','verified','rejected')`),
+    check('payout_methods_currency_format_ck', sql`${t.payoutCurrencyCode} ~ '^[A-Z]{3}$'`),
+    check('payout_methods_masked_detail_ck', sql`${t.maskedDetail} !~ '[0-9]([^0-9]*[0-9]){4}'`),
+    check('payout_methods_revoked_requires_removed_ck', sql`${t.revokedAt} is null or ${t.removedAt} is not null`),
+  ],
+);
+
+/** Spec 024 §3.3 — the ledger. One immutable-cored row per settled booking (I-8, I-21). */
+export const providerEarningsLines = pgTable(
+  'provider_earnings_lines',
+  {
+    ...baseColumns(),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'restrict' }),
+    providerProfileId: uuid('provider_profile_id')
+      .notNull()
+      .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    paymentId: uuid('payment_id')
+      .notNull()
+      .references(() => payments.id, { onDelete: 'restrict' }),
+    serviceId: uuid('service_id')
+      .notNull()
+      .references(() => services.id, { onDelete: 'restrict' }),
+    state: text('state', { enum: ['pending', 'eligible', 'paid'] }).notNull().default('pending'),
+    grossAmountMinorUnits: integer('gross_amount_minor_units').notNull(),
+    grossCurrencyCode: text('gross_currency_code').notNull(),
+    platformFeeBps: integer('platform_fee_bps').notNull(),
+    /** The fee on GROSS, before reversals. Immutable. */
+    feeAmountMinorUnits: integer('fee_amount_minor_units').notNull(),
+    feeCurrencyCode: text('fee_currency_code').notNull(),
+    refundedAmountMinorUnits: integer('refunded_amount_minor_units').notNull().default(0),
+    refundedCurrencyCode: text('refunded_currency_code').notNull(),
+    feeReversalAmountMinorUnits: integer('fee_reversal_amount_minor_units').notNull().default(0),
+    feeReversalCurrencyCode: text('fee_reversal_currency_code').notNull(),
+    netAmountMinorUnits: integer('net_amount_minor_units').notNull(),
+    netCurrencyCode: text('net_currency_code').notNull(),
+    eligibleAt: timestamp('eligible_at', { withTimezone: true }),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('provider_earnings_lines_booking_id_uq').on(t.bookingId),
+    index('provider_earnings_lines_provider_profile_id_idx').on(t.providerProfileId),
+    index('provider_earnings_lines_payment_id_idx').on(t.paymentId),
+    index('provider_earnings_lines_service_id_idx').on(t.serviceId),
+    index('provider_earnings_lines_provider_state_idx').on(t.providerProfileId, t.state),
+    index('provider_earnings_lines_provider_created_idx').on(t.providerProfileId, t.createdAt),
+    check(
+      'provider_earnings_lines_amounts_ck',
+      sql`${t.grossAmountMinorUnits} > 0 and ${t.feeAmountMinorUnits} >= 0 and ${t.refundedAmountMinorUnits} >= 0
+          and ${t.feeReversalAmountMinorUnits} >= 0 and ${t.netAmountMinorUnits} >= 0
+          and ${t.refundedAmountMinorUnits} <= ${t.grossAmountMinorUnits}
+          and ${t.feeAmountMinorUnits} <= ${t.grossAmountMinorUnits}
+          and ${t.feeReversalAmountMinorUnits} <= ${t.feeAmountMinorUnits}
+          and ${t.platformFeeBps} between 0 and 10000`,
+    ),
+    check(
+      'provider_earnings_lines_net_identity_ck',
+      sql`${t.netAmountMinorUnits} = ${t.grossAmountMinorUnits} - ${t.refundedAmountMinorUnits} - ${t.feeAmountMinorUnits} + ${t.feeReversalAmountMinorUnits}`,
+    ),
+    check(
+      'provider_earnings_lines_currency_uniform_ck',
+      sql`${t.grossCurrencyCode} ~ '^[A-Z]{3}$' and ${t.grossCurrencyCode} = ${t.feeCurrencyCode}
+          and ${t.grossCurrencyCode} = ${t.refundedCurrencyCode} and ${t.grossCurrencyCode} = ${t.feeReversalCurrencyCode}
+          and ${t.grossCurrencyCode} = ${t.netCurrencyCode}`,
+    ),
+    check('provider_earnings_lines_state_ck', sql`${t.state} in ('pending','eligible','paid')`),
+    check('provider_earnings_lines_eligible_pairing_ck', sql`(${t.state} = 'pending') = (${t.eligibleAt} is null)`),
+    check('provider_earnings_lines_paid_pairing_ck', sql`(${t.state} = 'paid') = (${t.paidAt} is not null)`),
+  ],
+);
+
+/**
+ * Spec 024 §3.10 — Finance-approved earnings corrections. Written at initiation with immutable
+ * figures bound to spec 009's `AdminAction`; counts nowhere until `applied_at` is set on execution.
+ */
+export const earningsAdjustments = pgTable(
+  'earnings_adjustments',
+  {
+    ...baseColumns(),
+    providerProfileId: uuid('provider_profile_id')
+      .notNull()
+      .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    kind: text('kind', { enum: ['credit', 'debit'] }).notNull(),
+    adjustmentAmountMinorUnits: integer('adjustment_amount_minor_units').notNull(),
+    adjustmentCurrencyCode: text('adjustment_currency_code').notNull(),
+    reason: text('reason').notNull(),
+    adminActionId: uuid('admin_action_id')
+      .notNull()
+      .references(() => adminActions.id, { onDelete: 'restrict' }),
+    createdByUserId: uuid('created_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
+  },
+  (t) => [
+    index('earnings_adjustments_provider_profile_id_idx').on(t.providerProfileId),
+    index('earnings_adjustments_created_by_user_id_idx').on(t.createdByUserId),
+    index('earnings_adjustments_provider_created_idx').on(t.providerProfileId, t.createdAt),
+    uniqueIndex('earnings_adjustments_admin_action_uq').on(t.adminActionId),
+    uniqueIndex('earnings_adjustments_idempotency_uq').on(t.providerProfileId, t.idempotencyKey),
+    check('earnings_adjustments_kind_ck', sql`${t.kind} in ('credit','debit')`),
+    check(
+      'earnings_adjustments_sign_ck',
+      sql`(${t.kind} = 'credit' and ${t.adjustmentAmountMinorUnits} > 0) or (${t.kind} = 'debit' and ${t.adjustmentAmountMinorUnits} < 0)`,
+    ),
+    check('earnings_adjustments_currency_format_ck', sql`${t.adjustmentCurrencyCode} ~ '^[A-Z]{3}$'`),
+  ],
+);
+
+/**
+ * Spec 024 §3.6/§3.7 — the settlement join. Kinds `earnings_line`, `adjustment`, `refund_recovery`.
+ * The partial unique indexes (I-10) make double payment and double recovery structurally impossible;
+ * `payout_items_frozen_trg` (I-25) makes a closed batch pay exactly what it held when it closed.
+ */
+export const payoutItems = pgTable(
+  'payout_items',
+  {
+    ...baseColumns(),
+    payoutId: uuid('payout_id')
+      .notNull()
+      .references(() => payouts.id, { onDelete: 'restrict' }),
+    kind: text('kind', { enum: ['earnings_line', 'adjustment', 'refund_recovery'] }).notNull(),
+    earningsLineId: uuid('earnings_line_id').references(() => providerEarningsLines.id, { onDelete: 'restrict' }),
+    adjustmentId: uuid('adjustment_id').references(() => earningsAdjustments.id, { onDelete: 'restrict' }),
+    sourceRefundId: uuid('source_refund_id').references((): AnyPgColumn => refunds.id, { onDelete: 'restrict' }),
+    itemAmountMinorUnits: integer('item_amount_minor_units').notNull(),
+    itemCurrencyCode: text('item_currency_code').notNull(),
+  },
+  (t) => [
+    index('payout_items_payout_id_idx').on(t.payoutId),
+    index('payout_items_earnings_line_id_idx').on(t.earningsLineId),
+    index('payout_items_adjustment_id_idx').on(t.adjustmentId),
+    index('payout_items_source_refund_id_idx').on(t.sourceRefundId),
+    uniqueIndex('payout_items_earnings_line_uq').on(t.earningsLineId).where(sql`kind = 'earnings_line'`),
+    uniqueIndex('payout_items_adjustment_uq').on(t.adjustmentId).where(sql`kind = 'adjustment'`),
+    uniqueIndex('payout_items_source_refund_uq').on(t.sourceRefundId).where(sql`kind = 'refund_recovery'`),
+    check('payout_items_kind_ck', sql`${t.kind} in ('earnings_line','adjustment','refund_recovery')`),
+    check(
+      'payout_items_shape_ck',
+      sql`(${t.kind} = 'earnings_line' and ${t.earningsLineId} is not null and ${t.adjustmentId} is null and ${t.sourceRefundId} is null and ${t.itemAmountMinorUnits} >= 0)
+          or (${t.kind} = 'adjustment' and ${t.adjustmentId} is not null and ${t.earningsLineId} is null and ${t.sourceRefundId} is null)
+          or (${t.kind} = 'refund_recovery' and ${t.earningsLineId} is not null and ${t.sourceRefundId} is not null and ${t.adjustmentId} is null and ${t.itemAmountMinorUnits} < 0)`,
+    ),
+    check('payout_items_currency_format_ck', sql`${t.itemCurrencyCode} ~ '^[A-Z]{3}$'`),
+  ],
 );
 
 export const paymentsStatusHistory = pgTable(
@@ -1841,11 +2058,17 @@ export const payoutsStatusHistory = pgTable(
     fromStatus: text('from_status'),
     toStatus: text('to_status').notNull(),
     actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 024 I-19 — `system` for the sweeps (null actor), `admin` for an approved Finance retry. */
+    actorRole: text('actor_role', { enum: ['admin', 'system'] }).notNull(),
+    /** A stable machine note (e.g. the failure code). Never a rail payload or a credential. */
+    detail: text('detail'),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('payouts_status_history_payout_id_idx').on(t.payoutId),
     index('payouts_status_history_actor_user_id_idx').on(t.actorUserId),
+    check('payouts_status_history_actor_role_ck', sql`${t.actorRole} in ('admin','system')`),
+    check('payouts_status_history_actor_pairing_ck', sql`(${t.actorUserId} is null) = (${t.actorRole} = 'system')`),
   ],
 );
 

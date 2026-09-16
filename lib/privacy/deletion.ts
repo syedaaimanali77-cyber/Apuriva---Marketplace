@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { customerProfiles, providerAvailabilityNotificationRequests, providerProfiles, requests, users } from '@/lib/db/schema';
 import { hasActiveBooking } from './booking-lifecycle-adapter';
 import { activeBookingBlocksDeletionError, deletionAlreadyPendingError, deletionNotPendingError } from './errors';
+import { removePayoutMethodsForDeletedUser } from '@/lib/payouts/privacy';
 
 const DEFAULT_GRACE_PERIOD_DAYS = 14;
 
@@ -113,6 +114,10 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
       .where(and(eq(users.id, id), eq(users.lifecycleStatus, 'deletion_pending')));
 
     await db.update(providerProfiles).set({ businessName: null }).where(eq(providerProfiles.userId, id));
+    // Spec 024 §4.4: remove and un-default this user's payout methods so a closed account can never be
+    // paid. Database-only — the payout sweep revokes the destinations at the rail afterwards. Earnings
+    // lines, payouts, items and adjustments are retained (every FK is RESTRICT); nothing owed is forfeited.
+    await removePayoutMethodsForDeletedUser(id, db);
     // Spec 017 §4 "Retention and privacy": `request_provider_matches` rows need no sweep of their
     // own — they carry no PII once `provider_profiles.business_name` is nulled above, and every
     // FK on that table is `restrict`, so the rows are retained keyed to the now-anonymized user

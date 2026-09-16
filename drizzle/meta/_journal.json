@@ -134,6 +134,13 @@
       "when": 1789724860415,
       "tag": "0019_add_cancellation_policy_no_show",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789811260415,
+      "tag": "0020_add_provider_payouts_earnings",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,7 @@ export default function AdminOperationsPage() {
         { href: '/admin/approvals', label: 'Pending approvals' },
         { href: '/admin/actions/review', label: 'Post-action review' },
         { href: '/admin/operations/refunds', label: 'Refunds' },
+        { href: '/admin/operations/payouts', label: 'Payouts' },
       ]}
     />
   );

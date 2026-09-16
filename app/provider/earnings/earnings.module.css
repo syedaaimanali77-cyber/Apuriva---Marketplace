@@ -1,0 +1,99 @@
+/*
+ * Spec 024 §5 — provider earnings and payout methods. Built only on the APURIVA Design System's
+ * tokens (app/styles/apuriva-tokens.css), the same approach as app/provider/requests. Per CLAUDE.md's
+ * branding rule, these pages carry no logo of their own — the global shell provides the one placement.
+ */
+
+.page {
+  max-width: var(--container-content);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.description {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+}
+
+.figure {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.figureLabel {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.figureValue {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-price);
+}
+
+.controls {
+  display: flex;
+  align-items: end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

@@ -29,6 +29,7 @@ import {
   users,
 } from '@/lib/db/schema';
 import type { DataExportStatusDto } from '@/lib/types/privacy';
+import { exportProviderEarnings, type ExportedProviderEarnings } from '@/lib/payouts/privacy';
 import { buildDownloadUrl, verifyDownloadToken } from './download-token';
 import { getFileAssetStorage } from './file-asset-storage';
 import { NOT_FOUND_ERROR } from './not-found';
@@ -256,6 +257,14 @@ export interface DataExportPayload {
     resolvedAt: string | null;
     createdAt: string;
   }>;
+  /**
+   * Spec 024 §4.4 "Retention, privacy and audit" — the export boundary for the caller's OWN provider
+   * ledger: earnings lines, payouts with their items, APPLIED adjustments, and payout methods by mask
+   * only. Never exported: destination tokens, rail references and names, failure reasons, idempotency
+   * data, approval-chain ids, refund ids, or an unapplied adjustment. `null` for a user with no
+   * provider profile.
+   */
+  providerEarnings: ExportedProviderEarnings | null;
 }
 
 /**
@@ -772,6 +781,7 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
       resolvedAt: r.resolvedAt ? r.resolvedAt.toISOString() : null,
       createdAt: r.createdAt.toISOString(),
     })),
+    providerEarnings: await exportProviderEarnings(userId, db),
   };
 }
 

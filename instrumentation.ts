@@ -19,4 +19,9 @@ export async function register(): Promise<void> {
   // replaces spec 022's inert refund-eligibility default with the real cancellation-policy decision.
   const { registerCancellationIntegration } = await import('@/lib/cancellation');
   registerCancellationIntegration();
+
+  // Spec 024 registers its refund reconciliation sink with spec 022's port. The durable
+  // `refunds.reconciliation_state` column stays the source of truth; the payout sweep pulls anything missed.
+  const { registerPayoutIntegration } = await import('@/lib/payouts');
+  registerPayoutIntegration();
 }

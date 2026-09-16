@@ -71,6 +71,11 @@ const EXPECTED_TABLES = [
   'payments_status_transitions',
   'payouts_status_history',
   'payouts_status_transitions',
+  // Spec 024 §4.1: not in master spec §124's minimum list — the earnings ledger, Finance-approved
+  // adjustments and the payout settlement join, the same allowance specs 009/016/017/023 used.
+  'provider_earnings_lines',
+  'earnings_adjustments',
+  'payout_items',
   // Messaging
   'conversations',
   'conversation_participants',

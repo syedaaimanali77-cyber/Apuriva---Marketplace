@@ -675,4 +675,104 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'Selects one of the allowed cancellation options the effective policy publishes for a service the caller offers. Accepts an option key, never a fee percentage or amount',
     tags: ['cancellation'],
   },
+  // Spec 024 §3.12 — payouts & earnings. Approval listing and decisions reuse spec 009's existing
+  // routes. The two cron routes are excluded from the drift check, like every cron route.
+  {
+    method: 'GET',
+    path: '/providers/me/earnings',
+    summary:
+      'Provider earnings summary: gross, fee net of reversals, refunds, adjustments, net, pending, upcoming and paid, as server-side integer sums in one currency',
+    tags: ['payouts'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/earnings/lines',
+    summary:
+      'Booking-level earnings lines for the caller, paged and filterable by state, currency and date range',
+    tags: ['payouts'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/earnings/statement',
+    summary:
+      'Synchronous CSV earnings statement for a bounded date range and one currency; errors use the standard envelope',
+    tags: ['payouts'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/payouts',
+    summary:
+      "The caller's own payouts, paged and filterable by status",
+    tags: ['payouts'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/payouts/{id}',
+    summary:
+      "One of the caller's payouts with its items; another provider's payout is 404",
+    tags: ['payouts'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/me/payout-methods',
+    summary:
+      "The caller's payout methods, rail-supplied mask and institution label only",
+    tags: ['payouts'],
+  },
+  {
+    method: 'POST',
+    path: '/providers/me/payout-methods',
+    summary:
+      "Registers a payout method from the rail's single-use setup token; requires step-up (manage_payout_method), CSRF and Idempotency-Key",
+    tags: ['payouts'],
+  },
+  {
+    method: 'PATCH',
+    path: '/providers/me/payout-methods/{id}',
+    summary:
+      'Makes a verified payout method the default for its currency; requires step-up (manage_payout_method) and CSRF',
+    tags: ['payouts'],
+  },
+  {
+    method: 'DELETE',
+    path: '/providers/me/payout-methods/{id}',
+    summary:
+      'Soft-removes a payout method and revokes it at the rail; requires step-up (manage_payout_method) and CSRF; refused while a payout still needs it',
+    tags: ['payouts'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/payouts',
+    summary:
+      'Finance Admin payout listing, paged and filterable by status, provider and date; requires payouts/read',
+    tags: ['payouts'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/payouts/{id}',
+    summary:
+      'Finance Admin payout detail with items; requires payouts/read, otherwise 404',
+    tags: ['payouts'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/payouts/{id}/retry',
+    summary:
+      'Initiates (202, second-admin approval required) or executes (with adminActionId) a retry of a failed payout; requires payouts/retry at risk tier high',
+    tags: ['payouts'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/earnings-adjustments',
+    summary:
+      'Initiates (202) or executes (with adminActionId, no amount) a credit/debit earnings adjustment bound to its approval; requires payouts/adjust at risk tier high',
+    tags: ['payouts'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/earnings-adjustments',
+    summary:
+      'Finance Admin adjustment listing, filterable by provider and applied state; requires payouts/read',
+    tags: ['payouts'],
+  },
 ];

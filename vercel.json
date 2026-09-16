@@ -28,6 +28,14 @@
     {
       "path": "/api/v1/cron/no-show-response-sweep",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/cron/payout-sweep",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/cron/payout-reconcile-sweep",
+      "schedule": "* * * * *"
     }
   ]
 }

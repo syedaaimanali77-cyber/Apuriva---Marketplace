@@ -36,6 +36,27 @@ export {
   SANDBOX_REQUIRES_ACTION_AMOUNT_SUFFIX,
 } from './sandbox';
 
+// Spec 024 §3.2 — the payout-rail PORT, a second port inside this same credential boundary.
+export type {
+  PayoutOutcome,
+  PayoutProvider,
+  PayoutResult,
+  PayoutTransferInput,
+  RegisteredDestination,
+} from './payout-types';
+export { PAYOUT_PROVIDER_ENV_VAR, PayoutProviderUnavailable, resolvePayoutProvider } from './payout-factory';
+export {
+  getSandboxPayoutProvider,
+  sandboxSetupToken,
+  SANDBOX_PAYOUT_DESTINATION_INVALID_SUFFIX,
+  SANDBOX_PAYOUT_DESTINATION_UNAVAILABLE_SUFFIX,
+  SANDBOX_PAYOUT_PREFIX,
+  SANDBOX_PAYOUT_REJECTED_SUFFIX,
+  SANDBOX_PAYOUT_TEMPORARILY_UNAVAILABLE_SUFFIX,
+  SANDBOX_PAYOUT_UNKNOWN_NO_REFERENCE_SUFFIX,
+  SANDBOX_PAYOUT_UNKNOWN_SUFFIX,
+} from './sandbox-payout';
+
 export const PAYMENT_PROVIDER_ENV_VAR = 'PAYMENT_PROVIDER';
 
 /** The adapters this repository actually has. A real vendor adds its name here and nowhere else. */
