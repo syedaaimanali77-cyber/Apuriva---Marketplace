@@ -14,4 +14,9 @@ export async function register(): Promise<void> {
   // Spec 022 registers the three payment transitions and four booking transitions it owns.
   const { registerRefundIntegration } = await import('@/lib/refunds');
   registerRefundIntegration();
+
+  // Spec 023 registers the three `-> cancelled` booking transitions spec 020 reserved for it, and
+  // replaces spec 022's inert refund-eligibility default with the real cancellation-policy decision.
+  const { registerCancellationIntegration } = await import('@/lib/cancellation');
+  registerCancellationIntegration();
 }

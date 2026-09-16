@@ -24,6 +24,10 @@
     {
       "path": "/api/v1/cron/refund-reconcile-sweep",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/v1/cron/no-show-response-sweep",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

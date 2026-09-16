@@ -7,6 +7,7 @@ import { Badge, Button, Card, ConfirmDialog, ErrorState, Skeleton } from '@/comp
 import type { BookingDto } from '@/lib/types/bookings';
 import type { PaymentDto, PriceAdjustmentDto } from '@/lib/types/payments';
 import { apiFetch, mutateHeaders, type ApiErrorBody } from '../../booking-client';
+import { CancellationPolicySection } from '../../_components/CancellationPolicySection';
 import styles from './payment.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
@@ -260,6 +261,10 @@ export default function BookingPaymentPage() {
         the exact amount and currency, so what the customer approves is unambiguously what is
         charged — §132.15 "do not silently change confirmed prices".
       */}
+      {/* Spec 023 §5 / AC-1: the snapshotted policy, shown BEFORE the customer authorizes payment —
+          the terms displayed here are the terms enforced if they later cancel. */}
+      <CancellationPolicySection bookingId={bookingId} />
+
       <ConfirmDialog
         open={confirming !== null}
         title="Approve this additional charge?"

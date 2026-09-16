@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Badge, Button, Card, ErrorState, PriceDisplay, RequestStatusTimeline, Skeleton } from '@/components';
-import type { BookingDto, BookingStatusHistoryDto } from '@/lib/types/bookings';
+import type { BookingDto, BookingStatus, BookingStatusHistoryDto } from '@/lib/types/bookings';
 import {
   apiFetch,
   BOOKING_POLL_MS,
@@ -16,12 +16,24 @@ import {
   progressionIndex,
 } from '../booking-client';
 import { RefundSection } from '../_components/RefundSection';
+import { CancellationPolicySection } from '../_components/CancellationPolicySection';
 import styles from '../bookings.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
 
 /** Mirrors AC-11's `MIN_IN_PROGRESS_SECONDS`; the server is authoritative, this only labels the wait. */
 const DWELL_HINT_SECONDS = 60;
+
+/** Spec 023 §3 "Cancellation eligibility by booking state" — mirrored for display only. */
+const CANCELLABLE_STATUSES: readonly BookingStatus[] = ['confirmed', 'provider_en_route', 'arrived'];
+
+/** Spec 023 §3 "No-show workflow" — the statuses in which a no-show is a coherent claim. */
+const NO_SHOW_REPORTABLE_STATUSES: readonly BookingStatus[] = [
+  'confirmed',
+  'provider_en_route',
+  'arrived',
+  'in_progress',
+];
 
 /**
  * Spec 020 §5, `/bookings/{id}` — the customer's booking view.
@@ -226,6 +238,40 @@ export default function BookingDetailPage() {
 
       {/* Spec 022 §5 — renders nothing when the booking has no refunds. */}
       <RefundSection bookingId={booking.id} scheduledTimezone={booking.scheduledTimezone} />
+
+      {/* Spec 023 §5 — AC-1: the policy SNAPSHOTTED for this booking, not current configuration. */}
+      <CancellationPolicySection bookingId={booking.id} />
+
+      {/* Spec 023 §5 — the two entry points, offered only while each is actually available, so the
+          screen never invites an action the server would refuse. */}
+      {CANCELLABLE_STATUSES.includes(booking.status) && (
+        <Card>
+          <h2 className={styles.sectionTitle}>Need to cancel?</h2>
+          <p className={styles.hint}>
+            You will see the exact fee and refund before anything is confirmed.
+          </p>
+          <div className={styles.actions}>
+            <Link className={styles.eyebrowLink} href={`/bookings/${booking.id}/cancel`}>
+              Cancel booking
+            </Link>
+          </div>
+        </Card>
+      )}
+
+      {NO_SHOW_REPORTABLE_STATUSES.includes(booking.status) && (
+        <Card>
+          <h2 className={styles.sectionTitle}>Attendance issue</h2>
+          {/* Neutral by design (master spec §51): reporting asks for a review, it accuses nobody. */}
+          <p className={styles.hint}>
+            If the other party did not attend, you can ask our team to review it. They will be asked to respond first.
+          </p>
+          <div className={styles.actions}>
+            <Link className={styles.eyebrowLink} href={`/bookings/${booking.id}/no-show`}>
+              Report an attendance issue
+            </Link>
+          </div>
+        </Card>
+      )}
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Activity</h2>

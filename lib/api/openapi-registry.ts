@@ -577,4 +577,102 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'Finance Admin refund listing, paged and filterable by status and reconciliationState; requires the refunds/read permission',
     tags: ['refunds'],
   },
+  // Spec 023 §3 — cancellation policy, cancellation and no-show. The response-timeout sweep
+  // (`/cron/no-show-response-sweep`) is deliberately absent: cron routes are platform
+  // infrastructure and are excluded from the drift check, as every existing cron route already is.
+  {
+    method: 'GET',
+    path: '/services/{id}/cancellation-policy',
+    summary:
+      'The cancellation policy effective now for a service, after service/category/platform resolution; guest-readable',
+    tags: ['cancellation'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/cancellation-policy',
+    summary:
+      "The policy version SNAPSHOTTED for this booking — never a re-resolution of current configuration, so a later policy change cannot alter an existing customer's terms; session (either participant)",
+    tags: ['cancellation'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/cancel-preview',
+    summary:
+      'Read-only dry run of the cancellation consequence: tier, fee and refund, computed server-side, shown before confirmation; session (either participant)',
+    tags: ['cancellation'],
+  },
+  {
+    method: 'POST',
+    path: '/bookings/{id}/cancel',
+    summary:
+      'Cancels a booking, computing the fee/refund server-side from the snapshotted policy version and handing the decision to spec 022. The body carries no amount, tier or timestamp. Requires Idempotency-Key',
+    tags: ['cancellation'],
+  },
+  {
+    method: 'POST',
+    path: '/bookings/{id}/report-no-show',
+    summary:
+      'Reports that the other party did not attend. Creates a neutral report awaiting their response; applies no consequence and blames nobody. Requires Idempotency-Key',
+    tags: ['no-show'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/no-show-reports',
+    summary:
+      "No-show reports on a booking, in the participant projection: neutral status only, never the other party's statement, the evidence bundle or the location signal",
+    tags: ['no-show'],
+  },
+  {
+    method: 'POST',
+    path: '/no-show-reports/{id}/respond',
+    summary:
+      "The other party's response, which moves the report to under_review. Required before any consequence unless the response window elapses",
+    tags: ['no-show'],
+  },
+  {
+    method: 'POST',
+    path: '/no-show-reports/{id}/withdraw',
+    summary: 'The reporter retracting their own report, while it is still awaiting the other party’s response',
+    tags: ['no-show'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/no-show-reports',
+    summary: 'Trust & Safety queue, filterable by status and outcome; requires the no_show_reports/read permission',
+    tags: ['no-show'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/no-show-reports/{id}',
+    summary:
+      'The full evidence bundle for review — the only surface exposing statements, evidence and the coarse location signal; requires the no_show_reports/read permission',
+    tags: ['no-show'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/no-show-reports/{id}/resolve',
+    summary:
+      'Trust & Safety resolution: an outcome from a closed set plus a required reason. The admin never chooses an amount — the consequence is computed from the booking’s snapshotted policy. Requires the no_show_reports/resolve permission',
+    tags: ['no-show'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/cancellation-policies',
+    summary: 'Every cancellation policy scope with its current and historical versions; requires cancellation_policy/read',
+    tags: ['cancellation'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/cancellation-policies',
+    summary:
+      'Publishes a new immutable policy version for a scope, closing the previous one. Never an in-place edit, and effectiveFrom is the server’s clock. Requires cancellation_policy/configure',
+    tags: ['cancellation'],
+  },
+  {
+    method: 'PUT',
+    path: '/providers/me/services/{id}/cancellation-option',
+    summary:
+      'Selects one of the allowed cancellation options the effective policy publishes for a service the caller offers. Accepts an option key, never a fee percentage or amount',
+    tags: ['cancellation'],
+  },
 ];

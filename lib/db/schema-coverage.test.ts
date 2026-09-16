@@ -106,6 +106,14 @@ const EXPECTED_TABLES = [
   'policies',
   'policy_versions',
   'policy_acceptances',
+  // Spec 023 §4: not in master spec §124's minimum list — added for the cancellation consequence
+  // record and the no-show workflow, the same allowance spec 009 used for `admin_role_assignments`
+  // and spec 016 for `provider_availability_notification_requests`. `no_show_reports_status_*` are
+  // this spec's state-machine pair, matching the five baseline entities' existing shape.
+  'booking_cancellations',
+  'no_show_reports',
+  'no_show_reports_status_history',
+  'no_show_reports_status_transitions',
   // Security, files, location, analytics
   'sessions',
   'security_events',

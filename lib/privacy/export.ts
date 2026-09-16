@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, ne, or } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import {
+  bookingCancellations,
   bookings,
   bookingsStatusHistory,
   conversationParticipants,
+  noShowReports,
   customerProfiles,
   fileAssets,
   messages,
@@ -212,7 +214,48 @@ export interface DataExportPayload {
       approvedAt: string | null;
       createdAt: string;
     }>;
+    /**
+     * Spec 023 §4 "Retention and privacy" (AC-10) — the export boundary for a cancellation.
+     *
+     * Exported: what the caller was charged and refunded, which tier applied and why. NEVER
+     * exported, by simply not being selected: `decision_ref`, `policy_version_id`,
+     * `idempotency_key`, `idempotency_fingerprint`, `cancelled_by_user_id`, `hours_before_milli`
+     * and `no_show_report_id` — internal decision handles and the link to another party's report.
+     */
+    cancellations: Array<{
+      id: string;
+      bookingId: string;
+      cancelledByRole: string;
+      reasonCode: string | null;
+      tierFeePercent: number;
+      capturedAmountMinorUnits: number | null;
+      capturedCurrencyCode: string | null;
+      feeAmountMinorUnits: number;
+      refundAmountMinorUnits: number;
+      createdAt: string;
+    }>;
   };
+  /**
+   * Spec 023 §4 "Retention and privacy" (AC-10) — the export boundary for no-show reports.
+   *
+   * Exported: the reports the caller is a party to, their neutral status and outcome, and — only
+   * when the caller filed it — their OWN statement. NEVER exported, by simply not being selected:
+   * the other party's statement, the evidence bundle, the coarse location signal, the resolution
+   * reason, `resolved_by_admin_id`, `counterpart_report_id` and both idempotency columns. A party
+   * receives their own record, never the other side's evidence or the reviewer's private notes.
+   */
+  noShowReports: Array<{
+    id: string;
+    bookingId: string;
+    reporterRole: string;
+    isOwnReport: boolean;
+    status: string;
+    outcome: string | null;
+    ownStatement: string | null;
+    respondByAt: string;
+    resolvedAt: string | null;
+    createdAt: string;
+  }>;
 }
 
 /**
@@ -360,6 +403,49 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         })
         .from(refunds)
         .where(inArray(refunds.paymentId, paymentIds))
+    : [];
+
+  // Spec 023 §4: the caller's own cancellations, scoped by the bookings already resolved above —
+  // so the ownership test is the same one every other booking-derived section uses.
+  const exportBookingIds = bookingRows.map((b) => b.id);
+  const cancellationRows = exportBookingIds.length
+    ? await db
+        .select({
+          id: bookingCancellations.id,
+          bookingId: bookingCancellations.bookingId,
+          cancelledByRole: bookingCancellations.cancelledByRole,
+          reasonCode: bookingCancellations.reasonCode,
+          tierFeePercent: bookingCancellations.tierFeePercent,
+          capturedAmountMinorUnits: bookingCancellations.capturedAmountMinorUnits,
+          capturedCurrencyCode: bookingCancellations.capturedCurrencyCode,
+          feeAmountMinorUnits: bookingCancellations.feeAmountMinorUnits,
+          refundAmountMinorUnits: bookingCancellations.refundAmountMinorUnits,
+          createdAt: bookingCancellations.createdAt,
+        })
+        .from(bookingCancellations)
+        .where(inArray(bookingCancellations.bookingId, exportBookingIds))
+    : [];
+
+  // Spec 023 §4 / AC-10: `reporter_statement` is selected because it is exported ONLY when the
+  // caller is the reporter — the mapping below drops it otherwise. `response_statement`,
+  // `evidence`, `location_signal` and `resolution_reason` are not selected at all, so no future
+  // change to the mapping could leak them by accident.
+  const noShowRows = exportBookingIds.length
+    ? await db
+        .select({
+          id: noShowReports.id,
+          bookingId: noShowReports.bookingId,
+          reporterUserId: noShowReports.reporterUserId,
+          reporterRole: noShowReports.reporterRole,
+          status: noShowReports.status,
+          outcome: noShowReports.outcome,
+          reporterStatement: noShowReports.reporterStatement,
+          respondByAt: noShowReports.respondByAt,
+          resolvedAt: noShowReports.resolvedAt,
+          createdAt: noShowReports.createdAt,
+        })
+        .from(noShowReports)
+        .where(inArray(noShowReports.bookingId, exportBookingIds))
     : [];
 
   const refundIds = refundRows.map((r) => r.id);
@@ -668,7 +754,24 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         approvedAt: a.approvedAt ? a.approvedAt.toISOString() : null,
         createdAt: a.createdAt.toISOString(),
       })),
+      cancellations: cancellationRows.map((c) => ({
+        ...c,
+        createdAt: c.createdAt.toISOString(),
+      })),
     },
+    noShowReports: noShowRows.map((r) => ({
+      id: r.id,
+      bookingId: r.bookingId,
+      reporterRole: r.reporterRole,
+      isOwnReport: r.reporterUserId === userId,
+      status: r.status,
+      outcome: r.outcome,
+      // AC-10: a party's own words are theirs to export; the other party's are not.
+      ownStatement: r.reporterUserId === userId ? r.reporterStatement : null,
+      respondByAt: r.respondByAt.toISOString(),
+      resolvedAt: r.resolvedAt ? r.resolvedAt.toISOString() : null,
+      createdAt: r.createdAt.toISOString(),
+    })),
   };
 }
 

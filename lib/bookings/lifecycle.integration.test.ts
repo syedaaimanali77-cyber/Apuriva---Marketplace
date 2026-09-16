@@ -150,9 +150,13 @@ describe.skipIf(!dbReachable)('booking lifecycle (spec 020 AC-4/AC-6/AC-7/AC-11,
       () => getDb().execute(sql`UPDATE bookings SET status = 'completed' WHERE id = ${bookingId}`),
       /Invalid bookings status transition/i,
     );
-    // And the transitions spec 021/023/031 own are equally unreachable from here.
+    // And a transition no spec has seeded is equally unreachable from here. `disputed` is spec
+    // 031's and still unseeded, so it stands in for what `cancelled` used to assert: spec 023 has
+    // since shipped and seeded `confirmed -> cancelled`, which spec 020 §3 always reserved for it,
+    // so that pair is now legitimately ALLOWED by the trigger — the point being tested (a raw
+    // UPDATE cannot invent a transition nobody owns) is unchanged.
     await expectDatabaseRejection(
-      () => getDb().execute(sql`UPDATE bookings SET status = 'cancelled' WHERE id = ${bookingId}`),
+      () => getDb().execute(sql`UPDATE bookings SET status = 'disputed' WHERE id = ${bookingId}`),
       /Invalid bookings status transition/i,
     );
     expect((await storedBooking(bookingId)).status).toBe('confirmed');

@@ -101,6 +101,22 @@ describe('schema lint (spec 003)', () => {
       // read back whole and never queried or filtered on in SQL. Price, currency and every timer
       // column are real relational columns precisely because they ARE core/queryable data.
       offers: ['included_items'],
+      // Spec 023 §4: a cancellation policy's tier ladder and its allowed provider options — a
+      // variable-length, nested structure validated as a whole at write time by
+      // `validateCancellationPolicyConfig` and read back whole by resolution. Never queried or
+      // filtered on in SQL; the queryable parts of a policy version (its validity interval, which
+      // the `policy_versions_no_overlap_ex` exclusion constraint actually indexes) are real
+      // timestamptz columns precisely because they ARE core/queryable data (AC-5).
+      policy_versions: ['config'],
+      // Spec 023 §4: the RESOLVED ladder snapshotted for one booking — the same shape as above, and
+      // immutable once written, which is what makes a booking's terms unalterable (AC-1).
+      policy_acceptances: ['accepted_config'],
+      // Spec 023 §4: a no-show report's evidence bundle — booking timing, the booking's own status
+      // history and whether communications exist. Read back whole for one Trust & Safety reviewer,
+      // never queried or filtered on, and deliberately minimisable to `{}` by the retention sweep
+      // (AC-10). The queryable parts of a report (status, outcome, respond_by_at, location_signal)
+      // are real columns, which is why the reliability count and the sweep can index them.
+      no_show_reports: ['evidence'],
     };
 
     const offenders: string[] = [];

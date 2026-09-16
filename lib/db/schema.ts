@@ -613,6 +613,13 @@ export const providerServices = pgTable(
     durationMinutes: integer('duration_minutes').notNull().default(60),
     bufferBeforeMinutes: integer('buffer_before_minutes').notNull().default(0),
     bufferAfterMinutes: integer('buffer_after_minutes').notNull().default(0),
+    /**
+     * Spec 023 §3 "Precedence" / AC-4 — the provider's SELECTED option key, constrained at write
+     * time to a `key` the effective policy version publishes in `allowedOptions`. Null (the normal
+     * case) means the provider made no selection and the version's own tiers apply. A provider can
+     * never store a percentage here: the column holds a key, never a fee.
+     */
+    cancellationPolicyOption: text('cancellation_policy_option'),
   },
   (t) => [
     index('provider_services_provider_profile_id_idx').on(t.providerProfileId),
@@ -2215,8 +2222,54 @@ export const auditLogs = pgTable(
 
 export const featureFlags = pgTable('feature_flags', { ...baseColumns() });
 
-export const policies = pgTable('policies', { ...baseColumns() });
+/** Spec 023 §3 — the only policy type this repository has. A closed vocabulary from day one. */
+export const POLICY_TYPES = ['cancellation'] as const;
 
+/** Spec 023 §3 "Precedence" — resolution order is service, then category, then platform. */
+export const POLICY_SCOPES = ['platform', 'category', 'service'] as const;
+
+/** Spec 023 §3 "Precedence" — which scope supplied the effective policy. */
+export const POLICY_SOURCES = ['platform_default', 'category_override', 'service_override'] as const;
+
+export const policies = pgTable(
+  'policies',
+  {
+    ...baseColumns(),
+    /** Spec 023 §4 — feature columns. The table itself is spec 003's baseline skeleton. */
+    type: text('type', { enum: POLICY_TYPES }).notNull(),
+    scope: text('scope', { enum: POLICY_SCOPES }).notNull(),
+    /**
+     * The category or service this policy targets. Null exactly for the platform scope. There is
+     * deliberately no FK: the column points at `categories` OR `services` depending on `scope`,
+     * which no single Postgres FK can express — the same rationale `admin_actions.target_id` and
+     * `catalog_suggestions.resulting_entity_id` already use.
+     */
+    scopeId: uuid('scope_id'),
+    isActive: boolean('is_active').notNull().default(true),
+  },
+  (t) => [
+    index('policies_scope_idx').on(t.type, t.scope, t.scopeId),
+    // C-2: at most one ACTIVE policy per scope, so resolution can never face a tie. Two partial
+    // indexes because `scope_id` is null exactly for the platform scope, and NULLs never compare equal.
+    uniqueIndex('policies_active_scope_uq')
+      .on(t.type, t.scope, t.scopeId)
+      .where(sql`${t.isActive} and ${t.scopeId} is not null`),
+    uniqueIndex('policies_active_platform_uq').on(t.type).where(sql`${t.isActive} and ${t.scopeId} is null`),
+    check('policies_type_ck', sql`${t.type} in ('cancellation')`),
+    // C-1: a platform policy has no target; a scoped one always does.
+    check(
+      'policies_scope_ck',
+      sql`${t.scope} in ('platform','category','service') and (${t.scope} = 'platform') = (${t.scopeId} is null)`,
+    ),
+  ],
+);
+
+/**
+ * Spec 023 §3 "Policy model" — an IMMUTABLE configuration snapshot with a half-open validity
+ * interval. Versions are append-only: publishing a new one closes the previous one's interval and
+ * never alters any earlier one, which is what makes a booking's snapshot reproducible as of its
+ * own creation instant.
+ */
 export const policyVersions = pgTable(
   'policy_versions',
   {
@@ -2224,10 +2277,37 @@ export const policyVersions = pgTable(
     policyId: uuid('policy_id')
       .notNull()
       .references(() => policies.id, { onDelete: 'restrict' }),
+    /** Spec 023 §3 — the tier ladder and allowed provider options. Validated at WRITE time. */
+    config: jsonb('config').notNull(),
+    effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull(),
+    /** Null = still open-ended. Set exactly once, when a newer version supersedes this one. */
+    effectiveTo: timestamp('effective_to', { withTimezone: true }),
+    /** Null for the migration's platform seed — a platform default has no admin author. */
+    createdByAdminId: uuid('created_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    note: text('note'),
   },
-  (t) => [index('policy_versions_policy_id_idx').on(t.policyId)],
+  (t) => [
+    index('policy_versions_policy_id_idx').on(t.policyId),
+    index('policy_versions_policy_effective_idx').on(t.policyId, t.effectiveFrom),
+    index('policy_versions_created_by_admin_id_idx').on(t.createdByAdminId),
+    // C-4: no inverted or empty interval.
+    check('policy_versions_interval_ck', sql`${t.effectiveTo} is null or ${t.effectiveTo} > ${t.effectiveFrom}`),
+    // C-5: a structural floor. The full grammar is `validateCancellationPolicyConfig()`.
+    check(
+      'policy_versions_config_ck',
+      sql`jsonb_typeof(${t.config}) = 'object' and jsonb_typeof(${t.config} -> 'tiers') = 'array'
+          and jsonb_array_length(${t.config} -> 'tiers') > 0`,
+    ),
+    // C-3 `policy_versions_no_overlap_ex` is an EXCLUDE USING gist constraint, which Drizzle's DSL
+    // cannot express; it lives in 0019's SQL and is asserted by the migration tests there.
+  ],
 );
 
+/**
+ * Spec 023 §3 "Acceptance and snapshotting" / AC-1 — the exact policy version that governs ONE
+ * booking. Immutable at the database, so a later configuration change can never reach back and
+ * alter an existing customer's terms.
+ */
 export const policyAcceptances = pgTable(
   'policy_acceptances',
   {
@@ -2238,11 +2318,244 @@ export const policyAcceptances = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 023 §4 — feature columns. */
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'restrict' }),
+    /** The RESOLVED tiers, including any provider option — what actually governs this booking. */
+    acceptedConfig: jsonb('accepted_config').notNull(),
+    providerOptionKey: text('provider_option_key'),
+    source: text('source', { enum: POLICY_SOURCES }).notNull(),
+    /** The instant resolution used, so an auditor can reproduce the snapshot exactly. */
+    bookingCreatedAt: timestamp('booking_created_at', { withTimezone: true }).notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('policy_acceptances_policy_version_id_idx').on(t.policyVersionId),
     index('policy_acceptances_user_id_idx').on(t.userId),
-    uniqueIndex('policy_acceptances_policy_version_user_uq').on(t.policyVersionId, t.userId),
+    index('policy_acceptances_booking_idx').on(t.bookingId),
+    // C-7: one snapshot per BOOKING. Spec 023 §4 replaces the spec 003 baseline's
+    // `(policy_version_id, user_id)` index, which was at the wrong grain — it would have allowed a
+    // customer exactly ONE acceptance of a given version across all of their bookings.
+    uniqueIndex('policy_acceptances_booking_uq').on(t.bookingId),
+    check(
+      'policy_acceptances_source_ck',
+      sql`${t.source} in ('platform_default','category_override','service_override')`,
+    ),
+    check('policy_acceptances_config_ck', sql`jsonb_typeof(${t.acceptedConfig}) = 'object'`),
+  ],
+);
+
+/** Spec 023 §3 "No-show workflow" — the report lifecycle. */
+export const NO_SHOW_STATUSES = ['reported', 'awaiting_response', 'under_review', 'resolved', 'withdrawn'] as const;
+
+/** Spec 023 §3 "Admin resolution" — the CLOSED set an admin may choose from. Never an amount. */
+export const NO_SHOW_OUTCOMES = [
+  'no_show_confirmed_customer',
+  'no_show_confirmed_provider',
+  'no_fault',
+  'inconclusive',
+  'escalated_to_dispute',
+] as const;
+
+/**
+ * Spec 023 §3 "Evidence model" — the ONLY location datum this system holds.
+ *
+ * It is DERIVED from spec 012's service-area check over data both parties already supplied, never
+ * collected from a device. There is deliberately no coordinate column on `no_show_reports`, and
+ * `'unavailable'` is a first-class value: a report resolves perfectly well without any signal.
+ */
+export const NO_SHOW_LOCATION_SIGNALS = [
+  'address_within_service_area',
+  'address_outside_service_area',
+  'unavailable',
+] as const;
+
+export const NO_SHOW_RESPONSE_STATUSES = ['pending', 'filed', 'no_response'] as const;
+
+export const noShowReports = pgTable(
+  'no_show_reports',
+  {
+    ...baseColumns(),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'restrict' }),
+    reporterUserId: uuid('reporter_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    reporterRole: text('reporter_role', { enum: ['customer', 'provider'] as const }).notNull(),
+    status: text('status', { enum: NO_SHOW_STATUSES }).notNull(),
+    reporterStatement: text('reporter_statement'),
+    /** Derived facts only — statuses, roles and instants. Never message bodies, never coordinates. */
+    evidence: jsonb('evidence').notNull(),
+    locationSignal: text('location_signal', { enum: NO_SHOW_LOCATION_SIGNALS }).notNull(),
+    respondByAt: timestamp('respond_by_at', { withTimezone: true }).notNull(),
+    responseStatus: text('response_status', { enum: NO_SHOW_RESPONSE_STATUSES }).notNull().default('pending'),
+    responseStatement: text('response_statement'),
+    responseFiledAt: timestamp('response_filed_at', { withTimezone: true }),
+    /** Null until a Trust & Safety admin resolves. NOTHING else ever sets it (AC-5). */
+    outcome: text('outcome', { enum: NO_SHOW_OUTCOMES }),
+    resolutionReason: text('resolution_reason'),
+    resolvedByAdminId: uuid('resolved_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    /** The other party's mirror report, when both reported each other. */
+    counterpartReportId: uuid('counterpart_report_id').references((): AnyPgColumn => noShowReports.id, {
+      onDelete: 'restrict',
+    }),
+    escalated: boolean('escalated').notNull().default(false),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
+  },
+  (t) => [
+    index('no_show_reports_booking_id_idx').on(t.bookingId),
+    index('no_show_reports_reporter_user_id_idx').on(t.reporterUserId),
+    index('no_show_reports_resolved_by_admin_id_idx').on(t.resolvedByAdminId),
+    index('no_show_reports_counterpart_report_id_idx').on(t.counterpartReportId),
+    index('no_show_reports_status_idx').on(t.status),
+    // The response-timeout sweep's access path.
+    index('no_show_reports_respond_by_idx').on(t.status, t.respondByAt),
+    // AC-6's read path: the verified-no-show fact spec 017 consumes.
+    index('no_show_reports_outcome_idx').on(t.outcome, t.resolvedAt),
+    // C-14: one report per party per booking. C-15: idempotency scoped per booking, never globally.
+    uniqueIndex('no_show_reports_booking_reporter_uq').on(t.bookingId, t.reporterRole),
+    uniqueIndex('no_show_reports_idempotency_uq').on(t.bookingId, t.idempotencyKey),
+    // C-16 / AC-6 "exactly once": at most ONE fault-bearing resolution per booking, so two mutual
+    // reports can never double-count and a duplicate can never inflate a reliability count.
+    uniqueIndex('no_show_reports_booking_fault_uq')
+      .on(t.bookingId)
+      .where(sql`${t.outcome} in ('no_show_confirmed_customer','no_show_confirmed_provider')`),
+    check(
+      'no_show_reports_status_ck',
+      sql`${t.status} in ('reported','awaiting_response','under_review','resolved','withdrawn')`,
+    ),
+    check('no_show_reports_reporter_role_ck', sql`${t.reporterRole} in ('customer','provider')`),
+    check(
+      'no_show_reports_outcome_ck',
+      sql`${t.outcome} is null or ${t.outcome} in ('no_show_confirmed_customer','no_show_confirmed_provider','no_fault','inconclusive','escalated_to_dispute')`,
+    ),
+    check(
+      'no_show_reports_location_signal_ck',
+      sql`${t.locationSignal} in ('address_within_service_area','address_outside_service_area','unavailable')`,
+    ),
+    check('no_show_reports_response_status_ck', sql`${t.responseStatus} in ('pending','filed','no_response')`),
+    // C-18: a resolution always has an outcome, an instant, a named admin and a reason (master §68).
+    check(
+      'no_show_reports_resolution_pairing_ck',
+      sql`(${t.status} = 'resolved') = (${t.outcome} is not null)
+          and (${t.outcome} is null) = (${t.resolvedAt} is null)
+          and (${t.outcome} is null) = (${t.resolvedByAdminId} is null)
+          and (${t.outcome} is null) = (${t.resolutionReason} is null)`,
+    ),
+    check(
+      'no_show_reports_response_pairing_ck',
+      sql`(${t.responseStatus} = 'filed') = (${t.responseFiledAt} is not null)`,
+    ),
+    // C-21: a report is never its own counterpart.
+    check(
+      'no_show_reports_counterpart_ck',
+      sql`${t.counterpartReportId} is null or ${t.counterpartReportId} <> ${t.id}`,
+    ),
+    check('no_show_reports_evidence_ck', sql`${t.evidence} is null or jsonb_typeof(${t.evidence}) = 'object'`),
+  ],
+);
+
+export const noShowReportsStatusHistory = pgTable(
+  'no_show_reports_status_history',
+  {
+    ...baseColumns(),
+    noShowReportId: uuid('no_show_report_id')
+      .notNull()
+      .references(() => noShowReports.id, { onDelete: 'restrict' }),
+    fromStatus: text('from_status'),
+    toStatus: text('to_status').notNull(),
+    /** Null exactly for `system` (the response-timeout sweep), per the pairing check below. */
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    actorRole: text('actor_role', { enum: ['customer', 'provider', 'admin', 'system'] as const }).notNull(),
+    detail: text('detail'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('no_show_reports_status_history_report_id_idx').on(t.noShowReportId),
+    index('no_show_reports_status_history_actor_user_id_idx').on(t.actorUserId),
+    check(
+      'no_show_reports_status_history_actor_role_ck',
+      sql`${t.actorRole} in ('customer','provider','admin','system')`,
+    ),
+    check(
+      'no_show_reports_status_history_actor_pairing_ck',
+      sql`(${t.actorUserId} is null) = (${t.actorRole} = 'system')`,
+    ),
+  ],
+);
+
+/** The lookup table spec 003's EXISTING `enforce_status_transition()` derives by name. */
+export const noShowReportsStatusTransitions = pgTable(
+  'no_show_reports_status_transitions',
+  {
+    ...baseColumns(),
+    fromStatus: text('from_status').notNull(),
+    toStatus: text('to_status').notNull(),
+  },
+  (t) => [uniqueIndex('no_show_reports_status_transitions_from_to_uq').on(t.fromStatus, t.toStatus)],
+);
+
+/**
+ * Spec 023 §3 "The financial boundary" — the server-authoritative cancellation consequence.
+ *
+ * This records a DECISION (which tier applied, to how much, and why), never a copy of facts other
+ * tables already hold. It executes nothing: spec 022 owns refund execution and reads this decision
+ * through its eligibility gate.
+ */
+export const bookingCancellations = pgTable(
+  'booking_cancellations',
+  {
+    ...baseColumns(),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'restrict' }),
+    policyVersionId: uuid('policy_version_id')
+      .notNull()
+      .references(() => policyVersions.id, { onDelete: 'restrict' }),
+    /** Always a real human actor: this spec never cancels a booking as `system`. */
+    cancelledByUserId: uuid('cancelled_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    cancelledByRole: text('cancelled_by_role', { enum: ['customer', 'provider', 'admin'] as const }).notNull(),
+    reasonCode: text('reason_code'),
+    note: text('note'),
+    tierMinHoursBefore: integer('tier_min_hours_before'),
+    tierMaxHoursBefore: integer('tier_max_hours_before'),
+    tierFeePercent: integer('tier_fee_percent').notNull(),
+    /** `hoursBefore × 1000`, so sub-second timing is audited without a float anywhere (spec 003 AC-1). */
+    hoursBeforeMilli: integer('hours_before_milli').notNull(),
+    ...moneyColumns('captured'),
+    feeAmountMinorUnits: integer('fee_amount_minor_units').notNull(),
+    refundAmountMinorUnits: integer('refund_amount_minor_units').notNull(),
+    /** The handle spec 022 stores as `refunds.eligibility_decision_ref`. */
+    decisionRef: text('decision_ref').notNull(),
+    /** Set when the cancellation came from a Trust & Safety no-show resolution. */
+    noShowReportId: uuid('no_show_report_id').references(() => noShowReports.id, { onDelete: 'restrict' }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
+  },
+  (t) => [
+    index('booking_cancellations_policy_version_id_idx').on(t.policyVersionId),
+    index('booking_cancellations_cancelled_by_user_id_idx').on(t.cancelledByUserId),
+    index('booking_cancellations_no_show_report_id_idx').on(t.noShowReportId),
+    // C-9: one cancellation per booking. C-10: idempotency scoped per booking.
+    uniqueIndex('booking_cancellations_booking_uq').on(t.bookingId),
+    uniqueIndex('booking_cancellations_idempotency_uq').on(t.bookingId, t.idempotencyKey),
+    check('booking_cancellations_role_ck', sql`${t.cancelledByRole} in ('customer','provider','admin')`),
+    check('booking_cancellations_fee_percent_ck', sql`${t.tierFeePercent} between 0 and 100`),
+    ...moneyPairChecks('booking_cancellations', 'captured'),
+    // C-11: the fee can NEVER exceed what was captured, and the two halves always reconcile — at the
+    // database, not only in application code.
+    check(
+      'booking_cancellations_amounts_ck',
+      sql`${t.capturedAmountMinorUnits} >= 0 and ${t.feeAmountMinorUnits} >= 0
+          and ${t.feeAmountMinorUnits} <= ${t.capturedAmountMinorUnits}
+          and ${t.refundAmountMinorUnits} = ${t.capturedAmountMinorUnits} - ${t.feeAmountMinorUnits}`,
+    ),
   ],
 );
 
