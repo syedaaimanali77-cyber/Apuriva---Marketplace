@@ -495,6 +495,28 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'Either participant marks an in-progress booking complete — no confirmation from the other party is required; requires Idempotency-Key; 422 COMPLETION_TOO_EARLY before the 60-second dwell',
     tags: ['bookings'],
   },
+  // Spec 028 §3 — service execution. Milestones and the evidence read surface only: the
+  // arrival/start/completion transitions above are spec 020's and are reused, never duplicated.
+  {
+    method: 'POST',
+    path: '/bookings/{id}/milestones',
+    summary:
+      "Provider posts an optional progress update (started/working/almost_done/custom + note); session (provider, the booking's own); requires Idempotency-Key; posts NO status change; 422 MILESTONE_NOT_ALLOWED_IN_STATUS outside arrived/in_progress",
+    tags: ['bookings'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/milestones',
+    summary: 'The booking\'s progress updates, oldest first; either participant, either mode',
+    tags: ['bookings'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/evidence',
+    summary:
+      'Completion-evidence METADATA for the booking (bytes are fetched through GET /files/{id}); the provider any time, the customer only once the booking has reached completed — otherwise an empty list',
+    tags: ['bookings'],
+  },
   // Spec 021 §3 — payment processing & protection. These routes sit in the bookings URL namespace
   // because a payment belongs to a booking, but they are spec 021's entirely; spec 020's own
   // modules and routes contain no payment reference. `/cron/payment-sweep` is excluded by the drift

@@ -61,3 +61,25 @@ export {
   SLOT_RELEASING_BOOKING_STATUSES,
 } from './busy-intervals';
 export { ALTERNATIVE_LOOKAHEAD_DAYS, MAX_ALTERNATIVES, buildSlotUnavailableDetails } from './alternatives';
+
+// --- Spec 028: service execution (milestones + completion evidence) ---------------------------
+export {
+  assertEvidenceAssetsBelongToBooking,
+  completionEvidenceGate,
+  hasReachedCompleted,
+  listBookingEvidence,
+  BOOKING_EVIDENCE_CONTEXT,
+  MAX_BOOKING_EVIDENCE_ASSETS,
+  MIN_COMPLETION_EVIDENCE_ASSETS,
+} from './evidence';
+export { bookingEvidencePolicy, registerBookingEvidenceContext } from './evidence-policy';
+export { EXECUTING_BOOKING_STATUSES, isExecutingStatus } from './execution-window';
+export {
+  createBookingMilestone,
+  isMilestoneType,
+  listBookingMilestones,
+  parseMilestoneRequest,
+  MAX_MILESTONE_NOTE_LENGTH,
+  MILESTONE_POSTABLE_STATUSES,
+} from './milestones';
+export { registerServiceExecutionIntegration } from './service-execution';

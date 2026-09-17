@@ -13,16 +13,17 @@
  *
  * VALIDATION ORDER IS NORMATIVE (AC-9). Session and CSRF happen in the route; this module runs
  * (3) participant + active-mode match, (4) key presence (route), (5) status, (6) dwell,
- * (7) evidence gate, and only THEN (8) the concurrency-safe conditional update. A request failing
- * any of (1)–(7) is rejected on its own merits EVEN IF the other party's concurrent request has
- * already completed the booking — losing the race is an idempotent success only for a request that
- * would otherwise have succeeded.
+ * (7a) spec 028's evidence-id ownership check, (7b) the evidence gate, and only THEN (8) the
+ * concurrency-safe conditional update. A request failing any of (1)–(7) is rejected on its own
+ * merits EVEN IF the other party's concurrent request has already completed the booking — losing
+ * the race is an idempotent success only for a request that would otherwise have succeeded.
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { queryRows } from '@/lib/offers/db';
 import type { BookingDto, BookingStatus } from '@/lib/types/bookings';
 import { getCompletionEvidenceGate } from './completion-evidence';
+import { assertEvidenceAssetsBelongToBooking } from './evidence';
 import {
   bookingVersionConflictError,
   completionEvidenceRequiredError,
@@ -43,6 +44,13 @@ export async function completeBooking(
   userId: string,
   bookingId: string,
   actingAs: 'customer' | 'provider',
+  /**
+   * Spec 028 AC-6 — the caller's OPTIONAL declaration of which assets are the completion evidence.
+   * Never authoritative: every id must already be valid evidence for THIS booking, and the gate's
+   * own count (step 7) decides whether the requirement is met. Omitting it changes nothing; sending
+   * a foreign id fails the request. See `lib/bookings/evidence.ts`.
+   */
+  evidenceFileAssetIds?: readonly string[],
 ): Promise<BookingDto> {
   // (3) participant resolution + active-mode match. Throws 404 for a non-participant, and for a
   // participant acting in the other party's mode — never a free pass because of a concurrent call.
@@ -80,7 +88,15 @@ export async function completeBooking(
       // `now()` (frozen at transaction start) and never a client clock.
       await assertDwellElapsed(tx, bookingId);
 
-      // (7) AC-5 / S5 — the evidence gate, consulted identically for both parties.
+      // (7a) spec 028 AC-6 — every declared evidence id must ALREADY be valid evidence for this
+      // booking. Deliberately before (7b) and before the already-`completed` short circuit below,
+      // so a caller who sends a foreign, unready or deleted id is rejected on its own merits even
+      // when the other party's concurrent request has already completed the booking (AC-11).
+      await assertEvidenceAssetsBelongToBooking(tx, bookingId, evidenceFileAssetIds);
+
+      // (7b) AC-5 / S5 — the evidence gate, consulted identically for both parties. The list above
+      // is NOT an input here: the gate counts the booking's own live `ready` evidence, so nothing a
+      // client sends can satisfy a requirement that is not already satisfied (spec 028 AC-4/AC-6).
       const evidence = await getCompletionEvidenceGate()(tx, bookingId);
       if (evidence.required && !evidence.satisfied) throw completionEvidenceRequiredError();
 

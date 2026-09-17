@@ -101,3 +101,28 @@ export function bookingNotStartableYetError(startableFrom: string): ApiRouteErro
     details: { startableFrom },
   });
 }
+
+/**
+ * `422` spec 028 AC-6 — an `evidenceFileAssetIds` entry is not a live, `ready` `booking_evidence`
+ * asset of the booking being completed.
+ *
+ * Deliberately `422` and not `404`: the caller is an authorized participant of a booking they can
+ * already see, so there is no id to probe here — the request body is simply wrong. The offending
+ * ids are echoed back so a client can drop them rather than guess.
+ */
+export function evidenceAssetInvalidError(fileAssetIds: string[]): ApiRouteError {
+  return new ApiRouteError(
+    'EVIDENCE_ASSET_INVALID',
+    'One or more of the attached files is not valid completion evidence for this booking.',
+    { status: 422, details: { fileAssetIds } },
+  );
+}
+
+/** `422` spec 028 AC-3 — a milestone posted outside `arrived`/`in_progress`. */
+export function milestoneNotAllowedInStatusError(currentStatus: string): ApiRouteError {
+  return new ApiRouteError(
+    'MILESTONE_NOT_ALLOWED_IN_STATUS',
+    `This booking is ${currentStatus.replace(/_/g, ' ')}, so progress updates cannot be posted.`,
+    { status: 422, details: { currentStatus } },
+  );
+}

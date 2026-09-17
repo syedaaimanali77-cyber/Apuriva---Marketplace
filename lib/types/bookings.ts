@@ -7,7 +7,7 @@
  * Every DTO here exposes PROFILE ids, never user ids — the same identifiers specs 015–019 already
  * expose, so a counterparty's `users.id` never reaches a client.
  */
-import type { BOOKING_STATUSES } from '@/lib/db/schema';
+import type { BOOKING_MILESTONE_TYPES, BOOKING_STATUSES } from '@/lib/db/schema';
 
 /** Master spec §125's booking vocabulary. Authored once, in `lib/db/schema.ts`. */
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
@@ -89,4 +89,51 @@ export interface SlotUnavailableDetails {
   alternatives: SlotAlternativeDto[];
   /** Spec 016's coarse public field; the fallback when `alternatives` is empty. */
   nextAvailableDate: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Spec 028 — service execution: milestones and completion evidence
+// ---------------------------------------------------------------------------
+
+/** Spec 028 §3 — the closed milestone vocabulary. Authored once, in `lib/db/schema.ts`. */
+export type BookingMilestoneType = (typeof BOOKING_MILESTONE_TYPES)[number];
+
+/**
+ * A provider's optional progress update. Content, never control: a milestone changes no booking
+ * status and gates no transition (spec 028 AC-3).
+ *
+ * Carries no `createdByUserId`: like every other DTO here, a counterparty user id never reaches a
+ * client. Both participants already know the poster is the booking's provider.
+ */
+export interface BookingMilestoneDto {
+  id: string;
+  bookingId: string;
+  milestoneType: BookingMilestoneType;
+  /** Free text, ≤ 500 characters. Required when `milestoneType` is 'custom', optional otherwise. */
+  note: string | null;
+  createdAt: string;
+}
+
+/** `POST /api/v1/bookings/{id}/milestones` body. */
+export interface CreateBookingMilestoneRequest {
+  milestoneType: BookingMilestoneType;
+  note?: string | null;
+}
+
+/**
+ * `POST /api/v1/bookings/{id}/complete` body — spec 020's route, the one field spec 020 §3
+ * explicitly reserved for spec 028.
+ */
+export interface CompleteBookingRequest {
+  /**
+   * OPTIONAL, and **never authoritative**. Each id must be a live `ready` `file_assets` row with
+   * `context_type = 'booking_evidence'` AND `context_id` = the booking being completed (AC-6);
+   * anything else fails the whole request with `422 EVIDENCE_ASSET_INVALID`.
+   *
+   * It is the provider's explicit declaration of what they consider the completion evidence, NOT
+   * the thing that satisfies the requirement: satisfaction is counted server-side from the
+   * database, so omitting this field changes nothing about whether completion is allowed, and
+   * supplying it can only ever cause a request to fail that would otherwise have succeeded.
+   */
+  evidenceFileAssetIds?: string[];
 }

@@ -36,7 +36,7 @@ being a build-order dependency.
 | 025 | [Messaging & Conversations](2026-08-28-025-messaging-conversations.md) | Draft | AC-6 depends on the blocked-user mechanism defined in spec 030; shared `Chat` component extends spec 019's request-scoped chat. |
 | 026 | [Notifications](2026-08-28-026-notifications.md) | Draft | — |
 | 027 | [File Uploads & Media Storage](2026-08-28-027-file-uploads-media-storage.md) | Draft | — |
-| 028 | [Service Execution Lifecycle](2026-08-28-028-service-execution-lifecycle.md) | Draft | Reuses `BookingMilestone` stubbed in spec 020. |
+| 028 | [Service Execution Lifecycle](2026-08-28-028-service-execution-lifecycle.md) | Approved | Fills in spec 003's `booking_milestones` skeleton; registers spec 020's `CompletionEvidenceGate` and spec 027's `booking_evidence` context. |
 | 029 | [Reviews & Ratings](2026-08-28-029-reviews-ratings.md) | Draft | Depends on completed bookings existing (spec 028); feeds ranking (spec 017) — spec's own "Why it matters now." |
 | 030 | [Blocking, Reporting & Safety Incidents](2026-08-28-030-blocking-reporting-safety-incidents.md) | Draft | — |
 | 031 | [Disputes & Resolution](2026-08-28-031-disputes-resolution.md) | Draft | — |

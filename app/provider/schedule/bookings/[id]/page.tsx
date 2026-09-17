@@ -16,6 +16,10 @@ import {
   progressionIndex,
 } from '@/app/bookings/booking-client';
 import { BookingConversation } from '@/app/bookings/_components/BookingConversation';
+import { BookingEvidence } from '@/app/bookings/_components/BookingEvidence';
+import { BookingMilestones } from '@/app/bookings/_components/BookingMilestones';
+import type { ServiceDto } from '@/lib/types/catalog';
+import type { FileAssetDto } from '@/lib/types/files';
 import styles from '@/app/bookings/bookings.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
@@ -46,6 +50,10 @@ export default function ProviderBookingPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
+  // Spec 028 — copy only. The requirement and whether it is met are resolved server-side from the
+  // catalog inside the completion transaction; this just lets the screen say so before the tap.
+  const [evidenceRequired, setEvidenceRequired] = useState(false);
+  const [evidenceAssets, setEvidenceAssets] = useState<FileAssetDto[]>([]);
 
   const liveRef = useRef(true);
 
@@ -76,6 +84,24 @@ export default function ProviderBookingPage() {
     void load(true);
   }, [load]);
 
+  // Spec 028 §5 — read the service's `completionEvidenceRequired` so the completion control can
+  // state the requirement BEFORE it is pressed. A service this caller cannot read simply leaves the
+  // copy at "optional"; the server still refuses a completion that lacks required evidence.
+  useEffect(() => {
+    if (!booking) return;
+    let cancelled = false;
+    void apiFetch<ServiceDto>(`/api/v1/services/${booking.serviceId}`)
+      .then((result) => {
+        if (!cancelled && result.ok) setEvidenceRequired(Boolean(result.data?.completionEvidenceRequired));
+      })
+      // Copy only: if the service cannot be read, the screen stays on "optional" wording and the
+      // SERVER still refuses a completion that lacks required evidence. Never an unhandled rejection.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [booking]);
+
   useEffect(() => {
     const tick = () => {
       if (liveRef.current) void load(false);
@@ -98,9 +124,17 @@ export default function ProviderBookingPage() {
     async (path: string, withIdempotencyKey: boolean) => {
       setPending(path);
       setActionError(null);
+      // Spec 028 AC-6 — on `complete`, declare the evidence this screen actually holds. It is not
+      // what satisfies the requirement (the server counts that itself); sending an id that is not
+      // this booking's own evidence fails the request rather than passing it.
+      const body =
+        path === 'complete' && evidenceAssets.length > 0
+          ? JSON.stringify({ evidenceFileAssetIds: evidenceAssets.filter((a) => a.status === 'ready').map((a) => a.id) })
+          : undefined;
       const result = await apiFetch<BookingDto>(`/api/v1/bookings/${bookingId}/${path}`, {
         method: 'POST',
         headers: mutateHeaders(withIdempotencyKey ? { 'Idempotency-Key': crypto.randomUUID() } : undefined),
+        body,
       });
       setPending(null);
 
@@ -114,7 +148,7 @@ export default function ProviderBookingPage() {
       }
       await load(false);
     },
-    [bookingId, load],
+    [bookingId, load, evidenceAssets],
   );
 
   if (status === 'loading') {
@@ -182,6 +216,22 @@ export default function ProviderBookingPage() {
         </div>
       </Card>
 
+      {/* Spec 028 §5 — optional progress updates, and evidence capture while the job is running. */}
+      <BookingMilestones
+        bookingId={booking.id}
+        status={booking.status}
+        scheduledTimezone={booking.scheduledTimezone}
+        viewerRole="provider"
+      />
+
+      <BookingEvidence
+        bookingId={booking.id}
+        status={booking.status}
+        viewerRole="provider"
+        evidenceRequired={evidenceRequired}
+        onAssetsChange={setEvidenceAssets}
+      />
+
       {(available.length > 0 || canComplete) && (
         <Card>
           <h2 className={styles.sectionTitle}>Update this job</h2>
@@ -206,6 +256,15 @@ export default function ProviderBookingPage() {
           {canComplete && (
             // AC-8: equal authority — the provider needs no confirmation from the customer.
             <p className={styles.hint}>You can mark this complete yourself; the customer does not need to confirm it.</p>
+          )}
+          {canComplete && evidenceRequired && (
+            // Spec 028 §5 "Evidence required" — stated before the tap, not only after a 422.
+            <p className={styles.hint} role="status" aria-live="polite">
+              This service needs completion evidence.{' '}
+              {evidenceAssets.some((asset) => asset.status === 'ready')
+                ? 'Attached above.'
+                : 'Attach a file above before marking it complete.'}
+            </p>
           )}
           {dwellBlocked && (
             <p className={styles.hint} role="status" aria-live="polite">

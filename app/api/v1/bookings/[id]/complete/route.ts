@@ -1,10 +1,11 @@
 import { withApiRoute } from '@/lib/api/handler';
 import { apiSuccess } from '@/lib/api/response';
-import { forbiddenError, rateLimitedError } from '@/lib/api/errors';
+import { forbiddenError, rateLimitedError, validationError } from '@/lib/api/errors';
 import { checkRateLimit } from '@/lib/api/rate-limit';
 import { requireIdempotencyKey } from '@/lib/api/idempotency';
 import { requireCsrf, requireSession } from '@/lib/auth/require-session';
-import { completeBooking } from '@/lib/bookings';
+import { completeBooking, MAX_BOOKING_EVIDENCE_ASSETS } from '@/lib/bookings';
+import type { CompleteBookingRequest } from '@/lib/types/bookings';
 import { bookingIdFromUrl } from '../../booking-id';
 
 /**
@@ -25,8 +26,16 @@ import { bookingIdFromUrl } from '../../booking-id';
  * (1)–(7) is rejected on its own merits even if the other party's concurrent request already
  * completed the booking.
  *
- * The body carries **no** evidence field: evidence storage is spec 027's and the requirement is
- * spec 028's (§3 "Completion-evidence gate"). Spec 028 extends this body when it ships.
+ * SPEC 028 EXTENSION (§3 "The one change to a spec 020 file"). The body now carries the one
+ * OPTIONAL field spec 020 §3 reserved for spec 028: `evidenceFileAssetIds`. Everything above is
+ * unchanged — same route, method, auth rules, idempotency requirement and validation order — and a
+ * body without the field behaves exactly as it did before, so this is purely additive.
+ *
+ * The field is NEVER authoritative. Each id must already be a live `ready` `booking_evidence` asset
+ * of THIS booking or the whole request is `422 EVIDENCE_ASSET_INVALID`; whether the requirement is
+ * met is counted server-side from the database, from `services.completion_evidence_required` joined
+ * through `bookings.service_id`. Nothing a client sends can create, weaken or skip the requirement
+ * (spec 028 AC-4/AC-6).
  */
 export const POST = withApiRoute(async (request, correlationId) => {
   const session = await requireSession(request);
@@ -41,6 +50,25 @@ export const POST = withApiRoute(async (request, correlationId) => {
   // Required so a retried completion is a replay, never a second attribution (safeguard S9).
   requireIdempotencyKey(request);
 
-  const booking = await completeBooking(session.userId, bookingIdFromUrl(request, 1), mode);
+  const body = (await request.json().catch(() => ({}))) as CompleteBookingRequest;
+  // Shape only. Whether these ids are *valid evidence for this booking* is decided server-side,
+  // under the completion lock, by `assertEvidenceAssetsBelongToBooking` (spec 028 AC-6).
+  const evidenceFileAssetIds = parseEvidenceIds(body.evidenceFileAssetIds);
+
+  const booking = await completeBooking(session.userId, bookingIdFromUrl(request, 1), mode, evidenceFileAssetIds);
   return apiSuccess(booking, correlationId);
 });
+
+/** An absent field and an empty list mean the same thing: the caller declared no evidence. */
+function parseEvidenceIds(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) {
+    throw validationError([{ field: 'evidenceFileAssetIds', message: 'must be an array of file asset ids' }]);
+  }
+  if (value.length > MAX_BOOKING_EVIDENCE_ASSETS) {
+    throw validationError([
+      { field: 'evidenceFileAssetIds', message: `must contain at most ${MAX_BOOKING_EVIDENCE_ASSETS} ids` },
+    ]);
+  }
+  return value as string[];
+}

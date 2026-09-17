@@ -21,6 +21,8 @@ function toServiceDto(row: ServiceRow): ServiceDto {
     pricingModel: row.pricingModel,
     status: row.status,
     metadata: row.metadata as Record<string, unknown>,
+    // Spec 028 §4 — read-only everywhere except `editService`; the catalog owns the requirement.
+    completionEvidenceRequired: row.completionEvidenceRequired,
     version: row.version,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -118,6 +120,12 @@ export async function editService(actorUserId: string, id: string, body: EditSer
   if (!current) throw catalogNotFoundError();
   if (body.expectedVersion !== undefined && body.expectedVersion !== current.version) throw versionConflictError();
 
+  // Spec 028 §4 — an explicit boolean or nothing. A truthy string is a `400`, never coerced: this
+  // flag decides whether completion can be blocked, so it must never be set by accident.
+  if (body.completionEvidenceRequired !== undefined && typeof body.completionEvidenceRequired !== 'boolean') {
+    throw validationError([{ field: 'completionEvidenceRequired', message: 'must be a boolean' }]);
+  }
+
   const nextStatus = body.status ?? current.status;
   if (nextStatus !== current.status && !isValidTransition(current.status, nextStatus)) {
     throw invalidLifecycleTransitionError(current.status, nextStatus);
@@ -147,6 +155,8 @@ export async function editService(actorUserId: string, id: string, body: EditSer
       pricingModel: body.pricingModel ?? current.pricingModel,
       status: nextStatus,
       metadata: body.metadata ?? current.metadata,
+      // Spec 028 §4 "Admin surface". Absent means unchanged — never silently reset to false.
+      completionEvidenceRequired: body.completionEvidenceRequired ?? current.completionEvidenceRequired,
       version: current.version + 1,
       updatedAt: new Date(),
     })

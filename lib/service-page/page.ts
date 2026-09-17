@@ -88,6 +88,8 @@ export async function getCategoryPage(categoryId: string): Promise<CategoryPageD
       pricingModel: row.pricingModel,
       status: row.status,
       metadata: row.metadata as Record<string, unknown>,
+      // Spec 028 §4 — part of the service's catalog definition; carried through unchanged.
+      completionEvidenceRequired: row.completionEvidenceRequired,
       version: row.version,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),

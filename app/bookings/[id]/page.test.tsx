@@ -43,6 +43,9 @@ function stubFetch(handlers: {
   history?: BookingStatusHistoryDto[];
   bookingError?: { status: number; body: unknown };
   complete?: { ok: boolean; status?: number; body: unknown };
+  /** Spec 028 §5 — the two lists this screen reads. */
+  milestones?: unknown[];
+  evidence?: unknown[];
 }) {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === 'POST' && url.includes('/complete')) {
@@ -51,6 +54,12 @@ function stubFetch(handlers: {
     }
     if (url.includes('/status-history')) {
       return { ok: true, status: 200, json: async () => ({ data: handlers.history ?? HISTORY }) };
+    }
+    if (url.includes('/milestones')) {
+      return { ok: true, status: 200, json: async () => ({ data: handlers.milestones ?? [] }) };
+    }
+    if (url.includes('/evidence')) {
+      return { ok: true, status: 200, json: async () => ({ data: handlers.evidence ?? [] }) };
     }
     if (handlers.bookingError) {
       return { ok: false, status: handlers.bookingError.status, json: async () => handlers.bookingError!.body };
@@ -170,5 +179,90 @@ describe('BookingDetailPage (spec 020 §5)', () => {
     const afterLoad = fetchMock.mock.calls.length;
     await vi.advanceTimersByTimeAsync(40_000);
     expect(fetchMock.mock.calls.length).toBe(afterLoad);
+  });
+  // --- Spec 028 §5 — the customer's view of execution ----------------------------------------
+
+  /**
+   * The empty state is NOTHING. A provider who posts no milestones must not look like one who is
+   * failing to report, so there is no list and no "no updates yet" placeholder.
+   */
+  it('renders no milestone section at all when none has been posted (spec 028 §5)', async () => {
+    stubFetch({ booking: booking({ status: 'in_progress' }), milestones: [] });
+    render(<BookingDetailPage />);
+
+    await screen.findByText('Your booking');
+    expect(screen.queryByText('Progress updates')).not.toBeInTheDocument();
+    expect(screen.queryByText(/no updates yet/i)).not.toBeInTheDocument();
+  });
+
+  it('renders posted milestones, oldest first, with their notes (spec 028 AC-3)', async () => {
+    stubFetch({
+      booking: booking({ status: 'in_progress' }),
+      milestones: [
+        { id: 'm1', bookingId: 'booking-1', milestoneType: 'started', note: null, createdAt: '2026-10-01T09:05:00.000Z' },
+        {
+          id: 'm2',
+          bookingId: 'booking-1',
+          milestoneType: 'custom',
+          note: 'Deep clean underway',
+          createdAt: '2026-10-01T09:30:00.000Z',
+        },
+      ],
+    });
+    render(<BookingDetailPage />);
+
+    // The milestone list arrives on its own fetch. Under full-suite CPU contention that can take
+    // longer than findBy*'s 1s default, so this waits the same budget the component tests elsewhere
+    // in this repo allow for a settled render.
+    expect(await screen.findByText('Started', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(await screen.findByText(/Deep clean underway/, {}, { timeout: 5000 })).toBeInTheDocument();
+  });
+
+  /** AC-8 — the customer's evidence section does not exist before completion. */
+  it('shows no evidence section before completion (spec 028 AC-8)', async () => {
+    stubFetch({ booking: booking({ status: 'in_progress' }), evidence: [] });
+    render(<BookingDetailPage />);
+
+    await screen.findByText('Your booking');
+    expect(screen.queryByText('Completion evidence')).not.toBeInTheDocument();
+  });
+
+  /** AC-8 — and does exist once the server returns the evidence, i.e. after completion. */
+  it('shows the evidence section once the server returns evidence (spec 028 AC-8)', async () => {
+    stubFetch({
+      booking: booking({ status: 'completed' }),
+      evidence: [
+        {
+          id: 'asset-1',
+          kind: 'image',
+          visibility: 'private',
+          status: 'scanning',
+          mimeType: 'image/jpeg',
+          sizeBytes: 64,
+          fileName: 'evidence.jpg',
+          contextType: 'booking_evidence',
+          contextId: 'booking-1',
+          rejectionReason: null,
+          createdAt: '2026-10-01T10:00:00.000Z',
+          readyAt: null,
+          version: 1,
+        },
+      ],
+    });
+    render(<BookingDetailPage />);
+
+    expect(await screen.findByText('Completion evidence', {}, { timeout: 5000 })).toBeInTheDocument();
+    // A not-yet-ready asset shows spec 027's own state, never a broken image.
+    expect(await screen.findByText('Still checking this file', {}, { timeout: 5000 })).toBeInTheDocument();
+  });
+
+  /** The customer never gets an upload control: evidence is the provider's to attach (AC-7). */
+  it('never offers the customer an evidence upload control (spec 028 AC-7)', async () => {
+    stubFetch({ booking: booking({ status: 'in_progress' }), evidence: [] });
+    render(<BookingDetailPage />);
+
+    await screen.findByText('Your booking');
+    expect(screen.queryByLabelText(/Evidence/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /post update/i })).not.toBeInTheDocument();
   });
 });

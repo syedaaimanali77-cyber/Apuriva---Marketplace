@@ -41,6 +41,12 @@ function stubFetch(handlers: {
   booking?: BookingDto;
   history?: BookingStatusHistoryDto[];
   action?: { ok: boolean; status?: number; body: unknown };
+  /** Spec 028 §5 — the milestone list this screen reads. */
+  milestones?: unknown[];
+  /** Spec 028 §5 — the evidence list this screen reads. */
+  evidence?: unknown[];
+  /** Spec 028 §5 — the service's catalog `completionEvidenceRequired`. */
+  evidenceRequired?: boolean;
 }) {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === 'POST') {
@@ -49,6 +55,19 @@ function stubFetch(handlers: {
     }
     if (url.includes('/status-history')) {
       return { ok: true, status: 200, json: async () => ({ data: handlers.history ?? HISTORY }) };
+    }
+    if (url.includes('/milestones')) {
+      return { ok: true, status: 200, json: async () => ({ data: handlers.milestones ?? [] }) };
+    }
+    if (url.includes('/evidence')) {
+      return { ok: true, status: 200, json: async () => ({ data: handlers.evidence ?? [] }) };
+    }
+    if (url.includes('/services/')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { completionEvidenceRequired: handlers.evidenceRequired ?? false } }),
+      };
     }
     return { ok: true, status: 200, json: async () => ({ data: handlers.booking ?? booking() }) };
   });
@@ -152,5 +171,91 @@ describe('ProviderBookingPage (spec 020 §5)', () => {
     render(<ProviderBookingPage />);
 
     expect(await screen.findByText('We could not load this booking')).toBeInTheDocument();
+  });
+  // --- Spec 028 §5 — the provider's execution controls ----------------------------------------
+
+  /** AC-3 — the milestone poster appears mid-job and says, in words, that it is optional. */
+  it('offers an optional milestone poster while the job is running (spec 028 AC-3)', async () => {
+    stubFetch({ booking: booking({ status: 'in_progress' }) });
+    render(<ProviderBookingPage />);
+
+    expect(await screen.findByText('Progress updates', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Post update' })).toBeInTheDocument();
+    expect(screen.getByText(/Progress updates are optional/i)).toBeInTheDocument();
+    expect(screen.getByText(/finish this job without posting any/i)).toBeInTheDocument();
+  });
+
+  /** Milestones belong to the execution window only — not before arrival. */
+  it('offers no milestone poster before the provider has arrived', async () => {
+    stubFetch({ booking: booking({ status: 'confirmed' }) });
+    render(<ProviderBookingPage />);
+
+    await screen.findByText('Active job');
+    expect(screen.queryByRole('button', { name: 'Post update' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * §5 "Evidence required" — the requirement is stated BEFORE the completion control is pressed,
+   * so a 422 is a backstop rather than the first the provider hears of it.
+   */
+  it('states the evidence requirement before Mark complete is pressed (spec 028 §5)', async () => {
+    stubFetch({ booking: booking({ status: 'in_progress' }), evidenceRequired: true, evidence: [] });
+    render(<ProviderBookingPage />);
+
+    expect(await screen.findByText('Completion evidence', {}, { timeout: 5000 })).toBeInTheDocument();
+    // The service's `completionEvidenceRequired` arrives on its own fetch, so await the copy it
+    // drives rather than asserting on whatever happened to be rendered first.
+    expect(
+      await screen.findByText(
+        /needs at least one photo, video or document attached before you can mark it complete/i,
+        {},
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Nothing attached yet.')).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Attach a file above before marking it complete/i, {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
+  });
+
+  /** A service that requires nothing says so, rather than implying evidence is needed. */
+  it('describes evidence as optional when the service does not require it', async () => {
+    stubFetch({ booking: booking({ status: 'in_progress' }), evidenceRequired: false, evidence: [] });
+    render(<ProviderBookingPage />);
+
+    expect(
+      await screen.findByText(/Optional\. Attach a photo, video or document/i, {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/needs at least one photo/i)).not.toBeInTheDocument();
+  });
+
+  /** AC-4's backstop rendered inline on the same screen, not as a navigation away. */
+  it('shows COMPLETION_EVIDENCE_REQUIRED inline on the same screen (spec 028 §5)', async () => {
+    stubFetch({
+      booking: booking({ status: 'in_progress' }),
+      evidenceRequired: true,
+      action: {
+        ok: false,
+        status: 422,
+        body: {
+          code: 'COMPLETION_EVIDENCE_REQUIRED',
+          message: 'This service needs completion evidence attached before it can be marked complete.',
+        },
+      },
+    });
+    render(<ProviderBookingPage />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Mark complete' }, { timeout: 5000 }));
+    expect(await screen.findByText(/needs completion evidence attached/i, {}, { timeout: 5000 })).toBeInTheDocument();
+    // Still on the same screen.
+    expect(screen.getByText('Active job')).toBeInTheDocument();
+  });
+
+  /** AC-3 — the completion control is never gated on a milestone having been posted. */
+  it('never gates Mark complete on a milestone (spec 028 AC-3)', async () => {
+    stubFetch({ booking: booking({ status: 'in_progress' }), milestones: [] });
+    render(<ProviderBookingPage />);
+
+    expect(await screen.findByRole('button', { name: 'Mark complete' }, { timeout: 5000 })).toBeEnabled();
   });
 });

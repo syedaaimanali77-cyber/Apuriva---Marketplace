@@ -44,6 +44,12 @@ export interface ServiceDto {
   pricingModel: PricingModel;
   status: CatalogEntityStatus;
   metadata: Record<string, unknown>;
+  /**
+   * Spec 028 §4 — whether a booking for this service may be completed only once completion
+   * evidence exists. The catalog is the SOLE source of this requirement; spec 028's gate reads it
+   * through `bookings.service_id` and no booking-side input can override it.
+   */
+  completionEvidenceRequired: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -121,6 +127,8 @@ export interface EditServiceRequest {
   pricingModel?: PricingModel;
   status?: CatalogEntityStatus;
   metadata?: Record<string, unknown>;
+  /** Spec 028 §4 "Admin surface" — the one place the completion-evidence requirement is set. */
+  completionEvidenceRequired?: boolean;
   expectedVersion?: number;
 }
 

@@ -429,6 +429,16 @@ export const services = pgTable(
      */
     matchingWeights: jsonb('matching_weights').$type<Record<string, number>>(),
     matchingPoolSize: integer('matching_pool_size'),
+    /**
+     * Spec 028 §4 — whether a booking for this service may be marked complete only once completion
+     * evidence exists. This column is the ONLY source of that requirement: spec 028's
+     * `CompletionEvidenceGate` joins it through `bookings.service_id`, and no request body, header
+     * or session value can set, clear or skip it (spec 028 AC-4).
+     *
+     * Defaults to `false`, which is exactly the behaviour every service already had under spec
+     * 020's inert default gate — so no backfill, and nothing changes until an admin turns it on.
+     */
+    completionEvidenceRequired: boolean('completion_evidence_required').notNull().default(false),
   },
   (t) => [
     index('services_category_id_idx').on(t.categoryId),
@@ -1312,6 +1322,15 @@ export const BOOKING_STATUSES = [
   'failed',
 ] as const;
 
+/**
+ * Spec 028 §3 — the milestone vocabulary, authored **once**, here, next to `BOOKING_STATUSES`.
+ *
+ * Deliberately CLOSED. The draft spec typed it as `'started' | 'working' | 'almost_done' | string`,
+ * which collapses to `string` in TypeScript and would admit an unbounded, unvalidated vocabulary at
+ * the database. A custom milestone is `'custom'` plus a required `note` (constraint C-2).
+ */
+export const BOOKING_MILESTONE_TYPES = ['started', 'working', 'almost_done', 'custom'] as const;
+
 /** Spec 020 §4 — the agreed price, copied verbatim from the accepted offer row. */
 const bookingPriceColumns = moneyColumns('price');
 /** Spec 020 §4 — resolves spec 016 §8 risk #7: the instant plus the IANA zone it is local to. */
@@ -1375,6 +1394,16 @@ export const bookings = pgTable(
   ],
 );
 
+/**
+ * Spec 028 §4 — the optional progress updates a provider posts during execution.
+ *
+ * A milestone is CONTENT, never control: nothing here participates in the booking state machine,
+ * and a booking may go `confirmed -> ... -> completed` with zero milestones without anything
+ * behaving differently (spec 028 AC-3). Append-only — there is no update and no delete route, and
+ * these rows are part of the booking's audit record, so spec 008's deletion never removes one.
+ *
+ * The table itself is spec 003's baseline skeleton; spec 028 fills in the columns.
+ */
 export const bookingMilestones = pgTable(
   'booking_milestones',
   {
@@ -1382,8 +1411,30 @@ export const bookingMilestones = pgTable(
     bookingId: uuid('booking_id')
       .notNull()
       .references(() => bookings.id, { onDelete: 'restrict' }),
+    /** Closed vocabulary (C-1), like every other status-like column in this schema. */
+    milestoneType: text('milestone_type', { enum: BOOKING_MILESTONE_TYPES }).notNull(),
+    /** Free text, 1..500 chars. REQUIRED when `milestoneType` is 'custom' (C-2). */
+    note: text('note'),
+    /** The posting provider's user id — always the booking's own provider. */
+    createdByUserId: uuid('created_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 028 §3 idempotency: scoped per booking by the unique index below, never globally. */
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
-  (t) => [index('booking_milestones_booking_id_idx').on(t.bookingId)],
+  (t) => [
+    index('booking_milestones_booking_id_idx').on(t.bookingId),
+    // Spec 003 AC-4: every foreign-key column carries its own covering btree index.
+    index('booking_milestones_created_by_user_id_idx').on(t.createdByUserId),
+    // Spec 028 §4 I-1: the database backstop for AC-10, scoped per booking as specs 015/018/020 do.
+    uniqueIndex('booking_milestones_booking_idempotency_key_uq').on(t.bookingId, t.idempotencyKey),
+    check('booking_milestones_type_ck', sql`${t.milestoneType} in ('started','working','almost_done','custom')`),
+    check(
+      'booking_milestones_note_ck',
+      sql`(${t.note} is null or char_length(${t.note}) between 1 and 500) and (${t.milestoneType} <> 'custom' or ${t.note} is not null)`,
+    ),
+  ],
 );
 
 export const bookingsStatusHistory = pgTable(

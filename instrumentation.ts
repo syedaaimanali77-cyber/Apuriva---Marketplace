@@ -36,4 +36,12 @@ export async function register(): Promise<void> {
   // behaviour, so no shipped spec breaks.
   const { registerFileIntegration } = await import('@/lib/files');
   registerFileIntegration();
+
+  // Spec 028 makes two ports real that shipped inert on purpose: spec 020's `CompletionEvidenceGate`
+  // (default: nothing requires evidence) and spec 027's `booking_evidence` context (default: `422
+  // FILE_CONTEXT_NOT_AVAILABLE`). It must run AFTER spec 027, which resets and registers its own
+  // shipped policies. Rolling spec 028 back returns both ports to those documented defaults, so no
+  // shipped spec breaks.
+  const { registerServiceExecutionIntegration } = await import('@/lib/bookings');
+  registerServiceExecutionIntegration();
 }

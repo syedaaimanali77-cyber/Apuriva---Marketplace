@@ -18,6 +18,8 @@ import {
 import { RefundSection } from '../_components/RefundSection';
 import { CancellationPolicySection } from '../_components/CancellationPolicySection';
 import { BookingConversation } from '../_components/BookingConversation';
+import { BookingEvidence } from '../_components/BookingEvidence';
+import { BookingMilestones } from '../_components/BookingMilestones';
 import styles from '../bookings.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
@@ -236,6 +238,19 @@ export default function BookingDetailPage() {
           </p>
         </Card>
       )}
+
+      {/* Spec 028 §5 — renders NOTHING when no milestone has been posted: a provider who posts
+          none must not look like one who is failing to report. */}
+      <BookingMilestones
+        bookingId={booking.id}
+        status={booking.status}
+        scheduledTimezone={booking.scheduledTimezone}
+        viewerRole="customer"
+      />
+
+      {/* Spec 028 §5/AC-8 — nothing before completion: the server returns an empty list until the
+          booking has actually been marked complete, so there is nothing to render or hint at. */}
+      <BookingEvidence bookingId={booking.id} status={booking.status} viewerRole="customer" />
 
       {/* Spec 025 §5 — the booking conversation, read-only once the booking is archived. */}
       <BookingConversation bookingId={booking.id} viewerRole="customer" />
