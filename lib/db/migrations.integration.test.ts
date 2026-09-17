@@ -183,3 +183,259 @@ describe.skipIf(!dbReachable)('0022_add_notifications migration (spec 026, integ
     }
   }, 300_000);
 });
+
+/**
+ * Spec 027 §6 "Migration" — `0023_add_file_assets`. Structural checks run against the shared test
+ * database; REVERSIBILITY runs in a throwaway `*_test` database of its own, for the same reason spec
+ * 026's block above does: applying a down migration to the shared one would pull columns out from
+ * under every concurrently running suite.
+ */
+describe.skipIf(!dbReachable)('0023_add_file_assets migration (spec 027, integration)', () => {
+  // Its own pool: the first block above ends the shared one in its `afterAll`.
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  afterAll(async () => {
+    await pool.end();
+  });
+
+  it('the baseline skeletons gain their columns, and NO table is added', async () => {
+    const { rows } = await pool.query<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name IN ('file_assets','message_attachments')`,
+    );
+    const columns = (table: string) => rows.filter((r) => r.table_name === table).map((r) => r.column_name);
+
+    for (const added of [
+      'kind', 'visibility', 'status', 'storage_key', 'mime_type', 'size_bytes', 'file_name',
+      'checksum_sha256', 'context_type', 'context_id', 'scan_outcome', 'scan_attempts',
+      'scan_next_attempt_at', 'rejection_reason', 'ready_at', 'deleted_at', 'storage_deleted_at',
+      'legal_hold', 'idempotency_key', 'idempotency_fingerprint',
+    ]) {
+      expect(columns('file_assets'), added).toContain(added);
+    }
+    expect(columns('message_attachments')).toContain('file_asset_id');
+
+    // Spec 015's linkage table is spec 015's, and is untouched by this migration.
+    const requestAttachments = await pool.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'request_attachments'`,
+    );
+    expect(requestAttachments.rows.map((r: { column_name: string }) => r.column_name).sort()).toEqual(
+      ['created_at', 'file_asset_id', 'id', 'request_id', 'updated_at', 'version'].sort(),
+    );
+  });
+
+  it("every added file_assets column is nullable or defaulted, so spec 008's bare insert still works (AC-10)", async () => {
+    const { rows } = await pool.query<{ column_name: string; is_nullable: string; column_default: string | null }>(
+      `SELECT column_name, is_nullable, column_default FROM information_schema.columns
+        WHERE table_name = 'file_assets' AND column_name NOT IN ('id','created_at','updated_at','version','uploaded_by_user_id')`,
+    );
+    const offenders = rows.filter((r) => r.is_nullable === 'NO' && r.column_default === null);
+    expect(offenders.map((r) => r.column_name)).toEqual([]);
+  });
+
+  it('the indexes this spec declares exist, with their partial predicates', async () => {
+    const { rows } = await pool.query<{ indexname: string; indexdef: string }>(
+      `SELECT indexname, indexdef FROM pg_indexes WHERE tablename IN ('file_assets','message_attachments')`,
+    );
+    const byName = Object.fromEntries(rows.map((r) => [r.indexname, r.indexdef]));
+    expect(byName.file_assets_storage_key_uq).toMatch(/UNIQUE INDEX .*\(storage_key\).*WHERE \(storage_key IS NOT NULL\)/);
+    expect(byName.file_assets_owner_idempotency_uq).toMatch(
+      /UNIQUE INDEX .*\(uploaded_by_user_id, idempotency_key\).*WHERE \(idempotency_key IS NOT NULL\)/,
+    );
+    expect(byName.file_assets_context_idx).toMatch(/\(context_type, context_id\)/);
+    expect(byName.file_assets_scan_due_idx).toMatch(/\(status, scan_next_attempt_at\)/);
+    expect(byName.file_assets_purge_idx).toMatch(/WHERE \(storage_deleted_at IS NULL\)/);
+    // Spec 003's covering-index-per-FK rule, for the FK this migration adds.
+    expect(byName.message_attachments_file_asset_id_idx).toMatch(/\(file_asset_id\)/);
+  });
+
+  it('the message_attachments FK is RESTRICT, so a linked asset can never be hard-deleted', async () => {
+    const { rows } = await pool.query<{ confdeltype: string }>(
+      `SELECT confdeltype FROM pg_constraint WHERE conname = 'message_attachments_file_asset_id_file_assets_id_fk'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.confdeltype).toBe('r');
+  });
+
+  it('the ready-requires-clean CHECK rejects a hand-written violation (AC-4 at the database)', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query<{ id: string }>('INSERT INTO users DEFAULT VALUES RETURNING id');
+      // `ready` with no clean scan — exactly what application code must never do, refused anyway.
+      await expect(
+        client.query(
+          `INSERT INTO file_assets (uploaded_by_user_id, kind, visibility, status, storage_key, mime_type, size_bytes, ready_at, context_type)
+           VALUES ($1, 'image', 'private', 'ready', 'k/1', 'image/jpeg', 10, clock_timestamp(), 'request_attachment')`,
+          [rows[0]!.id],
+        ),
+      ).rejects.toMatchObject({ constraint: 'file_assets_ready_requires_clean_ck' });
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+  });
+
+  it('the pairing and vocabulary CHECKs reject their violations', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query<{ id: string }>('INSERT INTO users DEFAULT VALUES RETURNING id');
+      const userId = rows[0]!.id;
+      const insert = (columns: string, values: string) =>
+        client.query(`INSERT INTO file_assets (uploaded_by_user_id, ${columns}) VALUES ($1, ${values})`, [userId]);
+
+      for (const [columns, values, constraint] of [
+        ['kind', `'executable'`, 'file_assets_kind_ck'],
+        ['visibility', `'unlisted'`, 'file_assets_visibility_ck'],
+        ['status', `'quarantined'`, 'file_assets_status_ck'],
+        ['context_type', `'invented_context'`, 'file_assets_context_type_ck'],
+        ['scan_outcome', `'probably_fine'`, 'file_assets_scan_outcome_ck'],
+        // A context id with no context type is unauthorizable.
+        ['context_id', `gen_random_uuid()`, 'file_assets_context_pairing_ck'],
+        // A rejected row must always say why.
+        ['status', `'rejected'`, 'file_assets_rejected_pairing_ck'],
+        ['size_bytes', `-1`, 'file_assets_size_ck'],
+        ['scan_attempts', `-1`, 'file_assets_scan_attempts_ck'],
+      ] as const) {
+        await client.query('SAVEPOINT s');
+        await expect(insert(columns, values), `${columns} = ${values}`).rejects.toMatchObject({ constraint });
+        await client.query('ROLLBACK TO SAVEPOINT s');
+      }
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+  });
+
+  it('the terminal trigger rejects a status change (AC-7 independently of application code)', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: userRows } = await client.query<{ id: string }>('INSERT INTO users DEFAULT VALUES RETURNING id');
+      const { rows: assetRows } = await client.query<{ id: string }>(
+        `INSERT INTO file_assets (uploaded_by_user_id, kind, visibility, status, storage_key, mime_type, size_bytes,
+                                  scan_outcome, ready_at, context_type)
+         VALUES ($1, 'image', 'private', 'ready', 'k/terminal', 'image/jpeg', 10, 'clean', clock_timestamp(), 'request_attachment')
+         RETURNING id`,
+        [userRows[0]!.id],
+      );
+      const assetId = assetRows[0]!.id;
+
+      for (const attempt of [
+        `UPDATE file_assets SET status = 'scanning', ready_at = NULL WHERE id = $1`,
+        `UPDATE file_assets SET storage_key = 'k/moved' WHERE id = $1`,
+        `UPDATE file_assets SET visibility = 'public' WHERE id = $1`,
+        `UPDATE file_assets SET size_bytes = 999 WHERE id = $1`,
+        `UPDATE file_assets SET context_type = 'portfolio' WHERE id = $1`,
+      ]) {
+        await client.query('SAVEPOINT s');
+        await expect(client.query(attempt, [assetId]), attempt).rejects.toMatchObject({ code: '23514' });
+        await client.query('ROLLBACK TO SAVEPOINT s');
+      }
+
+      // The deletion/retention columns and the file name (for redaction) may still move.
+      await expect(
+        client.query(
+          `UPDATE file_assets SET deleted_at = clock_timestamp(), file_name = '[redacted]', legal_hold = true WHERE id = $1`,
+          [assetId],
+        ),
+      ).resolves.toBeTruthy();
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+  });
+
+  it('is reversible on an empty database, and the gated down refuses once an upload exists', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { Client } = await import('pg');
+    const { drizzle } = await import('drizzle-orm/node-postgres');
+    const { migrate } = await import('drizzle-orm/node-postgres/migrator');
+    const { assertTestDatabaseUrl } = await import('@/test/test-database');
+
+    const baseUrl = process.env.DATABASE_URL!;
+    const baseName = assertTestDatabaseUrl(baseUrl);
+    const scratchName = `${baseName.replace(/_test$/, '')}_m0023_test`;
+    assertTestDatabaseUrl(`postgresql://x/${scratchName}`);
+    const adminUrl = new URL(baseUrl);
+    adminUrl.pathname = '/postgres';
+    const scratchUrl = new URL(baseUrl);
+    scratchUrl.pathname = `/${scratchName}`;
+
+    const drizzleDir = join(__dirname, '..', '..', 'drizzle');
+    const up = readFileSync(join(drizzleDir, '0023_add_file_assets.sql'), 'utf8');
+    const down = readFileSync(join(drizzleDir, '0023_add_file_assets_down.sql'), 'utf8');
+
+    const admin = new Client({ connectionString: adminUrl.toString() });
+    await admin.connect();
+    await admin.query(`DROP DATABASE IF EXISTS "${scratchName}" WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE "${scratchName}"`);
+    const scratch = new Client({ connectionString: scratchUrl.toString() });
+    try {
+      await scratch.connect();
+      await migrate(drizzle(scratch), { migrationsFolder: drizzleDir });
+
+      const addedColumns = async () =>
+        Number(
+          (
+            await scratch.query<{ n: string }>(
+              `SELECT count(*) AS n FROM information_schema.columns
+                WHERE table_name = 'file_assets' AND column_name IN ('kind','status','storage_key','context_type','legal_hold')`,
+            )
+          ).rows[0]!.n,
+        );
+      const triggerExists = async () =>
+        (await scratch.query(`SELECT 1 FROM pg_trigger WHERE tgname = 'file_assets_terminal_trg'`)).rowCount === 1;
+      const attachmentColumn = async () =>
+        (
+          await scratch.query(
+            `SELECT 1 FROM information_schema.columns WHERE table_name = 'message_attachments' AND column_name = 'file_asset_id'`,
+          )
+        ).rowCount === 1;
+
+      expect(await addedColumns()).toBe(5);
+      expect(await triggerExists()).toBe(true);
+
+      await scratch.query(down);
+      expect(await addedColumns()).toBe(0);
+      expect(await triggerExists()).toBe(false);
+      expect(await attachmentColumn()).toBe(false);
+      // The baseline skeletons (and their spec 003 FK index) survive the rollback, and so does
+      // spec 015's already-shipped linkage table.
+      expect((await scratch.query(`SELECT 1 FROM pg_indexes WHERE indexname = 'file_assets_uploaded_by_user_id_idx'`)).rowCount).toBe(1);
+      expect(
+        (
+          await scratch.query(
+            `SELECT 1 FROM information_schema.columns WHERE table_name = 'request_attachments' AND column_name = 'file_asset_id'`,
+          )
+        ).rowCount,
+      ).toBe(1);
+
+      await scratch.query(up);
+      expect(await addedColumns()).toBe(5);
+      expect(await triggerExists()).toBe(true);
+
+      // AC-10: spec 008's bare export row does NOT block the rollback — it carries no storage_key,
+      // so nothing would be orphaned. Rolling back with one present must still succeed.
+      const { rows: userRows } = await scratch.query<{ id: string }>('INSERT INTO users DEFAULT VALUES RETURNING id');
+      const userId = userRows[0]!.id;
+      await scratch.query(`INSERT INTO file_assets (uploaded_by_user_id) VALUES ($1)`, [userId]);
+      await expect(scratch.query(down)).resolves.toBeTruthy();
+      await scratch.query(up);
+
+      // But a REAL upload does block it: dropping storage_key would orphan stored bytes.
+      await scratch.query(
+        `INSERT INTO file_assets (uploaded_by_user_id, kind, status, storage_key, mime_type, size_bytes, context_type)
+         VALUES ($1, 'image', 'pending', 'k/real-upload', 'image/jpeg', 10, 'request_attachment')`,
+        [userId],
+      );
+      await expect(scratch.query(down)).rejects.toThrow(/Refusing to roll back 0023/);
+      expect(await addedColumns()).toBe(5);
+    } finally {
+      await scratch.end().catch(() => undefined);
+      await admin.query(`DROP DATABASE IF EXISTS "${scratchName}" WITH (FORCE)`);
+      await admin.end();
+    }
+  }, 300_000);
+});

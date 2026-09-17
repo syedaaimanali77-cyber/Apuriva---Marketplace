@@ -32,6 +32,7 @@ import {
 import type { DataExportStatusDto } from '@/lib/types/privacy';
 import { exportProviderEarnings, type ExportedProviderEarnings } from '@/lib/payouts/privacy';
 import { exportNotificationData } from '@/lib/notifications/privacy';
+import { exportFileAssetData, type ExportedFileAsset } from '@/lib/files/privacy';
 import type { CategoryChannelMap, NotificationDto } from '@/lib/types/notifications';
 import { buildDownloadUrl, verifyDownloadToken } from './download-token';
 import { getFileAssetStorage } from './file-asset-storage';
@@ -118,6 +119,14 @@ export interface DataExportPayload {
    * `params`, and every delivery column (internal routing and diagnostics).
    */
   notifications: NotificationDto[];
+  /**
+   * Spec 027 §4 — METADATA for the files the caller uploaded. Never the bytes: those are already
+   * reachable through their own authorized, expiring URLs, and copying them here would create a
+   * second, unexpiring copy of exactly the material spec 027 exists to keep behind authorization.
+   * Never exported: `storage_key`, `checksum_sha256`, every scan column and both idempotency
+   * columns — server-side routing and diagnostics. Never another party's asset.
+   */
+  files: ExportedFileAsset[];
   /**
    * Spec 016 §4 "Retention and privacy": the exporting user's OWN provider schedule and coverage
    * configuration, ownership-scoped through `provider_profiles.user_id`. `centerAddressId` is
@@ -408,6 +417,8 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     .from(notificationPreferences)
     .where(eq(notificationPreferences.userId, userId));
   const notificationData = await exportNotificationData(userId);
+  // Spec 027 §4: metadata for the caller's own file assets, ownership-scoped by uploader.
+  const fileAssetData = await exportFileAssetData(userId);
 
   const paymentRows = await db
     .select({
@@ -747,6 +758,7 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         }
       : null,
     notifications: notificationData.notifications,
+    files: fileAssetData,
     providerAvailability: providerProfile
       ? {
           timezone: providerProfile.schedulingTimezone,

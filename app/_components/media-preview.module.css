@@ -1,0 +1,46 @@
+/*
+ * Spec 027 §5 — layout only for `MediaPreview`. Every value is an APURIVA Design System token
+ * (app/styles/apuriva-tokens.css); no hex, font size, radius, shadow or spacing is written by hand,
+ * and no existing page's styling is touched.
+ */
+
+.preview {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  color: var(--text-default);
+  text-decoration: none;
+}
+
+.fileRow:hover,
+.fileRow:focus-visible {
+  border-color: var(--border-strong);
+}
+
+.fileName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

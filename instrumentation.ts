@@ -29,4 +29,11 @@ export async function register(): Promise<void> {
   // Rolling spec 026 back returns each port to its log-only default — no producing spec breaks.
   const { registerNotificationIntegration } = await import('@/lib/notifications');
   registerNotificationIntegration();
+
+  // Spec 027 implements the `FileAssetStorage` port spec 008 has always depended on (AC-10) and
+  // registers the three shipped file context policies (AC-8). Spec 008's code is not touched;
+  // rolling spec 027 back returns its port to throwing, which is that port's documented pre-027
+  // behaviour, so no shipped spec breaks.
+  const { registerFileIntegration } = await import('@/lib/files');
+  registerFileIntegration();
 }

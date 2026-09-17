@@ -21,6 +21,7 @@ export type RateLimitDomain =
   | 'matching'
   | 'offers'
   | 'bookings'
+  | 'files'
   | 'default';
 
 export interface RateLimitRule {
@@ -58,6 +59,11 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   // surface, so the same 30/60s budget 'requests'/'matching'/'offers' already use rather than the
   // looser shared 'default'. It also bounds AC-2's alternatives disclosure per caller.
   bookings: { limit: 30, windowMs: 60_000 },
+  // Spec 027 §3: upload-url/finalize/delete and the signed-content fetch. These calls RESERVE
+  // storage and ISSUE credentials, so they get the same write-surface budget specs 015/017/018/020
+  // chose rather than the looser shared 'default'. `GET /files/{id}/content` uses this domain too,
+  // keyed by the user id the signed link is bound to.
+  files: { limit: 30, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 

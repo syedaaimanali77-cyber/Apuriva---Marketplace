@@ -863,4 +863,48 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Grant or withdraw marketing consent ({ consent: boolean }); idempotent; audited',
     tags: ['notifications'],
   },
+  // Spec 027 §3 — the file upload/delivery surface. User-level (not mode-scoped), except a
+  // `message_attachment` read, which inherits spec 025's mode rule for the conversation it belongs
+  // to. The cron maintenance sweep is deliberately absent, like every cron route.
+  {
+    method: 'POST',
+    path: '/files/upload-url',
+    summary:
+      'Validate a declared file and reserve an upload target; Idempotency-Key required (409 IDEMPOTENCY_KEY_CONFLICT on a changed body)',
+    tags: ['files'],
+  },
+  {
+    method: 'POST',
+    path: '/files/{id}/finalize',
+    summary:
+      'Confirm the stored object (actual size + magic-byte sniff), enter scanning; idempotent, owner only',
+    tags: ['files'],
+  },
+  {
+    method: 'GET',
+    path: '/files/{id}',
+    summary:
+      'Issue a URL for a ready asset: a bound, expiring signed URL for private, a CDN URL with the delivery transform for public; 409 FILE_NOT_READY otherwise',
+    tags: ['files'],
+  },
+  {
+    method: 'GET',
+    path: '/files/{id}/content',
+    summary:
+      "Signed-URL target: re-verifies the signature, its expiry AND the caller's authorization on every fetch",
+    tags: ['files'],
+  },
+  {
+    method: 'PUT',
+    path: '/files/{id}/content',
+    summary:
+      "Upload target for the local storage adapter (signed with its own HMAC purpose); writes bytes only — it grants no readability, which only finalize can",
+    tags: ['files'],
+  },
+  {
+    method: 'DELETE',
+    path: '/files/{id}',
+    summary: "Soft-delete the caller's own asset; linkage rows survive and bytes are purged by the maintenance sweep",
+    tags: ['files'],
+  },
 ];

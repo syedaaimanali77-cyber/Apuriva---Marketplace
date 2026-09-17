@@ -5,6 +5,7 @@ import { hasActiveBooking } from './booking-lifecycle-adapter';
 import { activeBookingBlocksDeletionError, deletionAlreadyPendingError, deletionNotPendingError } from './errors';
 import { removePayoutMethodsForDeletedUser } from '@/lib/payouts/privacy';
 import { redactNotificationsForDeletedUser, sweepNotificationRetention } from '@/lib/notifications/privacy';
+import { redactFileAssetsForDeletedUser } from '@/lib/files/deletion';
 
 const DEFAULT_GRACE_PERIOD_DAYS = 14;
 
@@ -156,6 +157,13 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
     // notice was sent; only their title/body/params are redacted, and anything still queued is skipped.
     // `notification_preferences.marketing_consent_at`/`_source` are deliberately left: consent evidence.
     await redactNotificationsForDeletedUser(db, id, REDACTED_DESCRIPTION);
+
+    // Spec 027 §4 "Retention and privacy" (AC-9): this user's file assets are soft-deleted, their
+    // file names redacted and their bytes queued for purge by /cron/file-maintenance-sweep. Rows are
+    // never hard-deleted — every FK onto file_assets is RESTRICT and the linkage rows are another
+    // party's record. `legal_hold` assets are the exception: evidence a later spec marked is
+    // RETAINED, with the owner already anonymized and the file name redacted just the same.
+    await redactFileAssetsForDeletedUser(db, id, REDACTED_DESCRIPTION);
 
     // Spec 015 §4: redact the request's free-text PII, keeping the row itself. `not null` on the
     // column means a sentinel rather than NULL; every read path treats it as ordinary text, so a
