@@ -148,6 +148,13 @@
       "when": 1789897660415,
       "tag": "0021_add_messaging_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789984060415,
+      "tag": "0022_add_notifications",
+      "breakpoints": true
     }
   ]
 }

@@ -818,4 +818,49 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'Admin paged message bodies; requires messaging/read_conversation and a 10-500 char reason query param; every page is audited',
     tags: ['messaging'],
   },
+  // Spec 026 §3 — the caller's own notification centre and preferences. User-level (not mode-scoped); no
+  // route creates a notification. The cron dispatch route is deliberately absent, like every cron route.
+  {
+    method: 'GET',
+    path: '/users/me/notifications',
+    summary: "Caller's own notifications, created_at DESC, id DESC; paged; ?unreadOnly=true",
+    tags: ['notifications'],
+  },
+  {
+    method: 'GET',
+    path: '/users/me/notifications/unread-count',
+    summary: "Count of the caller's unread notifications",
+    tags: ['notifications'],
+  },
+  {
+    method: 'POST',
+    path: '/users/me/notifications/{id}/read',
+    summary: "Mark one notification read (idempotent); another user's id is 404 NOTIFICATION_NOT_FOUND",
+    tags: ['notifications'],
+  },
+  {
+    method: 'POST',
+    path: '/users/me/notifications/read-all',
+    summary: "Mark all of the caller's unread notifications read; returns the count updated",
+    tags: ['notifications'],
+  },
+  {
+    method: 'GET',
+    path: '/users/me/notification-preferences',
+    summary: 'Resolved per-category channel preferences, non-overridable categories and marketing consent',
+    tags: ['notifications'],
+  },
+  {
+    method: 'PATCH',
+    path: '/users/me/notification-preferences',
+    summary:
+      'Update per-category channels with the current version; 422 CATEGORY_NOT_OVERRIDABLE for security/payments/operational, 409 CONFLICT on a stale version',
+    tags: ['notifications'],
+  },
+  {
+    method: 'POST',
+    path: '/users/me/marketing-consent',
+    summary: 'Grant or withdraw marketing consent ({ consent: boolean }); idempotent; audited',
+    tags: ['notifications'],
+  },
 ];

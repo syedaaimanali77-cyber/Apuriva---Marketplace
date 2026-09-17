@@ -24,4 +24,9 @@ export async function register(): Promise<void> {
   // `refunds.reconciliation_state` column stays the source of truth; the payout sweep pulls anything missed.
   const { registerPayoutIntegration } = await import('@/lib/payouts');
   registerPayoutIntegration();
+
+  // Spec 026 registers its sinks with the notification ports specs 022, 023, 024 and 025 shipped inert.
+  // Rolling spec 026 back returns each port to its log-only default — no producing spec breaks.
+  const { registerNotificationIntegration } = await import('@/lib/notifications');
+  registerNotificationIntegration();
 }

@@ -2385,6 +2385,12 @@ export const supportNotes = pgTable(
 // Notifications
 // ---------------------------------------------------------------------------
 
+/**
+ * Spec 026 §4 — extends spec 003's baseline skeleton into the user's notification record. The row IS
+ * the in-app channel: written once per (recipient, event_key) (AC-7), never subject to delivery retry.
+ * No status column: a notification is created and read, which `read_at` already expresses; delivery
+ * state lives on `notification_deliveries`.
+ */
 export const notifications = pgTable(
   'notifications',
   {
@@ -2392,10 +2398,30 @@ export const notifications = pgTable(
     recipientUserId: uuid('recipient_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    category: text('category').notNull(),
+    type: text('type').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    params: jsonb('params').notNull().default(sql`'{}'::jsonb`),
+    eventKey: text('event_key').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
   },
-  (t) => [index('notifications_recipient_user_id_idx').on(t.recipientUserId)],
+  (t) => [
+    index('notifications_recipient_user_id_idx').on(t.recipientUserId),
+    uniqueIndex('notifications_event_key_uq').on(t.recipientUserId, t.eventKey),
+    index('notifications_recipient_created_idx').on(t.recipientUserId, t.createdAt.desc(), t.id.desc()),
+    index('notifications_unread_idx').on(t.recipientUserId).where(sql`${t.readAt} is null`),
+    check(
+      'notifications_category_ck',
+      sql`${t.category} in ('booking','messages','payments','security','promotions','provider_activity','operational')`,
+    ),
+  ],
 );
 
+/**
+ * Spec 026 §4 — one row per user (baseline `UNIQUE (user_id)`), holding a validated per-category channel
+ * map and the CURRENT marketing consent. Consent history is appended to `security_events` (§3).
+ */
 export const notificationPreferences = pgTable(
   'notification_preferences',
   {
@@ -2404,8 +2430,45 @@ export const notificationPreferences = pgTable(
       .notNull()
       .unique()
       .references(() => users.id, { onDelete: 'restrict' }),
+    categories: jsonb('categories').notNull(),
+    marketingConsentAt: timestamp('marketing_consent_at', { withTimezone: true }),
+    marketingConsentSource: text('marketing_consent_source'),
   },
-  (t) => [index('notification_preferences_user_id_idx').on(t.userId)],
+  (t) => [
+    index('notification_preferences_user_id_idx').on(t.userId),
+    check('notification_preferences_categories_ck', sql`jsonb_typeof(${t.categories}) = 'object'`),
+  ],
+);
+
+/** Spec 026 §3 "Delivery, retry and escalation" — one row per OUTBOUND channel per notification. */
+export const notificationDeliveries = pgTable(
+  'notification_deliveries',
+  {
+    ...baseColumns(),
+    notificationId: uuid('notification_id')
+      .notNull()
+      .references(() => notifications.id, { onDelete: 'restrict' }),
+    channel: text('channel').notNull(),
+    status: text('status').notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    providerReference: text('provider_reference'),
+    failureCode: text('failure_code'),
+    skipReason: text('skip_reason'),
+  },
+  (t) => [
+    index('notification_deliveries_notification_id_idx').on(t.notificationId),
+    index('notification_deliveries_status_due_idx').on(t.status, t.nextAttemptAt),
+    uniqueIndex('notification_deliveries_notification_channel_uq').on(t.notificationId, t.channel),
+    check(
+      'notification_deliveries_status_ck',
+      sql`${t.status} in ('pending','retrying','delivered','failed','skipped')`,
+    ),
+    check('notification_deliveries_channel_ck', sql`${t.channel} in ('email','push','sms')`),
+    check('notification_deliveries_delivered_pairing_ck', sql`(${t.status} = 'delivered') = (${t.deliveredAt} is not null)`),
+    check('notification_deliveries_attempts_ck', sql`${t.attempts} >= 0`),
+  ],
 );
 
 // ---------------------------------------------------------------------------

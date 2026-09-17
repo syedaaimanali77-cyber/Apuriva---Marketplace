@@ -99,6 +99,9 @@ const EXPECTED_TABLES = [
   // Notifications
   'notifications',
   'notification_preferences',
+  // Spec 026 §4: not in master spec §124's minimum list — one delivery record per outbound channel per
+  // notification (retry, fallback, escalation), the same allowance specs 009/016/017/023/024 used.
+  'notification_deliveries',
   // AI
   'ai_conversations',
   'ai_messages',

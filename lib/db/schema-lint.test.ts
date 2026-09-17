@@ -117,6 +117,13 @@ describe('schema lint (spec 003)', () => {
       // (AC-10). The queryable parts of a report (status, outcome, respond_by_at, location_signal)
       // are real columns, which is why the reliability count and the sweep can index them.
       no_show_reports: ['evidence'],
+      // Spec 026 §4: a user's per-category outbound channel map — seven categories × three channels, read
+      // back whole and validated at write time by `validateCategoryChannelMap()`; never queried or filtered
+      // on in SQL. As 21 boolean columns it would need a migration per new category (AC-5).
+      notification_preferences: ['categories'],
+      // Spec 026 §4: a notification's template variables (ids, amounts, statuses) — kept with the row it
+      // rendered, never queried, never exported, and emptied on account deletion.
+      notifications: ['params'],
     };
 
     const offenders: string[] = [];

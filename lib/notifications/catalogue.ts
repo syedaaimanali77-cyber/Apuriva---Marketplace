@@ -1,0 +1,138 @@
+/**
+ * Spec 026 §3 "Ownership boundary" — the closed notification catalogue: type → category → template.
+ *
+ * Bodies are RENDERED, never relayed (§4 "Retention and privacy"): a producing spec passes ids, amounts
+ * and statuses, and the words come from here. That is what stops a notification becoming a channel for
+ * one user to send another arbitrary content, and keeps another party's personal data out of the row.
+ *
+ * Criticality is a property of the CATEGORY (AC-2), so nothing here carries a per-type override.
+ */
+import type { NotificationCategory, NotificationParams, NotificationType } from '@/lib/types/notifications';
+
+export interface CatalogueEntry {
+  category: NotificationCategory;
+  /** Every `{name}` placeholder the templates use. Rendering fails if one is missing. */
+  params: readonly string[];
+  title: string;
+  body: string;
+}
+
+export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, CatalogueEntry>> = {
+  provider_available: {
+    category: 'booking',
+    params: [],
+    title: 'A provider you follow is available',
+    body: 'A provider you asked about is now accepting bookings. Open their profile to book.',
+  },
+  booking_cancelled: {
+    category: 'booking',
+    params: ['refundAmount', 'feeAmount'],
+    title: 'Booking cancelled',
+    body: 'A booking you are part of was cancelled. Refund: {refundAmount}. Cancellation fee: {feeAmount}.',
+  },
+  no_show_reported: {
+    category: 'booking',
+    params: [],
+    title: 'No-show reported',
+    body: 'A no-show was reported for one of your bookings. Trust & Safety will review it.',
+  },
+  no_show_resolved: {
+    category: 'booking',
+    params: ['outcome'],
+    title: 'No-show report resolved',
+    body: 'A no-show report on one of your bookings was resolved. Outcome: {outcome}.',
+  },
+  message_received: {
+    category: 'messages',
+    params: [],
+    title: 'New message',
+    body: 'You have a new message about one of your bookings.',
+  },
+  refund_completed: {
+    category: 'payments',
+    params: [],
+    title: 'Refund completed',
+    body: 'Your refund has been completed and is on its way back to your payment method.',
+  },
+  refund_failed: {
+    category: 'payments',
+    params: [],
+    title: 'Refund could not be completed',
+    body: 'We could not complete your refund. Our team has been alerted and will follow up.',
+  },
+  payout_paid: {
+    category: 'payments',
+    params: [],
+    title: 'Payout sent',
+    body: 'A payout has been sent to your payout method.',
+  },
+  payout_failed: {
+    category: 'payments',
+    params: [],
+    title: 'Payout failed',
+    body: 'A payout to your payout method failed. Check your payout details in Earnings.',
+  },
+  request_cancelled: {
+    category: 'provider_activity',
+    params: [],
+    title: 'Request cancelled',
+    body: 'A customer cancelled a request you were notified about. No action is needed.',
+  },
+  no_show_response_requested: {
+    category: 'operational',
+    params: ['respondByAt'],
+    title: 'Your response is needed',
+    body: 'A no-show was reported on one of your bookings. Respond before {respondByAt}.',
+  },
+  service_notice: {
+    category: 'operational',
+    params: [],
+    title: 'Important service notice',
+    body: 'There is an important notice about your account or our service. Open the app for details.',
+  },
+  security_alert: {
+    category: 'security',
+    params: [],
+    title: 'Security alert',
+    body: 'There was important security activity on your account. Review Privacy & Security.',
+  },
+  promotion: {
+    category: 'promotions',
+    params: ['headline'],
+    title: 'Something new for you',
+    body: '{headline}',
+  },
+};
+
+export class NotificationTemplateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NotificationTemplateError';
+  }
+}
+
+export function isNotificationType(value: unknown): value is NotificationType {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(NOTIFICATION_CATALOGUE, value);
+}
+
+function substitute(template: string, params: NotificationParams): string {
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, name: string) => {
+    const value = params[name];
+    return value === null || value === undefined ? '—' : String(value);
+  });
+}
+
+/** Renders a type's title and body. Throws on an unknown type or a missing declared param. */
+export function renderNotification(
+  type: NotificationType,
+  params: NotificationParams = {},
+): { category: NotificationCategory; title: string; body: string } {
+  if (!isNotificationType(type)) throw new NotificationTemplateError(`Unknown notification type "${String(type)}"`);
+  const entry = NOTIFICATION_CATALOGUE[type];
+  for (const name of entry.params) {
+    if (!Object.prototype.hasOwnProperty.call(params, name)) {
+      throw new NotificationTemplateError(`Notification type "${type}" requires param "${name}"`);
+    }
+  }
+  return { category: entry.category, title: substitute(entry.title, params), body: substitute(entry.body, params) };
+}

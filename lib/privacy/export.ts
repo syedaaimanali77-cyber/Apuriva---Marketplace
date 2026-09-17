@@ -31,6 +31,8 @@ import {
 } from '@/lib/db/schema';
 import type { DataExportStatusDto } from '@/lib/types/privacy';
 import { exportProviderEarnings, type ExportedProviderEarnings } from '@/lib/payouts/privacy';
+import { exportNotificationData } from '@/lib/notifications/privacy';
+import type { CategoryChannelMap, NotificationDto } from '@/lib/types/notifications';
 import { buildDownloadUrl, verifyDownloadToken } from './download-token';
 import { getFileAssetStorage } from './file-asset-storage';
 import { NOT_FOUND_ERROR } from './not-found';
@@ -106,7 +108,16 @@ export interface DataExportPayload {
     redactedByRetention: boolean;
     createdAt: string;
   }>;
-  preferences: { id: string; createdAt: string } | null;
+  /**
+   * Spec 026 §4 extends the notification-preference row to the resolved per-category channel map and the
+   * marketing-consent instant (a compliance record the user is entitled to see).
+   */
+  preferences: { id: string; createdAt: string; categories: CategoryChannelMap; marketingConsentAt: string | null } | null;
+  /**
+   * Spec 026 §4 — the caller's OWN notifications, as they were told them. Never exported: `event_key`,
+   * `params`, and every delivery column (internal routing and diagnostics).
+   */
+  notifications: NotificationDto[];
   /**
    * Spec 016 §4 "Retention and privacy": the exporting user's OWN provider schedule and coverage
    * configuration, ownership-scoped through `provider_profiles.user_id`. `centerAddressId` is
@@ -396,6 +407,7 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     .select({ id: notificationPreferences.id, createdAt: notificationPreferences.createdAt })
     .from(notificationPreferences)
     .where(eq(notificationPreferences.userId, userId));
+  const notificationData = await exportNotificationData(userId);
 
   const paymentRows = await db
     .select({
@@ -726,7 +738,15 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     })),
     reviews: reviewRows.map((r) => ({ id: r.id, bookingId: r.bookingId, createdAt: r.createdAt.toISOString() })),
     messages: messageRows.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),
-    preferences: preferences ? { id: preferences.id, createdAt: preferences.createdAt.toISOString() } : null,
+    preferences: preferences
+      ? {
+          id: preferences.id,
+          createdAt: preferences.createdAt.toISOString(),
+          categories: notificationData.preferences!.categories,
+          marketingConsentAt: notificationData.preferences!.marketingConsentAt,
+        }
+      : null,
+    notifications: notificationData.notifications,
     providerAvailability: providerProfile
       ? {
           timezone: providerProfile.schedulingTimezone,

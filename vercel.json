@@ -40,6 +40,10 @@
     {
       "path": "/api/v1/cron/message-retention-sweep",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/v1/cron/notification-dispatch-sweep",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

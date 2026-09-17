@@ -10,6 +10,7 @@ export default function AccountPage() {
       description="Manage your addresses and privacy & security settings."
       links={[
         { href: '/account/addresses', label: 'Addresses' },
+        { href: '/account/notifications', label: 'Notifications' },
         { href: '/account/privacy-security', label: 'Privacy & security' },
       ]}
     />

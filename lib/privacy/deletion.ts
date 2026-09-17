@@ -4,6 +4,7 @@ import { customerProfiles, providerAvailabilityNotificationRequests, providerPro
 import { hasActiveBooking } from './booking-lifecycle-adapter';
 import { activeBookingBlocksDeletionError, deletionAlreadyPendingError, deletionNotPendingError } from './errors';
 import { removePayoutMethodsForDeletedUser } from '@/lib/payouts/privacy';
+import { redactNotificationsForDeletedUser, sweepNotificationRetention } from '@/lib/notifications/privacy';
 
 const DEFAULT_GRACE_PERIOD_DAYS = 14;
 
@@ -151,6 +152,11 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
        WHERE sender_user_id = ${id} AND body <> ${REDACTED_DESCRIPTION}
     `);
 
+    // Spec 026 §4 "Retention and privacy": notification rows are retained as the record that a required
+    // notice was sent; only their title/body/params are redacted, and anything still queued is skipped.
+    // `notification_preferences.marketing_consent_at`/`_source` are deliberately left: consent evidence.
+    await redactNotificationsForDeletedUser(db, id, REDACTED_DESCRIPTION);
+
     // Spec 015 §4: redact the request's free-text PII, keeping the row itself. `not null` on the
     // column means a sentinel rather than NULL; every read path treats it as ordinary text, so a
     // redacted description can never break the status view.
@@ -179,6 +185,10 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
         );
     }
   }
+
+  // Spec 026 §4 "Retention": READ notifications past `NOTIFICATION_RETENTION_DAYS` are deleted on this SAME
+  // existing schedule (`/cron/account-deletion-sweep`) rather than by a new sweep. Unread ones never are.
+  await sweepNotificationRetention();
 
   return { processed: due.length };
 }

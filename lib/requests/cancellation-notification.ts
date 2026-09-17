@@ -1,24 +1,48 @@
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { requestProviderMatches } from '@/lib/db/schema';
+import { providerProfiles, requestProviderMatches } from '@/lib/db/schema';
+import { notify } from '@/lib/notifications/create';
 
 /**
  * Spec 015 §3 "Provider-notification hook" / AC-4. Master spec §38 requires that providers who were
  * notified about a request are informed when the customer cancels it.
  *
- * Within this spec's implemented scope that set is always empty: distribution to a provider pool is
- * spec 017's (it populates `request_provider_matches`) and notification *delivery* is spec 026's.
- * Rather than fake either, this reads the real table — so the moment spec 017 starts populating it,
- * this returns real provider ids — and hands them to a delivery step that spec 026 owns. The
- * obligation is therefore unmet until 017 and 026 land, which AC-4 states explicitly.
+ * This reads the real table — spec 017 populates `request_provider_matches` — and, since spec 026,
+ * hands each provider who was actually DISTRIBUTED the request (`notified_at` set) to `notify()`.
+ * Spec 026 owns the channel/template/preference logic; this decides only who was affected. Called
+ * after the cancellation commits, and a notification failure never fails the cancellation.
  */
 export async function notifyProvidersOfCancellation(requestId: string): Promise<{ notifiedProviderProfileIds: string[] }> {
   const rows = await getDb()
-    .select({ providerProfileId: requestProviderMatches.providerProfileId })
+    .select({
+      providerProfileId: requestProviderMatches.providerProfileId,
+      notifiedAt: requestProviderMatches.notifiedAt,
+      providerUserId: providerProfiles.userId,
+    })
     .from(requestProviderMatches)
+    .innerJoin(providerProfiles, eq(providerProfiles.id, requestProviderMatches.providerProfileId))
     .where(eq(requestProviderMatches.requestId, requestId));
 
-  // No delivery here: spec 026 owns the channel/template/preference logic, and inventing a
-  // stand-in would be a fake integration (master spec §132.21).
+  for (const row of rows) {
+    if (!row.notifiedAt) continue; // Never told about the request, so nothing to un-tell.
+    try {
+      await notify({
+        recipientUserId: row.providerUserId,
+        type: 'request_cancelled',
+        eventKey: `request_cancelled:${requestId}`,
+        params: { requestId },
+      });
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          event: 'request.cancellation_notification_failed',
+          requestId,
+          providerProfileId: row.providerProfileId,
+          error: err instanceof Error ? err.name : 'error',
+        }),
+      );
+    }
+  }
+
   return { notifiedProviderProfileIds: rows.map((row) => row.providerProfileId) };
 }
