@@ -141,6 +141,13 @@
       "when": 1789811260415,
       "tag": "0020_add_provider_payouts_earnings",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789897660415,
+      "tag": "0021_add_messaging_conversations",
+      "breakpoints": true
     }
   ]
 }

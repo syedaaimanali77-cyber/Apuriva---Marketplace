@@ -17,6 +17,7 @@ import {
 } from '../booking-client';
 import { RefundSection } from '../_components/RefundSection';
 import { CancellationPolicySection } from '../_components/CancellationPolicySection';
+import { BookingConversation } from '../_components/BookingConversation';
 import styles from '../bookings.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
@@ -235,6 +236,9 @@ export default function BookingDetailPage() {
           </p>
         </Card>
       )}
+
+      {/* Spec 025 §5 — the booking conversation, read-only once the booking is archived. */}
+      <BookingConversation bookingId={booking.id} viewerRole="customer" />
 
       {/* Spec 022 §5 — renders nothing when the booking has no refunds. */}
       <RefundSection bookingId={booking.id} scheduledTimezone={booking.scheduledTimezone} />

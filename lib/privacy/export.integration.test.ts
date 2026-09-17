@@ -129,8 +129,19 @@ describe.skipIf(!dbReachable)('lib/privacy/export (spec 008 AC-3, integration)',
 
     const { rows: convoRows } = await pool.query<{ id: string }>('INSERT INTO conversations DEFAULT VALUES RETURNING id');
     const conversationId = convoRows[0]!.id;
-    await getDb().insert(conversationParticipants).values({ conversationId, userId: memberId });
-    const [message] = await getDb().insert(messages).values({ conversationId, senderUserId: memberId }).returning({ id: messages.id });
+    // Spec 025 §4 made `role`, `body`, `sender_role` and the idempotency columns NOT NULL.
+    await getDb().insert(conversationParticipants).values({ conversationId, userId: memberId, role: 'customer' });
+    const [message] = await getDb()
+      .insert(messages)
+      .values({
+        conversationId,
+        senderUserId: memberId,
+        senderRole: 'customer',
+        body: 'See you at ten.',
+        idempotencyKey: randomUUID(),
+        idempotencyFingerprint: 'fp',
+      })
+      .returning({ id: messages.id });
 
     const memberPayload = await generateExportPayload(memberId);
     expect(memberPayload.messages.map((m) => m.id)).toContain(message!.id);

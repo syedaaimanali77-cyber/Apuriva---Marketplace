@@ -20,6 +20,9 @@ export interface AdminAuditEventInput {
    * for a bypassed action. */
   approvalChain: unknown;
   isEmergencyBypass?: boolean;
+  /** Spec 039 AC-6 / spec 025 AC-5: links the audit entry back to the originating API request. Optional,
+   * so every existing caller is unaffected. */
+  correlationId?: string | null;
 }
 
 /**
@@ -44,6 +47,7 @@ export async function recordAdminAuditEvent(input: AdminAuditEventInput): Promis
       reason: input.reason ?? null,
       approvalChain: input.approvalChain,
       isEmergencyBypass: input.isEmergencyBypass ?? false,
+      ...(input.correlationId ? { correlationId: input.correlationId } : {}),
     },
   });
 }

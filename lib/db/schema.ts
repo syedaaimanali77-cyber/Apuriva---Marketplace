@@ -2086,19 +2086,33 @@ export const payoutsStatusTransitions = pgTable(
 // Messaging
 // ---------------------------------------------------------------------------
 
+export const CONVERSATION_PARTICIPANT_ROLES = ['customer', 'provider'] as const;
+
+/**
+ * Spec 025 §4 — extends spec 003's baseline skeleton into the post-booking conversation. One per
+ * booking (`conversations_booking_id_uq`, partial so the unused `request_id` scope is unconstrained).
+ * `archived_at` is a CACHE of the booking-status derivation (§3 "Active vs. archived"), never a
+ * truth of its own; `last_message_at` is maintained under the conversation row lock so message
+ * `created_at` values are strictly increasing per conversation (§3 "Ordering").
+ */
 export const conversations = pgTable(
   'conversations',
   {
     ...baseColumns(),
     requestId: uuid('request_id').references(() => requests.id, { onDelete: 'restrict' }),
     bookingId: uuid('booking_id').references(() => bookings.id, { onDelete: 'restrict' }),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    retentionAppliedAt: timestamp('retention_applied_at', { withTimezone: true }),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
   },
   (t) => [
     index('conversations_request_id_idx').on(t.requestId),
     index('conversations_booking_id_idx').on(t.bookingId),
+    uniqueIndex('conversations_booking_id_uq').on(t.bookingId).where(sql`${t.bookingId} is not null`),
   ],
 );
 
+/** Spec 025 §4 — exactly one `customer` and one `provider` per conversation, frozen at creation. */
 export const conversationParticipants = pgTable(
   'conversation_participants',
   {
@@ -2109,14 +2123,24 @@ export const conversationParticipants = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    role: text('role', { enum: CONVERSATION_PARTICIPANT_ROLES }).notNull(),
+    /** Advanced monotonically only (§3 "Unread and read semantics"). */
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }),
   },
   (t) => [
     index('conversation_participants_conversation_id_idx').on(t.conversationId),
     index('conversation_participants_user_id_idx').on(t.userId),
     uniqueIndex('conversation_participants_conversation_user_uq').on(t.conversationId, t.userId),
+    uniqueIndex('conversation_participants_conversation_role_uq').on(t.conversationId, t.role),
+    check('conversation_participants_role_ck', sql`${t.role} in ('customer','provider')`),
   ],
 );
 
+/**
+ * Spec 025 §4 — messages are immutable (`messages_append_only_trg`, AC-9). `body` is the STORED form:
+ * masked before storage while the booking is pre-`confirmed`, verbatim after (AC-2). The only
+ * sanctioned body write is anonymization to the `'[redacted]'` sentinel.
+ */
 export const messages = pgTable(
   'messages',
   {
@@ -2127,10 +2151,23 @@ export const messages = pgTable(
     senderUserId: uuid('sender_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    body: text('body').notNull(),
+    senderRole: text('sender_role', { enum: CONVERSATION_PARTICIPANT_ROLES }).notNull(),
+    contactRedacted: boolean('contact_redacted').notNull().default(false),
+    contactFlagged: boolean('contact_flagged').notNull().default(false),
+    redactedByRetention: boolean('redacted_by_retention').notNull().default(false),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('messages_conversation_id_idx').on(t.conversationId),
     index('messages_sender_user_id_idx').on(t.senderUserId),
+    // The one index every read path uses (§4): paged list, `after` delta, retention sweep, export.
+    index('messages_conversation_created_at_id_idx').on(t.conversationId, t.createdAt, t.id),
+    uniqueIndex('messages_sender_idempotency_key_uq').on(t.senderUserId, t.idempotencyKey),
+    check('messages_sender_role_ck', sql`${t.senderRole} in ('customer','provider')`),
+    check('messages_body_length_ck', sql`char_length(${t.body}) between 1 and 2400`),
+    check('messages_contact_exclusive_ck', sql`not (${t.contactRedacted} and ${t.contactFlagged})`),
   ],
 );
 

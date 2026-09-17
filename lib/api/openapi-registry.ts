@@ -775,4 +775,47 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'Finance Admin adjustment listing, filterable by provider and applied state; requires payouts/read',
     tags: ['payouts'],
   },
+  // Spec 025 §3 — post-booking messaging & conversations. Polling transport: no WS route is registered.
+  {
+    method: 'GET',
+    path: '/bookings/{id}/conversation',
+    summary:
+      'The booking conversation (created on first access), with participants, isActive, contactSharingAllowed and unreadCount; either participant in their own mode; 404 CONVERSATION_NOT_FOUND for non-participants',
+    tags: ['messaging'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/conversation/messages',
+    summary:
+      'Messages in created_at/id order, paged by limit/offset, or the delta read after=<createdAtISO>|<id> (not combinable with offset; optional telemetry resumed=<failedAttempts>:<gapSeconds>); readable while archived or blocked',
+    tags: ['messaging'],
+  },
+  {
+    method: 'POST',
+    path: '/bookings/{id}/conversation/messages',
+    summary:
+      'Send a message (1-2000 chars); requires Idempotency-Key (replay 200, changed body 409 IDEMPOTENCY_KEY_CONFLICT); contact details masked before confirmation, flagged after; 403 BLOCKED, 422 CONVERSATION_ARCHIVED, 429 messaging rate limit',
+    tags: ['messaging'],
+  },
+  {
+    method: 'POST',
+    path: '/bookings/{id}/conversation/read',
+    summary:
+      'Advance the last-read marker of the caller monotonically to lastReadMessageId; 422 MESSAGE_NOT_IN_CONVERSATION or CONVERSATION_ARCHIVED',
+    tags: ['messaging'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/conversations/{id}',
+    summary:
+      'Admin conversation metadata and participants (no bodies); requires messaging/read_conversation (support, trust & safety, super admin) and a 10-500 char reason query param; audited',
+    tags: ['messaging'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/conversations/{id}/messages',
+    summary:
+      'Admin paged message bodies; requires messaging/read_conversation and a 10-500 char reason query param; every page is audited',
+    tags: ['messaging'],
+  },
 ];

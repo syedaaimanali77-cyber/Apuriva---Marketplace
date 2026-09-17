@@ -177,6 +177,46 @@ describe('RequestMessageThread (spec 019 §5, AC-1/AC-7/AC-8)', () => {
     expect(screen.getByLabelText(/Your message/)).toHaveValue('Draft survives');
   });
 
+  it('by default (spec 019) sends a FRESH Idempotency-Key on every submission, even a retry after failure', async () => {
+    const user = userEvent.setup();
+    const { calls } = stubFetch({ messages: [], post: json(false, { code: 'INTERNAL_ERROR', message: 'boom' }, 500) });
+    renderThread();
+    await screen.findByText('No messages yet — ask a question about this request.');
+
+    await user.type(screen.getByLabelText(/Your message/), 'Retry me');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+    await screen.findByText('boom');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await waitFor(() => expect(calls.filter((c) => c.init?.method === 'POST')).toHaveLength(2));
+    const keys = calls
+      .filter((c) => c.init?.method === 'POST')
+      .map((c) => (c.init!.headers as Record<string, string>)['Idempotency-Key']);
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  it('spec 025 generalization: custom closed and blocked codes, help text and empty content', async () => {
+    const user = userEvent.setup();
+    stubFetch({ messages: [MESSAGE], post: json(false, { code: 'BLOCKED', message: 'blocked' }, 403) });
+    renderThread({
+      composerHelp: 'Custom help',
+      closedCodes: ['CONVERSATION_ARCHIVED'],
+      blockedCodes: ['BLOCKED'],
+      blockedMessage: 'Sending is not available.',
+    });
+    await screen.findByText('Which floor is the unit on?');
+    expect(screen.getByText('Custom help')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Your message/), 'Hello?');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+    expect(await screen.findByText('Sending is not available.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+    // History stays; the thread did not treat BLOCKED as closed.
+    expect(screen.getByText('Which floor is the unit on?')).toBeInTheDocument();
+    expect(screen.queryByText('This conversation closed when you selected a provider.')).toBeNull();
+  });
+
   it('shows the DS ErrorState when the thread cannot be loaded', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json(false, { code: 'INTERNAL_ERROR' }, 500))));
     renderThread();

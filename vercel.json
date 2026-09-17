@@ -36,6 +36,10 @@
     {
       "path": "/api/v1/cron/payout-reconcile-sweep",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/v1/cron/message-retention-sweep",
+      "schedule": "0 3 * * *"
     }
   ]
 }

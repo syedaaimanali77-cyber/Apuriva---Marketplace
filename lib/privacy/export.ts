@@ -6,6 +6,7 @@ import {
   bookings,
   bookingsStatusHistory,
   conversationParticipants,
+  conversations,
   noShowReports,
   customerProfiles,
   fileAssets,
@@ -90,8 +91,21 @@ export interface DataExportPayload {
   reviews: Array<{ id: string; bookingId: string; createdAt: string }>;
   /** "Permitted messages" (spec 008 §3): messages in a conversation `userId` participates in —
    * the same participant boundary spec 025 uses to authorize a messaging read, never a broader
-   * query (e.g. never all messages the user merely sent, if they'd since left the conversation). */
-  messages: Array<{ id: string; conversationId: string; senderUserId: string; createdAt: string }>;
+   * query (e.g. never all messages the user merely sent, if they'd since left the conversation).
+   * Spec 025 §4 extends it to the user's actual correspondence: the stored body (masked or verbatim, per
+   * AC-2) and its flags, counterparty messages included, in the conversation's total order. */
+  messages: Array<{
+    id: string;
+    conversationId: string;
+    bookingId: string | null;
+    senderUserId: string;
+    senderRole: string;
+    body: string;
+    contactRedacted: boolean;
+    contactFlagged: boolean;
+    redactedByRetention: boolean;
+    createdAt: string;
+  }>;
   preferences: { id: string; createdAt: string } | null;
   /**
    * Spec 016 §4 "Retention and privacy": the exporting user's OWN provider schedule and coverage
@@ -361,14 +375,22 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     .select({
       id: messages.id,
       conversationId: messages.conversationId,
+      bookingId: conversations.bookingId,
       senderUserId: messages.senderUserId,
+      senderRole: messages.senderRole,
+      body: messages.body,
+      contactRedacted: messages.contactRedacted,
+      contactFlagged: messages.contactFlagged,
+      redactedByRetention: messages.redactedByRetention,
       createdAt: messages.createdAt,
     })
     .from(messages)
     .innerJoin(
       conversationParticipants,
       and(eq(conversationParticipants.conversationId, messages.conversationId), eq(conversationParticipants.userId, userId)),
-    );
+    )
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .orderBy(asc(messages.conversationId), asc(messages.createdAt), asc(messages.id));
 
   const [preferences] = await db
     .select({ id: notificationPreferences.id, createdAt: notificationPreferences.createdAt })

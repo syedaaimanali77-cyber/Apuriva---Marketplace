@@ -141,6 +141,16 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
        WHERE sender_user_id = ${id} AND body <> ${REDACTED_DESCRIPTION}
     `);
 
+    // Spec 025 §4 "Retention and privacy" (AC-10): post-booking conversation rows are retained (every FK
+    // is `restrict`); only the bodies THIS user authored become the sentinel — the one body write
+    // `messages_append_only_trg` permits. The counterparty's messages, the conversation, its participant
+    // rows, every id and every timestamp survive.
+    await db.execute(sql`
+      UPDATE messages SET body = ${REDACTED_DESCRIPTION}, redacted_by_retention = true,
+                          updated_at = clock_timestamp(), version = version + 1
+       WHERE sender_user_id = ${id} AND body <> ${REDACTED_DESCRIPTION}
+    `);
+
     // Spec 015 §4: redact the request's free-text PII, keeping the row itself. `not null` on the
     // column means a sentinel rather than NULL; every read path treats it as ordinary text, so a
     // redacted description can never break the status view.

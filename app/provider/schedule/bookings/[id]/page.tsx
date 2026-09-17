@@ -15,6 +15,7 @@ import {
   mutateHeaders,
   progressionIndex,
 } from '@/app/bookings/booking-client';
+import { BookingConversation } from '@/app/bookings/_components/BookingConversation';
 import styles from '@/app/bookings/bookings.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
@@ -228,6 +229,9 @@ export default function ProviderBookingPage() {
           </p>
         </Card>
       )}
+
+      {/* Spec 025 §5 — the booking conversation, read-only once the booking is archived. */}
+      <BookingConversation bookingId={booking.id} viewerRole="provider" />
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Activity</h2>
