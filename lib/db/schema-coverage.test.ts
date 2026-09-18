@@ -108,6 +108,10 @@ const EXPECTED_TABLES = [
   'ai_memories',
   'ai_actions',
   'ai_tool_calls',
+  // Spec 033 §4: not in master spec §124's minimum list — AI usage/cost/abuse accounting, the same
+  // allowance specs 009/016/017/023/024/026 used. Deliberately its OWN table rather than a
+  // repurposed `ai_tool_calls`, which is spec 035/036's and is keyed by `ai_action_id`.
+  'ai_usage_events',
   // Platform / admin
   'audit_logs',
   'feature_flags',

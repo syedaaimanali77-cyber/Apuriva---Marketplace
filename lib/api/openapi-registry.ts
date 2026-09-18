@@ -929,4 +929,12 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: "Soft-delete the caller's own asset; linkage rows survive and bytes are purged by the maintenance sweep",
     tags: ['files'],
   },
+  // Spec 033 §3.2 — `lib/ai` is an internal library; this admin read is its only public REST
+  // surface. The hourly `/cron/ai-usage-sweep` is deliberately absent, like every cron route.
+  {
+    method: 'GET',
+    path: '/admin/ai/usage',
+    summary: 'Aggregate AI usage, tokens and estimated cost by task and provider — never per-user, never prompt content',
+    tags: ['ai'],
+  },
 ];

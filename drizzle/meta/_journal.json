@@ -169,6 +169,13 @@
       "when": 1790156860415,
       "tag": "0024_add_service_execution_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790243260415,
+      "tag": "0025_add_ai_usage_tracking",
+      "breakpoints": true
     }
   ]
 }

@@ -1,15 +1,21 @@
 /**
- * AI abstraction boundary — spec 033 establishes `lib/ai` as the module every AI-consuming spec
- * (013, 034, 035/036) builds against, never a direct vendor call. Spec 033/034's full AI-assistant
- * architecture (conversation memory, autonomy tiers, MCP tools) is NOT implemented here — this is
- * only the minimum interface spec 013's `/search/interpret` needs: turn free text into a raw,
- * unresolved set of search signals. It never resolves a `serviceId` (that's an authoritative DB
- * lookup, `lib/search/interpret.ts`'s job) and never returns search results itself (AC-1) —
- * mirroring the same swappable-adapter pattern as `lib/auth/oauth-provider.ts`,
- * `lib/auth/sms-otp-provider.ts`, and `lib/location/provider.ts`. Only a sandbox/rule-based
- * implementation ships until a real AI provider is wired up (spec 033 §8, unresolved), per master
- * spec §133.7.
+ * Spec 013's search-intent interpreter, now built on spec 033's abstraction.
+ *
+ * Its EXPORTED CONTRACT IS UNCHANGED — `AiIntentInterpreter`, `RawSearchIntent` and
+ * `getIntentInterpreter()` are exactly what spec 013 shipped, and `lib/ai/intent-interpreter.test.ts`
+ * passes unmodified; that test is the regression gate (spec 033 §3.10). What changed is only the
+ * plumbing: the rule-based extraction moved verbatim into the sandbox adapter's `search_intent`
+ * handler (`lib/ai/provider/sandbox.ts`), and the completion now comes through `completeAi()`, so
+ * this path is rate-limited, quota-capped, cached and cost-accounted like every other AI call.
+ *
+ * It still never resolves a `serviceId` (that is an authoritative DB lookup, `lib/search/interpret.ts`'s
+ * job) and never returns search results itself (spec 013 AC-1). It has no notion of "voice" at all,
+ * so a transcription cannot be given elevated trust by construction (spec 013 AC-5).
  */
+import { completeAi } from './complete';
+import { isAiDegradable } from './errors';
+import type { AiSubject } from './types';
+
 export interface RawSearchIntent {
   serviceNameRaw?: string;
   area?: string;
@@ -21,66 +27,57 @@ export interface RawSearchIntent {
 export interface AiIntentInterpreter {
   /** Extracts raw, unresolved signals from free text (typed or voice-transcribed — this
    * interface has no notion of "voice" at all, so neither can ever be given elevated trust,
-   * spec 013 AC-5). Never throws for ordinary text; an empty/unresolvable input just yields an
-   * empty `RawSearchIntent`. */
-  interpret(text: string): Promise<RawSearchIntent>;
+   * spec 013 AC-5). Never throws for ordinary text; an empty/unresolvable input, a rate-limited
+   * or quota-capped caller, and an unavailable provider all yield an empty `RawSearchIntent`,
+   * which spec 013's route already surfaces as its documented low-confidence fallback
+   * (spec 033 §3.9). `subject` attributes the call for rate limiting, quota and abuse
+   * accounting; it defaults to a platform-internal caller. */
+  interpret(text: string, subject?: AiSubject): Promise<RawSearchIntent>;
 }
 
-const BUDGET_PATTERN = /(?:under|below|less than|<=?)\s*(?:rs\.?|pkr)?\s*([\d,]+)/i;
-const AREA_PATTERN = /\b(?:in|around|near)\s+([a-z][a-z\s]{1,40}?)(?=[,.]|$|\s+(?:tomorrow|today|under|below|for))/i;
-const DATE_KEYWORDS: Record<string, string> = { today: 'today', tomorrow: 'tomorrow', tonight: 'today' };
+const DEFAULT_SUBJECT: AiSubject = { kind: 'system', label: 'search_intent' };
 
-/**
- * Rule-based sandbox implementation: no external vendor call, deterministic, good enough to
- * exercise the `/search/interpret` contract (confidence scoring, low-confidence fallback) in
- * tests and local dev without an AI provider. A real provider (spec 033 §8) implements the same
- * interface later without changing any caller.
- */
-class SandboxIntentInterpreter implements AiIntentInterpreter {
-  async interpret(text: string): Promise<RawSearchIntent> {
-    const trimmed = text.trim();
-    if (trimmed.length === 0) return {};
+class AiSearchIntentInterpreter implements AiIntentInterpreter {
+  async interpret(text: string, subject: AiSubject = DEFAULT_SUBJECT): Promise<RawSearchIntent> {
+    // Blank input is input validation, not a question worth asking a provider — short-circuited
+    // here so it spends no quota. The adapter returns `{}` for it too.
+    if (text.trim().length === 0) return {};
 
-    const result: RawSearchIntent = {};
-
-    const budgetMatch = BUDGET_PATTERN.exec(trimmed);
-    if (budgetMatch) {
-      const amount = Number(budgetMatch[1]!.replace(/,/g, ''));
-      if (Number.isFinite(amount)) {
-        result.budgetMaxMinorUnits = Math.round(amount * 100);
-        result.currencyCode = 'PKR';
-      }
+    try {
+      const result = await completeAi({ task: 'search_intent', input: text, subject });
+      return parseIntent(result.output);
+    } catch (err) {
+      if (isAiDegradable(err)) return {};
+      throw err;
     }
-
-    for (const [keyword, value] of Object.entries(DATE_KEYWORDS)) {
-      if (new RegExp(`\\b${keyword}\\b`, 'i').test(trimmed)) {
-        result.date = value;
-        break;
-      }
-    }
-
-    const areaMatch = AREA_PATTERN.exec(trimmed);
-    if (areaMatch) result.area = areaMatch[1]!.trim();
-
-    // Whatever's left after stripping the recognized fragments is the best-effort service-name
-    // guess — a plain heuristic, not an authoritative match (that happens against real `services`
-    // rows in lib/search/interpret.ts).
-    const withoutKnownFragments = trimmed
-      .replace(BUDGET_PATTERN, '')
-      .replace(AREA_PATTERN, '')
-      .replace(/\b(?:need|want|looking for|tomorrow|today|tonight|preferably|a|an)\b/gi, '')
-      .replace(/[.,]/g, '')
-      .trim();
-    if (withoutKnownFragments.length > 0) result.serviceNameRaw = withoutKnownFragments;
-
-    return result;
   }
 }
 
-const sandboxInterpreter = new SandboxIntentInterpreter();
+/** A provider returns text; an unparseable or non-object answer is treated as "nothing extracted"
+ * rather than an error, so a malformed completion degrades exactly like an unavailable one. */
+function parseIntent(output: string): RawSearchIntent {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    return {};
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
 
-/** Only the sandbox is wired up for now (spec 033 §8) — swap this factory when a real AI
- * provider ships. */
+  const candidate = parsed as Record<string, unknown>;
+  const intent: RawSearchIntent = {};
+  if (typeof candidate.serviceNameRaw === 'string') intent.serviceNameRaw = candidate.serviceNameRaw;
+  if (typeof candidate.area === 'string') intent.area = candidate.area;
+  if (typeof candidate.date === 'string') intent.date = candidate.date;
+  if (typeof candidate.budgetMaxMinorUnits === 'number' && Number.isFinite(candidate.budgetMaxMinorUnits)) {
+    intent.budgetMaxMinorUnits = candidate.budgetMaxMinorUnits;
+  }
+  if (typeof candidate.currencyCode === 'string') intent.currencyCode = candidate.currencyCode;
+  return intent;
+}
+
+const interpreter = new AiSearchIntentInterpreter();
+
 export function getIntentInterpreter(): AiIntentInterpreter {
-  return sandboxInterpreter;
+  return interpreter;
 }

@@ -2589,6 +2589,65 @@ export const aiToolCalls = pgTable(
   (t) => [index('ai_tool_calls_ai_action_id_idx').on(t.aiActionId)],
 );
 
+/** Spec 033 §4 — the AI tasks `lib/ai` can be asked for (master spec §80.2, minus voice
+ * transcription: no transcription provider exists and spec 013 already receives voice as text). */
+export const AI_TASKS = ['search_intent', 'faq_draft', 'conversation', 'summarization', 'translation'] as const;
+export const AI_SUBJECT_KINDS = ['user', 'guest', 'system'] as const;
+export const AI_USAGE_OUTCOMES = ['succeeded', 'rejected', 'failed'] as const;
+export const AI_REJECTION_REASONS = ['rate_limited', 'quota_exceeded'] as const;
+
+/**
+ * Spec 033 §4 — one row per accounted AI call. It records WHAT KIND of call happened, never what
+ * was said: there is no prompt column, no response column, and no configuration that adds one
+ * (`lib/ai/boundary.test.ts` fails if any lib/ai module writes request/response text anywhere).
+ *
+ * Deliberately NOT `ai_tool_calls`: that is a spec 003 baseline table keyed by `ai_action_id` and
+ * belongs to spec 035/036's MCP action lineage. This spec adds its own table rather than
+ * repurposing one with a different owner and a different foreign key.
+ *
+ * No money column: estimated cost is DERIVED at read time from `tokens_used` and the configured
+ * rate (spec 033 §4), so correcting the price corrects history.
+ */
+export const aiUsageEvents = pgTable(
+  'ai_usage_events',
+  {
+    ...baseColumns(),
+    task: text('task', { enum: AI_TASKS }).notNull(),
+    subjectKind: text('subject_kind', { enum: AI_SUBJECT_KINDS }).notNull(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'restrict' }),
+    /** A guest's `hashRequestIp()` digest (lib/auth/ip-hash.ts) — never a raw IP. */
+    subjectHash: text('subject_hash'),
+    providerName: text('provider_name').notNull(),
+    modelName: text('model_name').notNull(),
+    outcome: text('outcome', { enum: AI_USAGE_OUTCOMES }).notNull(),
+    rejectionReason: text('rejection_reason', { enum: AI_REJECTION_REASONS }),
+    tokensUsed: integer('tokens_used').notNull().default(0),
+    cached: boolean('cached').notNull().default(false),
+    latencyMs: integer('latency_ms'),
+    /** Keyed HMAC-SHA256 of the normalised input (spec 033 §4) — not reversible, never returned
+     * by any endpoint, never exported. Exists only so abuse signal S3 can count repeats. */
+    inputFingerprint: text('input_fingerprint'),
+  },
+  (t) => [
+    index('ai_usage_events_user_id_idx').on(t.userId),
+    index('ai_usage_events_created_at_idx').on(t.createdAt),
+    index('ai_usage_events_guest_subject_idx').on(t.subjectKind, t.subjectHash, t.createdAt),
+    index('ai_usage_events_fingerprint_idx').on(t.inputFingerprint, t.createdAt),
+    check('ai_usage_events_task_ck', sql`${t.task} in ('search_intent','faq_draft','conversation','summarization','translation')`),
+    check('ai_usage_events_subject_kind_ck', sql`${t.subjectKind} in ('user','guest','system')`),
+    check('ai_usage_events_outcome_ck', sql`${t.outcome} in ('succeeded','rejected','failed')`),
+    check(
+      'ai_usage_events_rejection_reason_ck',
+      sql`(${t.outcome} = 'rejected') = (${t.rejectionReason} is not null) and (${t.rejectionReason} is null or ${t.rejectionReason} in ('rate_limited','quota_exceeded'))`,
+    ),
+    check('ai_usage_events_user_pairing_ck', sql`(${t.subjectKind} = 'user') = (${t.userId} is not null)`),
+    check('ai_usage_events_guest_pairing_ck', sql`(${t.subjectKind} = 'guest') = (${t.subjectHash} is not null)`),
+    check('ai_usage_events_tokens_ck', sql`${t.tokensUsed} >= 0`),
+    check('ai_usage_events_latency_ck', sql`${t.latencyMs} is null or ${t.latencyMs} >= 0`),
+    check('ai_usage_events_cached_tokens_ck', sql`not ${t.cached} or ${t.tokensUsed} = 0`),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Platform / admin
 // ---------------------------------------------------------------------------

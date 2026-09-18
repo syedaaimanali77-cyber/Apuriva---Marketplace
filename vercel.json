@@ -48,6 +48,10 @@
     {
       "path": "/api/v1/cron/file-maintenance-sweep",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/cron/ai-usage-sweep",
+      "schedule": "0 * * * *"
     }
   ]
 }
