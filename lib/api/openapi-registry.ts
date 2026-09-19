@@ -937,4 +937,56 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Aggregate AI usage, tokens and estimated cost by task and provider — never per-user, never prompt content',
     tags: ['ai'],
   },
+  // Spec 029 §3 — reviews & ratings. The public list returns `published` AND `flagged` reviews and
+  // carries no `status` field, so a flagged review is indistinguishable from a published one to a
+  // reader (AC-4/AC-5); only an authorized human moderation decision can hide anything.
+  {
+    method: 'POST',
+    path: '/bookings/{id}/reviews',
+    summary:
+      "Customer reviews their own completed booking (rating 1-5, optional text, optional ready review_media); session (customer, the booking's own); requires Idempotency-Key; 422 BOOKING_NOT_ELIGIBLE_FOR_REVIEW before completion, 422 REVIEW_WINDOW_CLOSED after the window, 409 REVIEW_ALREADY_EXISTS on a duplicate or concurrent race",
+    tags: ['reviews'],
+  },
+  {
+    method: 'GET',
+    path: '/bookings/{id}/reviews',
+    summary:
+      'Server-authoritative review eligibility for the booking (eligible, reason, windowClosesAt) plus the review if one exists; either participant, either mode — a client never computes the deadline itself',
+    tags: ['reviews'],
+  },
+  {
+    method: 'GET',
+    path: '/providers/{id}/reviews',
+    summary:
+      "A provider's visible reviews, newest first; session or guest. Returns published AND flagged (never removed), carries no reviewer identity and no status field",
+    tags: ['reviews'],
+  },
+  {
+    method: 'POST',
+    path: '/reviews/{id}/response',
+    summary:
+      "The provider's single immutable reply; session (provider, owner of the reviewed provider profile); requires Idempotency-Key; 409 RESPONSE_ALREADY_EXISTS on a second attempt, 422 REVIEW_NOT_RESPONDABLE on a removed review",
+    tags: ['reviews'],
+  },
+  {
+    method: 'POST',
+    path: '/reviews/{id}/reports',
+    summary:
+      "Report a review for moderation (closed reason set; details required for 'other'); any authenticated user except the author; requires Idempotency-Key; a repeat replays the reporter's existing report with 200; NEVER changes the review's visibility",
+    tags: ['reviews'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/reviews/moderation-queue',
+    summary:
+      'Flagged reviews and reviews with open reports, oldest first; admin (reviews/read_moderation_queue — Trust & Safety, Super Admin). Everything listed is already publicly visible; listing hides nothing',
+    tags: ['reviews'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/reviews/{id}/resolve',
+    summary:
+      'The ONLY route that can remove a review: keep/remove/reinstate with a required reason and expectedStatus; admin (reviews/moderate, medium tier); audited in-transaction; 409 CONFLICT when another admin already resolved it',
+    tags: ['reviews'],
+  },
 ];

@@ -124,6 +124,12 @@ describe('schema lint (spec 003)', () => {
       // Spec 026 §4: a notification's template variables (ids, amounts, statuses) — kept with the row it
       // rendered, never queried, never exported, and emptied on account deletion.
       notifications: ['params'],
+      // Spec 029 §4: the rule-based flag signal CODES that produced a `flagged` status — a short,
+      // closed-vocabulary array read back whole by the moderation queue and never queried or
+      // filtered on in SQL. The queryable part of moderation (`status`) is a real text column with
+      // its own CHECK, precisely because it IS core/queryable data (AC-5). Never exported.
+      reviews: ['flag_signals'],
+      review_responses: ['flag_signals'],
     };
 
     const offenders: string[] = [];

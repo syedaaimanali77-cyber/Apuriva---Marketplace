@@ -85,6 +85,9 @@ const EXPECTED_TABLES = [
   'reviews',
   'review_responses',
   'review_reports',
+  // Spec 029 §4: the link between a review and the spec 027 assets it publishes, mirroring
+  // `message_attachments`. Not a spec 003 baseline skeleton — added by migration 0026.
+  'review_media',
   // Disputes
   'disputes',
   'dispute_evidence',

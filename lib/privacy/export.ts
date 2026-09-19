@@ -26,6 +26,8 @@ import {
   refunds,
   requestProviderMatches,
   requests,
+  reviewReports,
+  reviewResponses,
   reviews,
   users,
 } from '@/lib/db/schema';
@@ -91,7 +93,32 @@ export interface DataExportPayload {
     createdAt: string;
     statusHistory: Array<{ fromStatus: string | null; toStatus: string; actorRole: string; occurredAt: string }>;
   }>;
-  reviews: Array<{ id: string; bookingId: string; createdAt: string }>;
+  /**
+   * Spec 029 §4 "Retention and privacy" (AC-10) — the reviews this user AUTHORED, the responses
+   * they WROTE and the reports they FILED.
+   *
+   * Deliberately absent: `flag_signals` (a moderation signal, not the user's data), any OTHER
+   * user's report on their review, any reporter identity, the moderation record and every
+   * idempotency column. A review's `status` IS included, because being told a review of yours was
+   * removed is information about you.
+   */
+  reviews: Array<{
+    id: string;
+    bookingId: string;
+    rating: number | null;
+    text: string | null;
+    status: string | null;
+    createdAt: string;
+  }>;
+  reviewResponses: Array<{ id: string; reviewId: string; text: string; status: string; createdAt: string }>;
+  reviewReports: Array<{
+    id: string;
+    reviewId: string;
+    reason: string;
+    details: string | null;
+    status: string;
+    createdAt: string;
+  }>;
   /** "Permitted messages" (spec 008 §3): messages in a conversation `userId` participates in —
    * the same participant boundary spec 025 uses to authorize a messaging read, never a broader
    * query (e.g. never all messages the user merely sent, if they'd since left the conversation).
@@ -386,10 +413,46 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         .orderBy(asc(bookingsStatusHistory.occurredAt))
     : [];
 
+  // Spec 029 §4 — an explicit column allowlist, ownership-scoped, exactly like every section
+  // above. `flag_signals`, `removal_reason`, `moderated_by_admin_id` and the idempotency columns
+  // are never selected, so they cannot reach an export even by accident.
   const reviewRows = await db
-    .select({ id: reviews.id, bookingId: reviews.bookingId, createdAt: reviews.createdAt })
+    .select({
+      id: reviews.id,
+      bookingId: reviews.bookingId,
+      rating: reviews.rating,
+      text: reviews.text,
+      status: reviews.status,
+      createdAt: reviews.createdAt,
+    })
     .from(reviews)
     .where(eq(reviews.authorUserId, userId));
+
+  const reviewResponseRows = await db
+    .select({
+      id: reviewResponses.id,
+      reviewId: reviewResponses.reviewId,
+      text: reviewResponses.text,
+      status: reviewResponses.status,
+      createdAt: reviewResponses.createdAt,
+    })
+    .from(reviewResponses)
+    .where(eq(reviewResponses.responderUserId, userId));
+
+  // The reports this user FILED. Reports filed by OTHERS on this user's reviews are deliberately
+  // not here: they are another person's statement, and returning them would let a reviewed party
+  // work out who reported them.
+  const reviewReportRows = await db
+    .select({
+      id: reviewReports.id,
+      reviewId: reviewReports.reviewId,
+      reason: reviewReports.reason,
+      details: reviewReports.details,
+      status: reviewReports.status,
+      createdAt: reviewReports.createdAt,
+    })
+    .from(reviewReports)
+    .where(eq(reviewReports.reporterUserId, userId));
 
   const messageRows = await db
     .select({
@@ -747,7 +810,16 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
           occurredAt: h.occurredAt.toISOString(),
         })),
     })),
-    reviews: reviewRows.map((r) => ({ id: r.id, bookingId: r.bookingId, createdAt: r.createdAt.toISOString() })),
+    reviews: reviewRows.map((r) => ({
+      id: r.id,
+      bookingId: r.bookingId,
+      rating: r.rating ?? null,
+      text: r.text ?? null,
+      status: r.status ?? null,
+      createdAt: r.createdAt.toISOString(),
+    })),
+    reviewResponses: reviewResponseRows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    reviewReports: reviewReportRows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     messages: messageRows.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),
     preferences: preferences
       ? {

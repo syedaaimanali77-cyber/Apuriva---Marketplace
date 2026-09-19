@@ -78,6 +78,23 @@ export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, Catalogue
     title: 'Request cancelled',
     body: 'A customer cancelled a request you were notified about. No action is needed.',
   },
+  /**
+   * Spec 029 §9. Carries the review id and NOTHING of the review: no rating, no text, no author.
+   * A notification must never become a channel for one user's words to reach another (§3
+   * "Ownership boundary"), and a body that quoted a one-star review would be exactly that.
+   */
+  review_received: {
+    category: 'provider_activity',
+    params: [],
+    title: 'You received a review',
+    body: 'A customer left a review for one of your completed bookings. You can read it and reply once.',
+  },
+  review_response_posted: {
+    category: 'booking',
+    params: [],
+    title: 'Your provider replied to your review',
+    body: 'The provider replied to a review you left. Open the booking to read their response.',
+  },
   no_show_response_requested: {
     category: 'operational',
     params: ['respondByAt'],

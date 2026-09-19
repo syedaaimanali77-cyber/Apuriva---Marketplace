@@ -20,6 +20,7 @@ import { CancellationPolicySection } from '../_components/CancellationPolicySect
 import { BookingConversation } from '../_components/BookingConversation';
 import { BookingEvidence } from '../_components/BookingEvidence';
 import { BookingMilestones } from '../_components/BookingMilestones';
+import { ReviewSection } from '../_components/ReviewSection';
 import styles from '../bookings.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
@@ -251,6 +252,10 @@ export default function BookingDetailPage() {
       {/* Spec 028 §5/AC-8 — nothing before completion: the server returns an empty list until the
           booking has actually been marked complete, so there is nothing to render or hint at. */}
       <BookingEvidence bookingId={booking.id} status={booking.status} viewerRole="customer" />
+
+      {/* Spec 029 §5 — renders nothing until the booking has actually been completed: the server's
+          `GET /bookings/{id}/reviews` decides both whether a review is possible and until when. */}
+      <ReviewSection bookingId={booking.id} />
 
       {/* Spec 025 §5 — the booking conversation, read-only once the booking is archived. */}
       <BookingConversation bookingId={booking.id} viewerRole="customer" />

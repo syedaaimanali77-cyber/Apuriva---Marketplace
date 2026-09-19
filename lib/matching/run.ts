@@ -24,6 +24,7 @@ import { locationScore, rankCandidates, scoreProvider, type FactorInputs, type S
 import { effectivePoolSize, effectiveWeights } from './weights';
 import { matchingNotFoundError } from './errors';
 import { loadProviderCenterPoints, loadTerminalResponderIds } from './repository';
+import { getProviderRatingSource } from './rating-source';
 import type { ExclusionReason, MatchingWeights } from '@/lib/types/matching';
 
 export interface MatchingRunResult {
@@ -92,9 +93,14 @@ export async function runMatching(requestId: string): Promise<MatchingRunResult>
   };
 
   const providerIds = candidates.map((c) => c.providerProfileId);
-  const [centerPoints, terminalResponders] = await Promise.all([
+  const [centerPoints, terminalResponders, ratings] = await Promise.all([
     loadProviderCenterPoints(providerIds, request.serviceId),
     loadTerminalResponderIds(providerIds),
+    // Spec 029 §3 "Ranking" — THE ONE CHANGE TO A SPEC 017 FILE. The `rating` factor's data source,
+    // read through a port whose default is this spec's existing behaviour (`null` for everyone), so
+    // nothing about the algorithm, the weights or the renormalization moves. See
+    // `lib/matching/rating-source.ts`.
+    getProviderRatingSource()(providerIds),
   ]);
 
   const excluded: Array<{ providerProfileId: string; reason: ExclusionReason }> = [];
@@ -119,6 +125,7 @@ export async function runMatching(requestId: string): Promise<MatchingRunResult>
       availabilityFit: availabilityFactorValue(outcome.availabilityFit),
       originPoint: origin?.point,
       centerPoint: centerPoints.get(candidate.providerProfileId),
+      rating: ratings.get(candidate.providerProfileId) ?? null,
     });
 
     const { scoreMicros, breakdown } = scoreProvider(inputs, weights);
@@ -193,13 +200,17 @@ export async function runMatching(requestId: string): Promise<MatchingRunResult>
  * zero — so it is excluded from both the numerator and the denominator and no provider is
  * penalised for something nobody can measure.
  *
- * Today only `serviceMatch`, `availability` and `location` have a source. The other six activate
- * on their own as specs 018/020/028/029/031 land, with no change to this function's callers.
+ * `serviceMatch`, `availability` and `location` have a source here; `rating` acquires one from spec
+ * 029 through `getProviderRatingSource()`, whose default is `null` — so this function behaves
+ * exactly as before whenever that port is unregistered. The remaining five activate on their own as
+ * specs 018/031 land, with no change to this function's callers.
  */
 function buildFactorInputs(args: {
   availabilityFit: number;
   originPoint?: { latitude: number; longitude: number };
   centerPoint?: { latitude: number; longitude: number };
+  /** Spec 029's normalized 0..1 rating, or `null` for a provider nobody has reviewed yet. */
+  rating?: number | null;
 }): FactorInputs {
   const canScoreLocation = Boolean(args.originPoint && args.centerPoint);
   return {
@@ -208,8 +219,10 @@ function buildFactorInputs(args: {
     serviceMatch: 1,
     availability: args.availabilityFit,
     location: canScoreLocation ? locationScore(distanceMeters(args.originPoint!, args.centerPoint!)) : null,
-    // No data source yet — see the table in spec 017 §3.
-    rating: null,
+    // Spec 029's aggregate, or `null` when that spec's port is unregistered or the provider has no
+    // visible review. `null` — not zero — so an unrated provider is excluded from the factor rather
+    // than scored worst on it.
+    rating: args.rating ?? null,
     reliability: null,
     priceFit: null,
     experience: null,

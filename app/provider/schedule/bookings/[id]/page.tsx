@@ -18,6 +18,7 @@ import {
 import { BookingConversation } from '@/app/bookings/_components/BookingConversation';
 import { BookingEvidence } from '@/app/bookings/_components/BookingEvidence';
 import { BookingMilestones } from '@/app/bookings/_components/BookingMilestones';
+import { ReviewResponseSection } from './_components/ReviewResponseSection';
 import type { ServiceDto } from '@/lib/types/catalog';
 import type { FileAssetDto } from '@/lib/types/files';
 import styles from '@/app/bookings/bookings.module.css';
@@ -231,6 +232,10 @@ export default function ProviderBookingPage() {
         evidenceRequired={evidenceRequired}
         onAssetsChange={setEvidenceAssets}
       />
+
+      {/* Spec 029 §5 — renders nothing until a review exists. The provider may reply once, and is
+          never told whether a review was flagged or reported: that is moderation data. */}
+      <ReviewResponseSection bookingId={booking.id} />
 
       {(available.length > 0 || canComplete) && (
         <Card>

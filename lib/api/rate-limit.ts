@@ -22,6 +22,7 @@ export type RateLimitDomain =
   | 'offers'
   | 'bookings'
   | 'files'
+  | 'reviews'
   | 'default';
 
 export interface RateLimitRule {
@@ -64,6 +65,12 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   // chose rather than the looser shared 'default'. `GET /files/{id}/content` uses this domain too,
   // keyed by the user id the signed link is bound to.
   files: { limit: 30, windowMs: 60_000 },
+  // Spec 029 §3: review submission, the provider response, reporting and the moderation routes —
+  // the same write-surface budget specs 015/017/018/020/027 chose rather than the looser shared
+  // 'default'. `GET /providers/{id}/reviews` uses this domain too, keyed by `hashRequestIp()` for a
+  // guest, so the public list cannot be scraped at 'default' speed. The per-user 20-reports/24h cap
+  // in `lib/reviews/report.ts` bounds sustained volume on top of this rate budget.
+  reviews: { limit: 30, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 

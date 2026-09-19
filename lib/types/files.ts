@@ -17,8 +17,11 @@ export type FileStatus = (typeof FILE_STATUSES)[number];
 
 /**
  * Closed vocabulary (C-2 at the database). A value is only USABLE while a context policy is
- * registered for it (AC-8) — the three reserved entries below exist so 028/029/031 can register
- * theirs without a migration, and are `422 FILE_CONTEXT_NOT_AVAILABLE` until then.
+ * registered for it (AC-8) — the reserved entries below are `422 FILE_CONTEXT_NOT_AVAILABLE`
+ * until their owning spec registers a resolver. `booking_evidence` is registered by spec 028
+ * (`lib/bookings/evidence-policy.ts`) and `review_media` by spec 029
+ * (`lib/reviews/media-policy.ts`); `dispute_evidence` and `verification_document` are still
+ * reserved. Adding a value is a migration, since the database CHECK is the real vocabulary.
  */
 export const FILE_CONTEXT_TYPES = [
   'request_attachment', // spec 015 — shipped
@@ -27,7 +30,8 @@ export const FILE_CONTEXT_TYPES = [
   'data_export', // spec 008 — server-generated; never uploadable, never readable through spec 027
   'booking_evidence', // spec 028 — reserved, no resolver yet
   'dispute_evidence', // spec 031 — reserved, no resolver yet
-  'verification_document', // spec 029 — reserved, no resolver yet
+  'verification_document', // provider identity documents — reserved, no resolver yet
+  'review_media', // spec 029 — registered by `lib/reviews/media-policy.ts`
 ] as const;
 export type FileContextType = (typeof FILE_CONTEXT_TYPES)[number];
 

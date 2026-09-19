@@ -1,0 +1,85 @@
+/**
+ * Spec 029 §5 — `ReviewCard`. Every value is an APURIVA design-system token
+ * (`app/styles/apuriva-tokens.css`); there is no raw hex, no arbitrary size and no new token.
+ */
+
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.date {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.text {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  color: var(--text-body);
+  /* A review is user text: long unbroken strings must wrap rather than widen the card. */
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The provider's reply is visually subordinate to the review, never competing with it. */
+.response {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-inline-start: 2px solid var(--border-subtle);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}
+
+.responseHeading {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.report {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.report:hover {
+  color: var(--text-body);
+}
+
+.report:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+  border-radius: var(--radius-sm);
+}

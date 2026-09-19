@@ -48,8 +48,11 @@ export const NOTIFICATION_TYPES = [
   'refund_failed',
   'payout_paid',
   'payout_failed',
-  // provider_activity — spec 015
+  // provider_activity — specs 015 / 029
   'request_cancelled',
+  'review_received',
+  // booking — spec 029 (the reviewer learns their provider replied)
+  'review_response_posted',
   // operational — spec 023 (a response deadline that affects the recipient's account standing)
   'no_show_response_requested',
   'service_notice',

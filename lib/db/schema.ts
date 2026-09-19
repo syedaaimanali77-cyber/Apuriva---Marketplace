@@ -2245,6 +2245,53 @@ export const messageAttachments = pgTable(
 // Reviews
 // ---------------------------------------------------------------------------
 
+/**
+ * Spec 029 §4 — the review vocabulary, authored **once**, here, the way spec 020 authored the
+ * booking vocabulary and spec 027 the file vocabulary.
+ *
+ * THREE states and no more. A fourth "pending"/"under review" state would mean a review that is
+ * invisible while it waits, which is exactly the automatic suppression master spec §52 forbids.
+ * `flagged` is PUBLICLY VISIBLE and differs from `published` only in that it appears in the
+ * moderation queue.
+ */
+export const REVIEW_STATUSES = ['published', 'flagged', 'removed'] as const;
+
+/** Spec 029 §3 — the closed set of deterministic, rule-based flag signals. Never rating-derived. */
+export const REVIEW_SIGNAL_CODES = [
+  'profanity',
+  'contact_sharing',
+  'spam_shape',
+  'burst_submission',
+  'repeat_pair',
+] as const;
+
+export const REVIEW_REPORT_REASONS = [
+  'spam',
+  'offensive',
+  'false_information',
+  'personal_information',
+  'off_topic',
+  'other',
+] as const;
+
+export const REVIEW_REPORT_STATUSES = ['open', 'resolved', 'dismissed'] as const;
+
+/**
+ * Spec 029 §4 — a verified review of one completed booking.
+ *
+ * ALTERED, never recreated: spec 003 already ships this table, its two foreign keys and its two
+ * indexes; `0026_add_reviews_ratings.sql` fills in the columns that make a review mean something.
+ * `0001_baseline_schema.sql` is immutable and untouched.
+ *
+ * `author_user_id` stays a USER id (spec 003's column): spec 008's export and anonymization already
+ * key off it, and a customer-profile id would only duplicate `bookings.customer_profile_id`.
+ * `provider_profile_id` and `service_id` are copied from the booking inside the creating
+ * transaction — never accepted from a client — so a review cannot be attributed to another party.
+ *
+ * `reviews` is deliberately NOT one of spec 003's five state-machine entities, so it has no
+ * status-history/transitions tables; `reviews_removal_pairing_ck` below is what makes the one
+ * transition that matters (anything -> `removed`) impossible without a named human and a reason.
+ */
 export const reviews = pgTable(
   'reviews',
   {
@@ -2255,10 +2302,68 @@ export const reviews = pgTable(
     authorUserId: uuid('author_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 029 §4 — feature columns. The table itself is spec 003's baseline skeleton. */
+    providerProfileId: uuid('provider_profile_id')
+      .notNull()
+      .references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    serviceId: uuid('service_id')
+      .notNull()
+      .references(() => services.id, { onDelete: 'restrict' }),
+    /** 1..5 (C-1). No half-stars: the DS `Rating` primitive rounds, so storing more would lie. */
+    rating: integer('rating').notNull(),
+    /** OPTIONAL. Normalized before storage; 10..2000 characters when present (C-3). */
+    text: text('text'),
+    status: text('status', { enum: REVIEW_STATUSES }).notNull().default('published'),
+    /** The rule-based signal codes that produced `flagged`. Never returned on a public read. */
+    flagSignals: jsonb('flag_signals').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Set together with `moderated_at` and `removal_reason`, or not at all (C-4). */
+    moderatedByAdminId: uuid('moderated_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    moderatedAt: timestamp('moderated_at', { withTimezone: true }),
+    removalReason: text('removal_reason'),
+    /** Spec 029 §3 idempotency: scoped per author by the unique index below, never globally. */
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
-  (t) => [index('reviews_booking_id_idx').on(t.bookingId), index('reviews_author_user_id_idx').on(t.authorUserId)],
+  (t) => [
+    index('reviews_booking_id_idx').on(t.bookingId),
+    index('reviews_author_user_id_idx').on(t.authorUserId),
+    // Spec 003 AC-4: every foreign-key column carries its own covering btree index.
+    index('reviews_provider_profile_id_idx').on(t.providerProfileId),
+    index('reviews_service_id_idx').on(t.serviceId),
+    index('reviews_moderated_by_admin_id_idx').on(t.moderatedByAdminId),
+    // I-1 / AC-7: one review per booking at the DATABASE, independent of the application check.
+    uniqueIndex('reviews_booking_id_uq').on(t.bookingId),
+    // I-2: idempotency scoped per author (never globally), as specs 015/018/020/028 do.
+    uniqueIndex('reviews_author_idempotency_uq').on(t.authorUserId, t.idempotencyKey),
+    // I-3: the public list's read path and the rating aggregate's, in one partial index.
+    index('reviews_provider_visible_idx')
+      .on(t.providerProfileId, t.createdAt.desc())
+      .where(sql`${t.status} in ('published','flagged')`),
+    // I-4: the moderation queue, oldest-first.
+    index('reviews_status_idx').on(t.status, t.createdAt.desc()),
+    check('reviews_rating_ck', sql`${t.rating} between 1 and 5`),
+    check('reviews_status_ck', sql`${t.status} in ('published','flagged','removed')`),
+    check('reviews_text_length_ck', sql`${t.text} is null or char_length(${t.text}) between 10 and 2000`),
+    /**
+     * C-4 / AC-4 / AC-8, mechanically. A removal with no named human admin, no instant and no
+     * recorded reason is physically unrepresentable — so no heuristic, no report count and no
+     * future code path can hide a review on its own, whatever the application layer does.
+     */
+    check(
+      'reviews_removal_pairing_ck',
+      sql`(${t.status} = 'removed') = (${t.removalReason} is not null and ${t.moderatedByAdminId} is not null and ${t.moderatedAt} is not null)`,
+    ),
+    check('reviews_flag_signals_ck', sql`jsonb_typeof(${t.flagSignals}) = 'array'`),
+  ],
 );
 
+/**
+ * Spec 029 §4 — the provider's single, immutable reply.
+ *
+ * Immutable by design (§3 "Provider response"): there is no update route and no delete route, the
+ * stance spec 025 takes for messages and spec 028 for milestones. A provider who could edit could
+ * post an innocuous reply, wait for the review to be reported, and silently rewrite history.
+ */
 export const reviewResponses = pgTable(
   'review_responses',
   {
@@ -2269,13 +2374,44 @@ export const reviewResponses = pgTable(
     responderUserId: uuid('responder_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 029 §4 — feature columns. Required, 10..2000 characters (C-6). */
+    text: text('text').notNull(),
+    status: text('status', { enum: REVIEW_STATUSES }).notNull().default('published'),
+    flagSignals: jsonb('flag_signals').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    moderatedByAdminId: uuid('moderated_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    moderatedAt: timestamp('moderated_at', { withTimezone: true }),
+    removalReason: text('removal_reason'),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('review_responses_review_id_idx').on(t.reviewId),
     index('review_responses_responder_user_id_idx').on(t.responderUserId),
+    index('review_responses_moderated_by_admin_id_idx').on(t.moderatedByAdminId),
+    // I-6 / AC-3: one response per review at the database.
+    uniqueIndex('review_responses_review_id_uq').on(t.reviewId),
+    // I-7: idempotency scoped per review, never globally.
+    uniqueIndex('review_responses_idempotency_uq').on(t.reviewId, t.idempotencyKey),
+    check('review_responses_status_ck', sql`${t.status} in ('published','flagged','removed')`),
+    check('review_responses_text_length_ck', sql`char_length(${t.text}) between 10 and 2000`),
+    check(
+      'review_responses_removal_pairing_ck',
+      sql`(${t.status} = 'removed') = (${t.removalReason} is not null and ${t.moderatedByAdminId} is not null and ${t.moderatedAt} is not null)`,
+    ),
+    check('review_responses_flag_signals_ck', sql`jsonb_typeof(${t.flagSignals}) = 'array'`),
   ],
 );
 
+/**
+ * Spec 029 §4 — a user's report of a review, and the queue signal it produces.
+ *
+ * A report NEVER changes a review's visibility and no report count ever removes anything (AC-6):
+ * a brigade of reports produces a queue entry, not a takedown. Resolution happens only as a side
+ * effect of an authorized moderation decision on the review itself, so there is no second queue.
+ *
+ * `safety_reports` (spec 030) is deliberately not reused: it is an unimplemented baseline skeleton
+ * for a different feature. This is spec 003's purpose-built table for exactly this.
+ */
 export const reviewReports = pgTable(
   'review_reports',
   {
@@ -2286,10 +2422,65 @@ export const reviewReports = pgTable(
     reporterUserId: uuid('reporter_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 029 §4 — feature columns. */
+    reason: text('reason', { enum: REVIEW_REPORT_REASONS }).notNull(),
+    /** Free text 10..2000 characters; REQUIRED when `reason` is 'other' (C-8). */
+    details: text('details'),
+    status: text('status', { enum: REVIEW_REPORT_STATUSES }).notNull().default('open'),
+    resolvedByAdminId: uuid('resolved_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('review_reports_review_id_idx').on(t.reviewId),
     index('review_reports_reporter_user_id_idx').on(t.reporterUserId),
+    index('review_reports_resolved_by_admin_id_idx').on(t.resolvedByAdminId),
+    index('review_reports_status_idx').on(t.status, t.createdAt),
+    // I-8 / AC-6: one report per reporter per review.
+    uniqueIndex('review_reports_review_reporter_uq').on(t.reviewId, t.reporterUserId),
+    check(
+      'review_reports_reason_ck',
+      sql`${t.reason} in ('spam','offensive','false_information','personal_information','off_topic','other')`,
+    ),
+    check('review_reports_status_ck', sql`${t.status} in ('open','resolved','dismissed')`),
+    check(
+      'review_reports_details_ck',
+      sql`(${t.reason} <> 'other' or ${t.details} is not null) and (${t.details} is null or char_length(${t.details}) between 10 and 2000)`,
+    ),
+    check(
+      'review_reports_resolution_pairing_ck',
+      sql`(${t.status} = 'open') = (${t.resolvedAt} is null and ${t.resolvedByAdminId} is null)`,
+    ),
+  ],
+);
+
+/**
+ * Spec 029 §4 — the link between a review and the spec 027 assets it publishes.
+ *
+ * Mirrors `message_attachments` exactly, and for the same reason: the asset is uploaded BEFORE the
+ * record that carries it exists, so the upload's `context_id` is the BOOKING id and this table is
+ * what binds the asset to the review once the review is written. Spec 029 creates no storage: the
+ * bytes, scanning, signed URLs, soft delete and purge all remain spec 027's.
+ */
+export const reviewMedia = pgTable(
+  'review_media',
+  {
+    ...baseColumns(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => reviews.id, { onDelete: 'restrict' }),
+    fileAssetId: uuid('file_asset_id')
+      .notNull()
+      .references((): AnyPgColumn => fileAssets.id, { onDelete: 'restrict' }),
+    /** 0..4 — the 5-item cap (C-10), expressed at the database rather than only in code. */
+    position: integer('position').notNull(),
+  },
+  (t) => [
+    index('review_media_review_id_idx').on(t.reviewId),
+    index('review_media_file_asset_id_idx').on(t.fileAssetId),
+    uniqueIndex('review_media_review_asset_uq').on(t.reviewId, t.fileAssetId),
+    check('review_media_position_ck', sql`${t.position} between 0 and 4`),
   ],
 );
 
@@ -3105,7 +3296,9 @@ export const fileAssets = pgTable(
     check('file_assets_scan_outcome_ck', sql`${t.scanOutcome} is null or ${t.scanOutcome} in ('clean','rejected','unknown')`),
     check(
       'file_assets_context_type_ck',
-      sql`${t.contextType} is null or ${t.contextType} in ('request_attachment','message_attachment','portfolio','data_export','booking_evidence','dispute_evidence','verification_document')`,
+      // `review_media` added by spec 029 (migration 0026): the vocabulary is closed at the
+      // database, so a consuming spec adds its own value here rather than reusing another's.
+      sql`${t.contextType} is null or ${t.contextType} in ('request_attachment','message_attachment','portfolio','data_export','booking_evidence','dispute_evidence','verification_document','review_media')`,
     ),
     check('file_assets_context_pairing_ck', sql`${t.contextId} is null or ${t.contextType} is not null`),
     check('file_assets_ready_pairing_ck', sql`(${t.status} = 'ready') = (${t.readyAt} is not null)`),

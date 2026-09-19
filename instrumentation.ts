@@ -44,4 +44,13 @@ export async function register(): Promise<void> {
   // shipped spec breaks.
   const { registerServiceExecutionIntegration } = await import('@/lib/bookings');
   registerServiceExecutionIntegration();
+
+  // Spec 029 makes two more ports real that shipped inert on purpose: spec 027's `review_media`
+  // context (default: `422 FILE_CONTEXT_NOT_AVAILABLE`) and spec 017's `ProviderRatingSource`
+  // (default: `null` for every provider, i.e. the `rating` factor excluded from scoring — which is
+  // spec 017's behaviour today). It must run AFTER spec 027, which resets and registers its own
+  // shipped policies. Rolling spec 029 back returns both ports to those documented defaults, so no
+  // shipped spec breaks.
+  const { registerReviewsIntegration } = await import('@/lib/reviews');
+  registerReviewsIntegration();
 }
