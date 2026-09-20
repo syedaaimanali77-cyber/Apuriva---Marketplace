@@ -116,7 +116,10 @@ export async function createUploadTarget(input: UploadUrlInput): Promise<UploadT
   // This checks only what the CALLER declared, so it reveals nothing about the context.
   const { mimeType } = validateDeclaredUpload(request);
 
-  if (request.contextId !== null && !isUuid(request.contextId)) throw fileNotFoundError();
+  // `contextId` is optional on the wire and an absent one means the same as an explicit null,
+  // so only a PRESENT value is shape-checked.
+  const contextId = request.contextId ?? null;
+  if (contextId !== null && !isUuid(contextId)) throw fileNotFoundError();
 
   const mayUpload = await policy.canUpload({
     userId: session.userId,

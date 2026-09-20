@@ -1,0 +1,39 @@
+# Build context for the APURIVA production image (see Dockerfile).
+# Keep this in step with .gitignore: anything not needed by `next build` or by
+# `npm run db:migrate` inside the container does not belong in the context.
+
+# dependencies — reinstalled from package-lock.json inside the image
+node_modules
+npm-debug.log*
+
+# build output — the image builds its own
+.next
+out
+*.tsbuildinfo
+
+# version control / editor / agent metadata
+.git
+.gitignore
+.gitattributes
+.vscode
+.claude
+
+# environment secrets. Only .env.example is committed, and the container gets its
+# configuration from Compose (env_file / environment), never from a baked-in file.
+.env
+.env.local
+.env.*.local
+
+# tests and test tooling — not part of the production runtime
+**/*.test.ts
+**/*.test.tsx
+**/*.integration.test.ts
+test
+e2e
+vitest.config.ts
+coverage
+
+# documentation and local scratch
+docs
+*.md
+Downloads

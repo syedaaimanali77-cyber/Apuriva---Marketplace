@@ -16,5 +16,43 @@ services:
       timeout: 5s
       retries: 10
 
+  # The single APURIVA application: one Next.js server for both the frontend pages and the
+  # backend API routes. The entrypoint applies migrations before the server starts.
+  apuriva:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # The compose-local development database. These are the same local credentials the
+      # postgres service above already uses; the hostname is the compose service name, never
+      # localhost, because localhost inside the container is the container itself.
+      #
+      # This entry deliberately overrides any DATABASE_URL coming from the .env file below
+      # (compose gives `environment` precedence), so a host-oriented localhost value cannot
+      # leak into the container. A real deployment supplies its own DATABASE_URL — and its own
+      # provider credentials and secrets — through the deployment environment, not this file.
+      DATABASE_URL: postgresql://apuriva:apuriva@postgres:5432/apuriva
+    # Everything else comes from the operator's own .env (gitignored, documented by
+    # .env.example). No secret is committed here or baked into the image. The file is optional
+    # so the stack still builds and boots without it, using each variable's in-code default.
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - '3000:3000'
+    healthcheck:
+      # The application's own endpoint. It answers 200 once the server is accepting requests
+      # and reports database connectivity in its body (db.connected) rather than by failing,
+      # so this check is a liveness check for the app container only.
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/v1/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 volumes:
   apuriva-postgres-data:

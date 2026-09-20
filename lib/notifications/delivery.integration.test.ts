@@ -23,7 +23,7 @@ async function created(input: Parameters<typeof notify>[0]): Promise<string> {
   return result.notification.id;
 }
 
-async function sweep(notificationId: string, adapters: Parameters<typeof runNotificationDispatchSweep>[0]['adapters']) {
+async function sweep(notificationId: string, adapters: NonNullable<Parameters<typeof runNotificationDispatchSweep>[0]>['adapters']) {
   const ids = (await deliveriesFor(notificationId)).map((d) => d.id);
   return runNotificationDispatchSweep({ adapters, deliveryIds: ids });
 }
