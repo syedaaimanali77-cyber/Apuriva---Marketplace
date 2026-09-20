@@ -25,6 +25,7 @@ export type RateLimitDomain =
   | 'reviews'
   | 'safety'
   | 'disputes'
+  | 'support'
   | 'default';
 
 export interface RateLimitRule {
@@ -82,6 +83,12 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   // rather than the looser shared 'default'. It also bounds the message thread per caller on top
   // of `MAX_DISPUTE_MESSAGES`, which bounds it per dispute.
   disputes: { limit: 30, windowMs: 60_000 },
+  // Spec 032 §3: raising a ticket, the support thread, attachments and every admin support route —
+  // the same write-surface budget specs 015/017/018/020/027/029/030/031 chose rather than the
+  // looser shared 'default'. It also bounds the thread per caller on top of `MAX_SUPPORT_MESSAGES`,
+  // which bounds it per ticket. The AI assistant route deliberately uses the 'ai' domain instead,
+  // so assistant traffic can never consume the budget a user needs to reach a human.
+  support: { limit: 30, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 

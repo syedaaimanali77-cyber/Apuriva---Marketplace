@@ -60,6 +60,14 @@ export const NOTIFICATION_TYPES = [
   'dispute_opened',
   'dispute_resolved',
   'dispute_closed',
+  // operational — spec 032. All four are CONTENT-FREE: a support notification carries the fact and
+  // a pointer into the app, never the ticket's subject, the admin's words or the resolution
+  // reason. A REQUESTER's own reply notifies nobody (the queue is the admin's surface), and
+  // neither assignment, closure nor an SLA breach notifies anyone at all.
+  'support_ticket_created',
+  'support_reply_posted',
+  'support_info_requested',
+  'support_ticket_resolved',
   // operational — spec 023 (a response deadline that affects the recipient's account standing)
   'no_show_response_requested',
   'service_notice',

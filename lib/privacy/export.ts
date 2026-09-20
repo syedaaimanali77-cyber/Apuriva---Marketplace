@@ -28,6 +28,8 @@ import {
   requests,
   reviewReports,
   safetyReports,
+  supportMessages,
+  supportTickets,
   userBlocks,
   reviewResponses,
   reviews,
@@ -349,6 +351,40 @@ export interface DataExportPayload {
    * provider profile.
    */
   providerEarnings: ExportedProviderEarnings | null;
+  /**
+   * Spec 032 §3 "Privacy" (AC-10) — the export boundary for the caller's OWN support tickets.
+   *
+   * Exported: the ticket they raised, its neutral lifecycle fields, their own prose, and the
+   * resolution WITH ITS REASON — a user is entitled to the reasoning behind a decision about them.
+   *
+   * NEVER exported, by simply not being selected: `ai_summary`, `assigned_admin_user_id`, every
+   * `sla_*` column, `legal_hold`, either escalation pointer, `requester_mode` and both idempotency
+   * columns. `support_notes` has no clause anywhere in this file at all, so an internal note cannot
+   * reach an export even by accident.
+   */
+  supportTickets: Array<{
+    id: string;
+    subject: string;
+    description: string;
+    category: string;
+    status: string;
+    resolutionKind: string | null;
+    resolutionReason: string | null;
+    createdAt: string;
+    resolvedAt: string | null;
+  }>;
+  /**
+   * The thread on those tickets, both directions. `author` is RELATIVE (`you`/`support`) and no
+   * `sender_user_id` is selected, so an export never identifies the individual who replied — the
+   * same boundary the live DTO applies.
+   */
+  supportMessages: Array<{
+    id: string;
+    ticketId: string;
+    author: 'you' | 'support';
+    body: string;
+    createdAt: string;
+  }>;
 }
 
 /**
@@ -811,6 +847,37 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
         .where(eq(providerAvailabilityNotificationRequests.customerProfileId, customerProfile.id))
     : [];
 
+  // Spec 032 §3 "Privacy" (AC-10) — explicit column allowlists, ownership-scoped, exactly like
+  // every section above. Note what is NOT selected: ai_summary, assigned_admin_user_id, the sla_*
+  // columns, legal_hold, both escalation pointers and the idempotency columns. And `support_notes`
+  // is not queried anywhere in this file, so an internal note has no path into an export.
+  const supportTicketRows = await db
+    .select({
+      id: supportTickets.id,
+      subject: supportTickets.subject,
+      description: supportTickets.description,
+      category: supportTickets.category,
+      status: supportTickets.status,
+      resolutionKind: supportTickets.resolutionKind,
+      resolutionReason: supportTickets.resolutionReason,
+      createdAt: supportTickets.createdAt,
+      resolvedAt: supportTickets.resolvedAt,
+    })
+    .from(supportTickets)
+    .where(eq(supportTickets.requesterUserId, userId));
+
+  const supportMessageRows = await db
+    .select({
+      id: supportMessages.id,
+      supportTicketId: supportMessages.supportTicketId,
+      isAdmin: supportMessages.isAdmin,
+      body: supportMessages.body,
+      createdAt: supportMessages.createdAt,
+    })
+    .from(supportMessages)
+    .innerJoin(supportTickets, eq(supportMessages.supportTicketId, supportTickets.id))
+    .where(eq(supportTickets.requesterUserId, userId));
+
   return {
     generatedAt: new Date().toISOString(),
     profile: {
@@ -956,6 +1023,24 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
       createdAt: r.createdAt.toISOString(),
     })),
     providerEarnings: await exportProviderEarnings(userId, db),
+    supportTickets: supportTicketRows.map((row) => ({
+      id: row.id,
+      subject: row.subject,
+      description: row.description,
+      category: row.category,
+      status: row.status,
+      resolutionKind: row.resolutionKind,
+      resolutionReason: row.resolutionReason,
+      createdAt: row.createdAt.toISOString(),
+      resolvedAt: row.resolvedAt ? row.resolvedAt.toISOString() : null,
+    })),
+    supportMessages: supportMessageRows.map((row) => ({
+      id: row.id,
+      ticketId: row.supportTicketId,
+      author: row.isAdmin ? ('support' as const) : ('you' as const),
+      body: row.body,
+      createdAt: row.createdAt.toISOString(),
+    })),
   };
 }
 

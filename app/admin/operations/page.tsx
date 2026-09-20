@@ -17,6 +17,9 @@ export default function AdminOperationsPage() {
         // Spec 031 §5. Master §2970 lists Disputes under Operations; Operations can WATCH the queue
         // (`disputes/read`) but only Trust & Safety and Super Admin can decide one.
         { href: '/admin/operations/disputes', label: 'Disputes' },
+        // Spec 032 §5. Master §63's admin support workspace. Operations can WATCH the queue
+        // (`support/read`) but only Support Admin and Super Admin can act on a ticket.
+        { href: '/admin/operations/support', label: 'Support' },
       ]}
     />
   );

@@ -2860,6 +2860,36 @@ export const userBlocks = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Support (spec 032)
+// ---------------------------------------------------------------------------
+
+export const SUPPORT_CATEGORIES = [
+  'booking',
+  'payment',
+  'account',
+  'provider_quality',
+  'technical',
+  'safety',
+  'other',
+] as const;
+
+/** The SAME four values `SAFETY_PRIORITIES` uses, so the two admin queues rank identically. */
+export const SUPPORT_PRIORITIES = ['low', 'medium', 'high', 'critical'] as const;
+export const SUPPORT_TICKET_STATUSES = ['open', 'assigned', 'awaiting_user', 'resolved', 'closed'] as const;
+export const SUPPORT_CONTEXT_TYPES = ['booking', 'payment', 'dispute'] as const;
+export const SUPPORT_RESOLUTION_KINDS = ['answered', 'handed_off', 'not_actionable'] as const;
+export const SUPPORT_HANDOFF_TARGETS = ['safety', 'dispute', 'refunds'] as const;
+
+/**
+ * Spec 032 §4 — feature columns. The table itself is spec 003's baseline skeleton, so migration
+ * 0029 ALTERs it and creates nothing; `requester_user_id` and the three indexes are spec 003's.
+ *
+ * THE LIFECYCLE INVARIANTS LIVE HERE, NOT IN PROSE. In particular
+ * `support_tickets_safety_resolution_ck` is AC-9 at the database: a `safety`-category ticket can
+ * never be resolved `answered`, whatever application code does, so support can never adjudicate a
+ * safety matter through any present or future route.
+ */
 export const supportTickets = pgTable(
   'support_tickets',
   {
@@ -2867,10 +2897,119 @@ export const supportTickets = pgTable(
     requesterUserId: uuid('requester_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    subject: text('subject').notNull(),
+    description: text('description').notNull(),
+    category: text('category', { enum: SUPPORT_CATEGORIES }).notNull(),
+    /** Server-derived from `CATEGORY_PRIORITY` (AC-4); never read from a request body. */
+    priority: text('priority', { enum: SUPPORT_PRIORITIES }).notNull(),
+    status: text('status', { enum: SUPPORT_TICKET_STATUSES }).notNull().default('open'),
+    /** The session's active mode at creation. Recorded for the admin's context; gates nothing. */
+    requesterMode: text('requester_mode', { enum: ['customer', 'provider'] }).notNull(),
+    /** DECIDED-6 — a LIVE pointer, re-resolved and re-authorized on every read. Never snapshotted. */
+    contextType: text('context_type', { enum: SUPPORT_CONTEXT_TYPES }),
+    contextId: uuid('context_id'),
+    /** A `users.id`, not an `admin_profiles.id` — what `resolvePermission()` takes. */
+    assignedAdminUserId: uuid('assigned_admin_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    /** Materialised at creation so the admin queue can sort and filter on an index. */
+    slaDeadlineAt: timestamp('sla_deadline_at', { withTimezone: true }).notNull(),
+    slaPausedSeconds: integer('sla_paused_seconds').notNull().default(0),
+    awaitingUserSince: timestamp('awaiting_user_since', { withTimezone: true }),
+    /** Spec 033 advisory output (DECIDED-2). NO decision path reads this column, and it never
+     * reaches a participant-facing DTO. */
+    aiSummary: text('ai_summary'),
+    resolutionKind: text('resolution_kind', { enum: SUPPORT_RESOLUTION_KINDS }),
+    resolutionReason: text('resolution_reason'),
+    handoffTarget: text('handoff_target', { enum: SUPPORT_HANDOFF_TARGETS }),
+    /** DECIDED-1 — one-way cross-references. Never read back to change a ticket's outcome. */
+    escalatedSafetyReportId: uuid('escalated_safety_report_id').references(() => safetyReports.id, {
+      onDelete: 'restrict',
+    }),
+    escalatedDisputeId: uuid('escalated_dispute_id').references(() => disputes.id, { onDelete: 'restrict' }),
+    /** Set when a handoff pointer is recorded; suppresses spec 027's expiry via the existing hold path. */
+    legalHold: boolean('legal_hold').notNull().default(false),
+    reopenCount: integer('reopen_count').notNull().default(0),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
-  (t) => [index('support_tickets_requester_user_id_idx').on(t.requesterUserId)],
+  (t) => [
+    index('support_tickets_requester_user_id_idx').on(t.requesterUserId),
+    uniqueIndex('support_tickets_requester_idempotency_uq').on(t.requesterUserId, t.idempotencyKey),
+    // The admin queue's ordering and its two hot filters.
+    index('support_tickets_status_priority_created_idx').on(t.status, t.priority, t.createdAt),
+    index('support_tickets_sla_deadline_idx')
+      .on(t.slaDeadlineAt)
+      .where(sql`status in ('open','assigned')`),
+    index('support_tickets_assigned_admin_idx').on(t.assignedAdminUserId),
+    index('support_tickets_context_idx').on(t.contextType, t.contextId),
+    // Spec 003 AC-4: every foreign-key column carries its own covering btree index.
+    index('support_tickets_escalated_safety_report_id_idx').on(t.escalatedSafetyReportId),
+    index('support_tickets_escalated_dispute_id_idx').on(t.escalatedDisputeId),
+    check(
+      'support_tickets_category_ck',
+      sql`${t.category} in ('booking','payment','account','provider_quality','technical','safety','other')`,
+    ),
+    check('support_tickets_priority_ck', sql`${t.priority} in ('low','medium','high','critical')`),
+    check('support_tickets_status_ck', sql`${t.status} in ('open','assigned','awaiting_user','resolved','closed')`),
+    check('support_tickets_requester_mode_ck', sql`${t.requesterMode} in ('customer','provider')`),
+    check(
+      'support_tickets_context_type_ck',
+      sql`${t.contextType} is null or ${t.contextType} in ('booking','payment','dispute')`,
+    ),
+    check('support_tickets_context_pairing_ck', sql`(${t.contextType} is null) = (${t.contextId} is null)`),
+    check(
+      'support_tickets_resolution_kind_ck',
+      sql`${t.resolutionKind} is null or ${t.resolutionKind} in ('answered','handed_off','not_actionable')`,
+    ),
+    check(
+      'support_tickets_handoff_target_ck',
+      sql`${t.handoffTarget} is null or ${t.handoffTarget} in ('safety','dispute','refunds')`,
+    ),
+    // A resolution always carries its instant AND its reason, and only a resolution does.
+    check(
+      'support_tickets_resolution_pairing_ck',
+      sql`(${t.resolutionKind} is not null) = (${t.resolvedAt} is not null)
+          and (${t.resolutionKind} is not null) = (${t.resolutionReason} is not null)`,
+    ),
+    check(
+      'support_tickets_handoff_pairing_ck',
+      sql`(${t.resolutionKind} = 'handed_off') = (${t.handoffTarget} is not null)`,
+    ),
+    check('support_tickets_closed_pairing_ck', sql`(${t.status} = 'closed') = (${t.closedAt} is not null)`),
+    check(
+      'support_tickets_awaiting_pairing_ck',
+      sql`(${t.status} = 'awaiting_user') = (${t.awaitingUserSince} is not null)`,
+    ),
+    check(
+      'support_tickets_assigned_pairing_ck',
+      sql`${t.status} <> 'open' or ${t.assignedAdminUserId} is null`,
+    ),
+    check('support_tickets_reopen_count_ck', sql`${t.reopenCount} between 0 and 2`),
+    check('support_tickets_sla_paused_ck', sql`${t.slaPausedSeconds} >= 0`),
+    // AC-9 AT THE DATABASE: support can never adjudicate a safety matter, whatever code does.
+    check(
+      'support_tickets_safety_resolution_ck',
+      sql`${t.category} <> 'safety' or ${t.resolutionKind} is null
+          or ${t.resolutionKind} in ('handed_off','not_actionable')`,
+    ),
+    check('support_tickets_subject_length_ck', sql`char_length(${t.subject}) between 5 and 200`),
+    check('support_tickets_description_length_ck', sql`char_length(${t.description}) between 10 and 4000`),
+    check(
+      'support_tickets_reason_length_ck',
+      sql`${t.resolutionReason} is null or char_length(${t.resolutionReason}) between 10 and 2000`,
+    ),
+  ],
 );
 
+/**
+ * Spec 032 §3 "Messages" (DECIDED-7) — the user-to-platform thread.
+ *
+ * DELIBERATELY NOT a spec 025 `conversation`: that models a booking-scoped two-party thread with a
+ * block gate, read receipts and a retention sweep, and a support thread has none of those and must
+ * survive a block. `is_admin` is the only new authority column — the participant DTO projects it to
+ * `'you' | 'support'` and never carries an admin's identity.
+ */
 export const supportMessages = pgTable(
   'support_messages',
   {
@@ -2881,13 +3020,27 @@ export const supportMessages = pgTable(
     senderUserId: uuid('sender_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    body: text('body').notNull(),
+    isAdmin: boolean('is_admin').notNull().default(false),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('support_messages_support_ticket_id_idx').on(t.supportTicketId),
     index('support_messages_sender_user_id_idx').on(t.senderUserId),
+    index('support_messages_ticket_created_idx').on(t.supportTicketId, t.createdAt),
+    uniqueIndex('support_messages_sender_idempotency_uq').on(t.senderUserId, t.idempotencyKey),
+    // Reuses spec 025's MESSAGE_BODY_MAX_LENGTH value; no second platform prose bound.
+    check('support_messages_body_length_ck', sql`char_length(${t.body}) between 1 and 2000`),
   ],
 );
 
+/**
+ * Spec 032 §3 "Messages" — admin-internal notes, in their own table by design.
+ *
+ * A note is NEVER a row in `support_messages`, so no projection bug in the thread query can leak
+ * one, and no participant code path selects from this table at all.
+ */
 export const supportNotes = pgTable(
   'support_notes',
   {
@@ -2898,10 +3051,16 @@ export const supportNotes = pgTable(
     authorUserId: uuid('author_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    body: text('body').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('support_notes_support_ticket_id_idx').on(t.supportTicketId),
     index('support_notes_author_user_id_idx').on(t.authorUserId),
+    index('support_notes_ticket_created_idx').on(t.supportTicketId, t.createdAt),
+    uniqueIndex('support_notes_author_idempotency_uq').on(t.authorUserId, t.idempotencyKey),
+    check('support_notes_body_length_ck', sql`char_length(${t.body}) between 1 and 2000`),
   ],
 );
 
@@ -3570,9 +3729,12 @@ export const fileAssets = pgTable(
     check('file_assets_scan_outcome_ck', sql`${t.scanOutcome} is null or ${t.scanOutcome} in ('clean','rejected','unknown')`),
     check(
       'file_assets_context_type_ck',
-      // `review_media` added by spec 029 (migration 0026): the vocabulary is closed at the
-      // database, so a consuming spec adds its own value here rather than reusing another's.
-      sql`${t.contextType} is null or ${t.contextType} in ('request_attachment','message_attachment','portfolio','data_export','booking_evidence','dispute_evidence','verification_document','review_media')`,
+      // The vocabulary is closed at the database, so a consuming spec adds its own value here
+      // rather than reusing another's: `review_media` by spec 029 (migration 0026),
+      // `safety_evidence` by spec 030 (migration 0027) and `support_attachment` by spec 032
+      // (migration 0029). All ten below are what the live constraint holds; `safety_evidence` was
+      // missing from this declaration until 0029 had to recreate the constraint and surfaced it.
+      sql`${t.contextType} is null or ${t.contextType} in ('request_attachment','message_attachment','portfolio','data_export','booking_evidence','dispute_evidence','verification_document','review_media','safety_evidence','support_attachment')`,
     ),
     check('file_assets_context_pairing_ck', sql`${t.contextId} is null or ${t.contextType} is not null`),
     check('file_assets_ready_pairing_ck', sql`(${t.status} = 'ready') = (${t.readyAt} is not null)`),

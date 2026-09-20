@@ -297,6 +297,17 @@ export default function BookingDetailPage() {
         </Card>
       )}
 
+      {/*
+        Spec 032 §5 — the support entry point. Carrying the booking as context is what makes AC-2's
+        "not requiring the user to re-explain it" true in practice; the server re-authorizes the id
+        it is given, so this link grants nothing by itself.
+      */}
+      <div className={styles.actions}>
+        <Link className={styles.eyebrowLink} href={`/support/new?contextType=booking&contextId=${booking.id}`}>
+          Get help with this booking
+        </Link>
+      </div>
+
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Activity</h2>
         <ul className={styles.historyList}>

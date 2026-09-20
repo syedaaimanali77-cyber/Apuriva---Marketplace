@@ -197,6 +197,13 @@
       "when": 1790600000000,
       "tag": "0028_add_disputes_resolution",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790700000000,
+      "tag": "0029_add_customer_provider_support",
+      "breakpoints": true
     }
   ]
 }

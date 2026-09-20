@@ -82,4 +82,18 @@ export async function register(): Promise<void> {
   // no shipped spec breaks.
   const { registerDisputeIntegration } = await import('@/lib/disputes');
   registerDisputeIntegration();
+
+  // Spec 032 registers exactly ONE thing: spec 027's `support_attachment` file context, which ships
+  // inert (`422 FILE_CONTEXT_NOT_AVAILABLE`) until this runs. It must come AFTER spec 027, which
+  // resets and registers its own shipped policies, and after specs 029/030/031, which register
+  // theirs.
+  //
+  // NOTE WHAT IS ABSENT. Spec 032 registers no booking transition, no payment or payout gate, no
+  // refund eligibility gate and no safety restriction gate — because no support action is
+  // consequential. Support owns the conversation; the specs it hands off to own the outcome.
+  //
+  // Rolling spec 032 back returns the context to its documented refusing default, so no shipped
+  // spec breaks.
+  const { registerSupportIntegration } = await import('@/lib/support');
+  registerSupportIntegration();
 }

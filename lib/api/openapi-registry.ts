@@ -1191,4 +1191,135 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'File a spec 030 safety report about a participant of this dispute; admin holding BOTH disputes/resolve and safety_reports/read; requires Idempotency-Key. Calls spec 030 own creation path — sets no priority, applies no restriction, writes no lifecycle_status. One-way: spec 030 never opens a dispute. The dispute is not paused',
     tags: ['disputes'],
   },
+  // ---------------------------------------------------------------------------
+  // Spec 032 - customer & provider support. NOTE WHAT IS ABSENT: no route here resolves a
+  // dispute, creates a refund, applies a sanction or decides a safety matter. Support owns
+  // the conversation; the hand-off route points at the spec that owns the outcome and stops.
+  // ---------------------------------------------------------------------------
+  {
+    method: 'POST',
+    path: '/support/assistant',
+    summary:
+      'Ask the AI assistant a common question; session + CSRF; ai rate-limit domain (NOT support), so assistant traffic can never consume the budget needed to reach a human. Creates nothing, so no Idempotency-Key. ALWAYS 200 with escalationAvailable true - a disabled assistant, rate limit, exhausted quota, outage or any other failure degrades to a null answer rather than an error. Nothing is stored: no prompt column, no response column',
+    tags: ['support'],
+  },
+  {
+    method: 'POST',
+    path: '/support/tickets',
+    summary:
+      'Raise a support ticket; session + CSRF + Idempotency-Key. Optional contextType/contextId (booking, payment or dispute), re-authorized server-side through the owning spec own helper; every failure is a uniform 422 SUPPORT_CONTEXT_NOT_AVAILABLE so the id space cannot be enumerated. There is NO priority field: priority is derived from the category by a fixed table, and sending one is 400',
+    tags: ['support'],
+  },
+  {
+    method: 'GET',
+    path: '/support/tickets',
+    summary:
+      'The caller own support tickets, newest first; session. Scoped by requester_user_id in the query itself, so it cannot widen',
+    tags: ['support'],
+  },
+  {
+    method: 'GET',
+    path: '/support/tickets/{id}',
+    summary:
+      'One of the caller own tickets; session. A non-requester gets 404, never 403. Participant projection only: no assigned admin, no AI summary, no SLA clock, no legal hold, no escalation pointer id, no idempotency column',
+    tags: ['support'],
+  },
+  {
+    method: 'POST',
+    path: '/support/tickets/{id}/messages',
+    summary:
+      'Post to the ticket thread; session + CSRF + Idempotency-Key. One route, two authorization paths: the requester posts as themselves (and a post while awaiting_user also ends the SLA pause), an admin holding support/respond posts flagged is_admin and may set requestsInformation to move assigned to awaiting_user. Contact details are flagged for Trust and Safety, never masked',
+    tags: ['support'],
+  },
+  {
+    method: 'GET',
+    path: '/support/tickets/{id}/messages',
+    summary:
+      'The ticket thread, OLDEST FIRST; the requester or an admin holding support/read. Each message is projected to a relative author (you or support), so a requester never learns which individual replied. No read receipts and no unread counts - those are spec 025 conversation features and are not reproduced here',
+    tags: ['support'],
+  },
+  {
+    method: 'POST',
+    path: '/support/tickets/{id}/reopen',
+    summary:
+      'Reopen a resolved ticket; session (requester) + CSRF + Idempotency-Key. Once only (409 SUPPORT_REOPEN_LIMIT_REACHED) and inside SUPPORT_REOPEN_WINDOW_DAYS (422 SUPPORT_REOPEN_WINDOW_ELAPSED). Withdraws the resolution rather than keeping it beside a live ticket',
+    tags: ['support'],
+  },
+  {
+    method: 'POST',
+    path: '/support/tickets/{id}/close',
+    summary:
+      'Accept the resolution and close the ticket; session (requester) + CSRF + Idempotency-Key. closed is TERMINAL - no route in this spec leaves it, for any actor',
+    tags: ['support'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/support/tickets',
+    summary:
+      'The unified support inbox; admin (support/read - support_admin, operations_admin, super_admin). Filters: status, priority, category, assignedToMe, slaBreached. Default sort is SLA deadline ascending. slaBreached is COMPUTED, never stored, and an awaiting_user ticket is never breached however old its deadline, because the clock is paused',
+    tags: ['admin'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/support/tickets/{id}',
+    summary:
+      'One ticket in full; admin (support/read). Emits the support.ticket_read audit event - reading decides nothing but is still attributable. Carries the whole of master section 63 list, with booking/payment/dispute as a POINTER plus one neutral status string and a link into the owning spec own permissioned surface; this spec widens no existing exposure',
+    tags: ['admin'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/support/tickets/{id}/assign',
+    summary:
+      'Claim or reassign a ticket; admin (support/assign); requires Idempotency-Key. The SLA deadline is NOT reset - a new assignee inherits it, so passing a ticket around cannot erase a breach. The target must hold support/respond, else 422 SUPPORT_ASSIGNEE_NOT_ELIGIBLE',
+    tags: ['admin'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/support/tickets/{id}/priority',
+    summary:
+      'Change a ticket priority; admin (support/triage, medium); reason required; requires Idempotency-Key. The ONLY way priority moves after creation, and it is human-set - nothing reads the ticket content to derive it. Audits both the old and the new value, and recomputes the SLA deadline from created_at plus the accumulated pause',
+    tags: ['admin'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/support/tickets/{id}/notes',
+    summary:
+      'Add an internal note; admin (support/respond); requires Idempotency-Key. Stored in support_notes, NEVER as a row in support_messages, so no projection bug in the thread query can leak one to the requester',
+    tags: ['admin'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/support/tickets/{id}/notes',
+    summary:
+      'The internal notes, oldest first; admin (support/read). Admin-only by route placement AND by permission; no participant code path reads this table at all',
+    tags: ['admin'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/support/tickets/{id}/resolve',
+    summary:
+      'Resolve a ticket; admin (support/resolve, medium); reason required (it is shown to the requester); requires Idempotency-Key. resolutionKind is answered, handed_off or not_actionable. A safety-category ticket can NEVER be resolved answered - refused by the application and independently by support_tickets_safety_resolution_ck',
+    tags: ['admin'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/support/tickets/{id}/reopen',
+    summary:
+      'Reopen a resolved ticket; admin (support/resolve); reason required; requires Idempotency-Key. Inside the same window as the requester own reopen, but it does NOT consume it',
+    tags: ['admin'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/support/tickets/{id}/close',
+    summary:
+      'Close a resolved ticket; admin (support/resolve); requires Idempotency-Key. Notifies nobody - the requester was told at resolution and closure asks nothing further of them',
+    tags: ['admin'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/support/tickets/{id}/hand-off',
+    summary:
+      'Hand a ticket to the spec that owns its outcome; admin (support/resolve); reason required; requires Idempotency-Key. Files a spec 030 safety report through spec 030 own path, records the id of a dispute a participant already opened through spec 031 own route, or records that the matter is Finance. Sets legal_hold. Applies no sanction, creates no refund, resolves no dispute, writes no lifecycle_status - and nothing comes back',
+    tags: ['admin'],
+  },
 ];

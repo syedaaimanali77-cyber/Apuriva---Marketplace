@@ -136,6 +136,32 @@ export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, Catalogue
     title: 'Your provider replied to your review',
     body: 'The provider replied to a review you left. Open the booking to read their response.',
   },
+  // Spec 032 §8. Content-free by design: the ticket is where the content lives, and a
+  // notification must never become the channel it travels through.
+  support_ticket_created: {
+    category: 'operational',
+    params: [],
+    title: 'We received your support request',
+    body: 'Your support ticket has been created. A person will reply in the ticket.',
+  },
+  support_reply_posted: {
+    category: 'operational',
+    params: [],
+    title: 'Support replied to your ticket',
+    body: 'There is a new reply on one of your support tickets. Open it to read the response.',
+  },
+  support_info_requested: {
+    category: 'operational',
+    params: [],
+    title: 'Support needs more information',
+    body: 'A support admin has asked you for more detail. Open your ticket to reply.',
+  },
+  support_ticket_resolved: {
+    category: 'operational',
+    params: ['reopenBy'],
+    title: 'Your support ticket was resolved',
+    body: 'Support has resolved your ticket. If it is not sorted, you can reopen it before {reopenBy}.',
+  },
   no_show_response_requested: {
     category: 'operational',
     params: ['respondByAt'],
