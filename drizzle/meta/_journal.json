@@ -190,6 +190,13 @@
       "when": 1790500000000,
       "tag": "0027_add_blocking_safety_incidents",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790600000000,
+      "tag": "0028_add_disputes_resolution",
+      "breakpoints": true
     }
   ]
 }

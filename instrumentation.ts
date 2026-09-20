@@ -65,4 +65,21 @@ export async function register(): Promise<void> {
   // refusing default is what tells an admin the capability is not installed (spec 030 DECIDED-3).
   const { registerSafetyIntegration } = await import('@/lib/safety');
   registerSafetyIntegration();
+
+  // Spec 031 registers the two booking transitions spec 020 reserved for it
+  // (`protected -> disputed`, `disputed -> protected`), makes spec 021's `DisputeGate` real
+  // (default: no booking is ever disputed — its own comment says "Spec 031 registers the real gate
+  // when it ships"), and registers spec 027's `dispute_evidence` context (default:
+  // `422 FILE_CONTEXT_NOT_AVAILABLE`). It must run AFTER spec 027, which resets and registers its
+  // own shipped policies, and after specs 029/030, which register theirs.
+  //
+  // IT DELIBERATELY DOES NOT REGISTER spec 024's `PayoutHoldGate` (that slot is spec 038's) or
+  // spec 022's `RefundEligibilityGate` (already occupied by spec 023, and single-valued). A dispute
+  // holds a payout through spec 021's protection state, which spec 024 already refuses to pay out
+  // from, and reaches a refund only through spec 022's admin-override route.
+  //
+  // Rolling spec 031 back returns the gate to its inert default — the sweep resumes releasing and
+  // no shipped spec breaks.
+  const { registerDisputeIntegration } = await import('@/lib/disputes');
+  registerDisputeIntegration();
 }

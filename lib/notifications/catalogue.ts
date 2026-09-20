@@ -102,6 +102,34 @@ export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, Catalogue
     title: 'We received your safety report',
     body: 'Your report has been sent to our Trust & Safety team. We review every report; we cannot share the outcome.',
   },
+  /**
+   * Spec 031 §8 "Notifications". Tells the counterparty a dispute exists and where to read it, and
+   * NOTHING of its substance: not the reason, not who is arguing what. The reason is one party's
+   * words about another and must reach them inside the dispute, where both sides are visible.
+   */
+  dispute_opened: {
+    category: 'booking',
+    params: [],
+    title: 'A dispute was opened on your booking',
+    body: 'A dispute was opened on one of your bookings. Open the booking to see it and respond.',
+  },
+  /**
+   * Carries that a decision exists, never the decision. A body reading "resolved in the
+   * provider's favour" would deliver a verdict through a channel that cannot show the reasoning
+   * master §2.3 requires alongside it.
+   */
+  dispute_resolved: {
+    category: 'booking',
+    params: [],
+    title: 'Your dispute has been decided',
+    body: 'A decision was recorded on a dispute you are part of. Open the booking to read it in full.',
+  },
+  dispute_closed: {
+    category: 'booking',
+    params: [],
+    title: 'Your dispute is closed',
+    body: 'A dispute you are part of is now closed. Open the booking to read the final outcome.',
+  },
   review_response_posted: {
     category: 'booking',
     params: [],

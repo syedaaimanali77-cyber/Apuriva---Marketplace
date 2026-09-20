@@ -14,6 +14,9 @@ export default function AdminOperationsPage() {
         { href: '/admin/actions/review', label: 'Post-action review' },
         { href: '/admin/operations/refunds', label: 'Refunds' },
         { href: '/admin/operations/payouts', label: 'Payouts' },
+        // Spec 031 §5. Master §2970 lists Disputes under Operations; Operations can WATCH the queue
+        // (`disputes/read`) but only Trust & Safety and Super Admin can decide one.
+        { href: '/admin/operations/disputes', label: 'Disputes' },
       ]}
     />
   );

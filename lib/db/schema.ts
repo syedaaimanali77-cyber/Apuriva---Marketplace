@@ -2494,6 +2494,27 @@ export const reviewMedia = pgTable(
 // Disputes
 // ---------------------------------------------------------------------------
 
+/** Spec 031 §3 "Dispute lifecycle" (DECIDED-3). `closed` is terminal AND the single
+ * financially-final state: the `DisputeGate` answers `open: true` for every other value. */
+export const DISPUTE_STATUSES = ['open', 'under_review', 'resolved', 'appealed', 'closed'] as const;
+
+/** Spec 031 §3 "Financial ownership" (DECIDED-5). A decision, never an execution — the two
+ * `*refund*` members only PROPOSE an amount that spec 022's override chain may later act on. */
+export const DISPUTE_DECISIONS = [
+  'no_action',
+  'refund_customer',
+  'partial_refund_customer',
+  'favour_provider',
+  'mutual_resolution',
+] as const;
+
+/** Spec 031 §3 "Appeal rules" (DECIDED-4). Deciding an appeal closes the dispute; there is no
+ * appeal of an appeal. */
+export const DISPUTE_APPEAL_OUTCOMES = ['upheld', 'overturned', 'partially_upheld'] as const;
+
+/** The two decisions that carry a proposed refund. Mirrored by `dispute_resolutions_refund_pairing_ck`. */
+export const DISPUTE_REFUND_DECISIONS = ['refund_customer', 'partial_refund_customer'] as const;
+
 export const disputes = pgTable(
   'disputes',
   {
@@ -2504,10 +2525,41 @@ export const disputes = pgTable(
     openedByUserId: uuid('opened_by_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 031 §4 — feature columns. The table itself is spec 003's baseline skeleton. */
+    status: text('status', { enum: DISPUTE_STATUSES }).notNull().default('open'),
+    reason: text('reason').notNull(),
+    /** The admin who claimed it into `under_review`. A `users.id`, per DECIDED-2. */
+    claimedByAdminUserId: uuid('claimed_by_admin_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 033 advisory output (DECIDED-8). NO decision path reads this column, and it never
+     * reaches a participant-facing DTO. */
+    aiSummary: text('ai_summary'),
+    /** DECIDED-6 — while true, spec 027's purge sweep and spec 008's deletion both skip this
+     * dispute's evidence. Reuses `file_assets.legal_hold`; no second hold mechanism. */
+    legalHold: boolean('legal_hold').notNull().default(false),
+    /** DECIDED-9 — a one-way cross-reference to spec 030. Never read to change a dispute outcome. */
+    escalatedSafetyReportId: uuid('escalated_safety_report_id').references((): AnyPgColumn => safetyReports.id, {
+      onDelete: 'restrict',
+    }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('disputes_booking_id_idx').on(t.bookingId),
     index('disputes_opened_by_user_id_idx').on(t.openedByUserId),
+    index('disputes_claimed_by_admin_user_id_idx').on(t.claimedByAdminUserId),
+    index('disputes_escalated_safety_report_id_idx').on(t.escalatedSafetyReportId),
+    // §3 "Dispute eligibility" AC-1 — at most one live dispute per booking, whatever the concurrency.
+    uniqueIndex('disputes_booking_open_uq')
+      .on(t.bookingId)
+      .where(sql`status <> 'closed'`),
+    uniqueIndex('disputes_opener_idempotency_uq').on(t.openedByUserId, t.idempotencyKey),
+    // The admin queue's ordering: live disputes first, then FIFO.
+    index('disputes_status_created_idx').on(t.status, t.createdAt),
+    check('disputes_status_ck', sql`${t.status} in ('open','under_review','resolved','appealed','closed')`),
+    // AC-7: a closed dispute always carries its instant, and only a closed one does.
+    check('disputes_closed_pairing_ck', sql`(${t.status} = 'closed') = (${t.closedAt} is not null)`),
+    check('disputes_reason_length_ck', sql`char_length(${t.reason}) between 10 and 2000`),
   ],
 );
 
@@ -2521,10 +2573,19 @@ export const disputeEvidence = pgTable(
     submittedByUserId: uuid('submitted_by_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** Spec 027 owns the bytes, the scanning and the signed URLs; this is only the linkage. */
+    fileAssetId: uuid('file_asset_id')
+      .notNull()
+      .references((): AnyPgColumn => fileAssets.id, { onDelete: 'restrict' }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('dispute_evidence_dispute_id_idx').on(t.disputeId),
     index('dispute_evidence_submitted_by_user_id_idx').on(t.submittedByUserId),
+    index('dispute_evidence_file_asset_id_idx').on(t.fileAssetId),
+    // An asset is attached to a dispute exactly once.
+    uniqueIndex('dispute_evidence_dispute_asset_uq').on(t.disputeId, t.fileAssetId),
   ],
 );
 
@@ -2538,10 +2599,22 @@ export const disputeMessages = pgTable(
     senderUserId: uuid('sender_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    body: text('body').notNull(),
+    /** True for a message posted by a resolving admin, so the parties can see it is official. */
+    isAdmin: boolean('is_admin').notNull().default(false),
+    /** Spec 025's `applyContactPolicy` in FLAG mode — a dispute only exists post-`confirmed`, so
+     * contact details are kept verbatim and flagged, never masked (DECIDED-7). */
+    contactFlagged: boolean('contact_flagged').notNull().default(false),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('dispute_messages_dispute_id_idx').on(t.disputeId),
     index('dispute_messages_sender_user_id_idx').on(t.senderUserId),
+    // The paged thread read, oldest first.
+    index('dispute_messages_dispute_created_idx').on(t.disputeId, t.createdAt),
+    uniqueIndex('dispute_messages_sender_idempotency_uq').on(t.senderUserId, t.idempotencyKey),
+    check('dispute_messages_body_length_ck', sql`char_length(${t.body}) between 1 and 2000`),
   ],
 );
 
@@ -2552,8 +2625,62 @@ export const disputeResolutions = pgTable(
     disputeId: uuid('dispute_id')
       .notNull()
       .references(() => disputes.id, { onDelete: 'restrict' }),
+    decision: text('decision', { enum: DISPUTE_DECISIONS }).notNull(),
+    /** Master §2.3 — the reasoning is shown to BOTH parties, not just the outcome. */
+    reasoning: text('reasoning').notNull(),
+    /** DECIDED-2: a `users.id`, because `resolvePermission`/`recordAdminAuditEvent` key on it. */
+    resolvedByAdminUserId: uuid('resolved_by_admin_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }).notNull(),
+    /**
+     * DECIDED-5: a PROPOSAL. No refund exists until spec 022's four-eyes chain executes one.
+     *
+     * Declared explicitly rather than through `moneyColumns('proposed_refund')`: that helper
+     * derives its JS property names from the base verbatim, so a snake_case base would produce
+     * `proposed_refundAmountMinorUnits`. The COLUMN names and the pairing checks below are exactly
+     * what the helper would have produced, and spec 003's AC-1 rule is satisfied the same way —
+     * an own semantically-named integer minor-units column, never numeric/real.
+     */
+    proposedRefundAmountMinorUnits: integer('proposed_refund_amount_minor_units'),
+    proposedRefundCurrencyCode: text('proposed_refund_currency_code'),
+    /** Spec 009's approval chain for the refund spec 022 may later create. Never a `refunds.id` —
+     * no refund row exists at proposal time. */
+    refundAdminActionId: uuid('refund_admin_action_id').references(() => adminActions.id, { onDelete: 'restrict' }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
-  (t) => [index('dispute_resolutions_dispute_id_idx').on(t.disputeId)],
+  (t) => [
+    // AC-3's double-resolution guard, at the database. Replaces the skeleton's plain index and
+    // still covers the `dispute_id` foreign key (schema-lint AC-4).
+    uniqueIndex('dispute_resolutions_dispute_uq').on(t.disputeId),
+    index('dispute_resolutions_resolved_by_admin_user_id_idx').on(t.resolvedByAdminUserId),
+    index('dispute_resolutions_refund_admin_action_id_idx').on(t.refundAdminActionId),
+    check(
+      'dispute_resolutions_decision_ck',
+      sql`${t.decision} in ('no_action','refund_customer','partial_refund_customer','favour_provider','mutual_resolution')`,
+    ),
+    check('dispute_resolutions_reasoning_length_ck', sql`char_length(${t.reasoning}) between 10 and 2000`),
+    check(
+      'dispute_resolutions_proposed_refund_pair_ck',
+      sql`(${t.proposedRefundAmountMinorUnits} is null) = (${t.proposedRefundCurrencyCode} is null)`,
+    ),
+    check(
+      'dispute_resolutions_proposed_refund_currency_format_ck',
+      sql`${t.proposedRefundCurrencyCode} is null or ${t.proposedRefundCurrencyCode} ~ '^[A-Z]{3}$'`,
+    ),
+    check('dispute_resolutions_proposed_refund_positive_ck', sql`${t.proposedRefundAmountMinorUnits} is null or ${t.proposedRefundAmountMinorUnits} > 0`),
+    // A proposed amount exists exactly when the decision is one that proposes money back.
+    check(
+      'dispute_resolutions_refund_pairing_ck',
+      sql`(${t.proposedRefundAmountMinorUnits} is not null) = (${t.decision} in ('refund_customer','partial_refund_customer'))`,
+    ),
+    // An approval chain can only be linked to a resolution that actually proposed a refund.
+    check(
+      'dispute_resolutions_refund_link_ck',
+      sql`${t.refundAdminActionId} is null or ${t.proposedRefundAmountMinorUnits} is not null`,
+    ),
+  ],
 );
 
 export const disputeAppeals = pgTable(
@@ -2566,10 +2693,31 @@ export const disputeAppeals = pgTable(
     appellantUserId: uuid('appellant_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    reason: text('reason').notNull(),
+    outcome: text('outcome', { enum: DISPUTE_APPEAL_OUTCOMES }),
+    reasoning: text('reasoning'),
+    /** AC-4: must differ from `dispute_resolutions.resolved_by_admin_user_id`. */
+    reviewedByAdminUserId: uuid('reviewed_by_admin_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
-    index('dispute_appeals_dispute_id_idx').on(t.disputeId),
+    // AC-4's one-appeal rule, at the database. Replaces the skeleton's plain index and still
+    // covers the `dispute_id` foreign key (schema-lint AC-4).
+    uniqueIndex('dispute_appeals_dispute_uq').on(t.disputeId),
     index('dispute_appeals_appellant_user_id_idx').on(t.appellantUserId),
+    index('dispute_appeals_reviewed_by_admin_user_id_idx').on(t.reviewedByAdminUserId),
+    uniqueIndex('dispute_appeals_appellant_idempotency_uq').on(t.appellantUserId, t.idempotencyKey),
+    check('dispute_appeals_outcome_ck', sql`${t.outcome} is null or ${t.outcome} in ('upheld','overturned','partially_upheld')`),
+    check('dispute_appeals_reason_length_ck', sql`char_length(${t.reason}) between 10 and 2000`),
+    // A decided appeal always names its reviewer, its reasoning and its instant — or is undecided.
+    check(
+      'dispute_appeals_decision_pairing_ck',
+      sql`(${t.outcome} is null) = (${t.reasoning} is null)
+          and (${t.outcome} is null) = (${t.reviewedByAdminUserId} is null)
+          and (${t.outcome} is null) = (${t.decidedAt} is null)`,
+    ),
   ],
 );
 

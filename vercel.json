@@ -52,6 +52,10 @@
     {
       "path": "/api/v1/cron/ai-usage-sweep",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/v1/cron/dispute-appeal-sweep",
+      "schedule": "0 * * * *"
     }
   ]
 }

@@ -55,6 +55,11 @@ export const NOTIFICATION_TYPES = [
   'review_response_posted',
   // security — spec 030 (the REPORTER only; a reported user is never notified, master §64)
   'safety_report_received',
+  // booking — spec 031. All three are CONTENT-FREE: a dispute notification never carries the
+  // reason, the decision, the reasoning or an amount. Filing an APPEAL notifies nobody.
+  'dispute_opened',
+  'dispute_resolved',
+  'dispute_closed',
   // operational — spec 023 (a response deadline that affects the recipient's account standing)
   'no_show_response_requested',
   'service_notice',

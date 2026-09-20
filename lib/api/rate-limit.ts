@@ -24,6 +24,7 @@ export type RateLimitDomain =
   | 'files'
   | 'reviews'
   | 'safety'
+  | 'disputes'
   | 'default';
 
 export interface RateLimitRule {
@@ -76,6 +77,11 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   // write-surface budget specs 015/017/018/020/027/029 chose. Deliberately NOT looser for the
   // admin queue: a safety surface is exactly where an enumeration attempt should be bounded.
   safety: { limit: 30, windowMs: 60_000 },
+  // Spec 031 §3: opening a dispute, evidence linkage, the dispute thread, appeals and the Trust &
+  // Safety dispute routes — the same write-surface budget specs 015/017/018/020/027/029/030 chose
+  // rather than the looser shared 'default'. It also bounds the message thread per caller on top
+  // of `MAX_DISPUTE_MESSAGES`, which bounds it per dispute.
+  disputes: { limit: 30, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 

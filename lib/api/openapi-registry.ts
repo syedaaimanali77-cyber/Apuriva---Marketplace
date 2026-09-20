@@ -1069,4 +1069,126 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'Set a report priority by hand; admin (safety_reports/resolve). The ONLY way a priority ever moves — nothing derives one from content. Audited with both the old and the new value',
     tags: ['safety'],
   },
+
+  // Spec 031 §3 — disputes & resolution. NOTE WHAT IS ABSENT: there is no route here that creates a
+  // refund, moves a payout or calls a payment provider. A resolution PROPOSES an amount; spec 022's
+  // `POST /admin/refunds` (tier `high`, second-admin approval) is the only way money ever moves.
+  {
+    method: 'POST',
+    path: '/bookings/{id}/disputes',
+    summary:
+      'Open a dispute on a booking; session, either participant, either mode; requires Idempotency-Key. Eligible ONLY while the booking is protected and its payment protection is held — i.e. inside spec 021 payment-protection window. Atomically creates the dispute, moves the booking protected->disputed and the payment protection held->disputed, which is what holds the payout',
+    tags: ['disputes'],
+  },
+  {
+    method: 'GET',
+    path: '/disputes',
+    summary: "The caller's own disputes, newest first; session. Scoped by join, so it can only ever return disputes they are party to",
+    tags: ['disputes'],
+  },
+  {
+    method: 'GET',
+    path: '/disputes/{id}',
+    summary:
+      "The participant's view: status, reason, both sides' counts, the resolution WITH its reasoning, any appeal and the appeal deadline. Carries no counterparty user id, no admin identity, no AI summary, no refund approval chain, no safety cross-reference and no legal-hold flag. A non-participant gets 404, never 403",
+    tags: ['disputes'],
+  },
+  {
+    method: 'POST',
+    path: '/disputes/{id}/evidence',
+    summary:
+      'Link an already-finalized spec 027 file asset to the dispute; session, participant; requires Idempotency-Key. Bytes never pass through this route — upload and finalize are spec 027, under the dispute_evidence context this spec registers',
+    tags: ['disputes'],
+  },
+  {
+    method: 'GET',
+    path: '/disputes/{id}/evidence',
+    summary:
+      'The evidence list. BOTH participants see both sides (deliberately unlike spec 030) — a party who cannot see what is argued against them cannot appeal. An admin with disputes/read also sees it, and that read is audited',
+    tags: ['disputes'],
+  },
+  {
+    method: 'POST',
+    path: '/disputes/{id}/messages',
+    summary:
+      'Post to the dispute thread; session participant, or admin with disputes/resolve (flagged isAdmin); requires Idempotency-Key. Contact details are FLAGGED, never masked — a dispute is always post-confirmed, so spec 025 own rule keeps the body verbatim as a T&S signal. Append-only: no edit, no delete',
+    tags: ['disputes'],
+  },
+  {
+    method: 'GET',
+    path: '/disputes/{id}/messages',
+    summary:
+      'The thread, oldest first, so it reads as a record. Both participants read all of it; an admin with disputes/read reads it audited. No read receipts and no unread counts — those are spec 025 conversation features and are not reproduced',
+    tags: ['disputes'],
+  },
+  {
+    method: 'POST',
+    path: '/disputes/{id}/appeal',
+    summary:
+      'Appeal a resolution; session, EITHER participant (not only the opener); requires Idempotency-Key. At most one per dispute and only within DISPUTE_APPEAL_WINDOW_DAYS of resolved_at. Moves resolved->appealed, which is still not closed, so the money stays held. Nobody is notified',
+    tags: ['disputes'],
+  },
+  {
+    method: 'POST',
+    path: '/disputes/{id}/waive-appeal',
+    summary:
+      'Give up the right to appeal and close the dispute early; session, participant; requires Idempotency-Key. Releases the booking and the payment protection back to spec 021 so the provider is paid without waiting out the window. Refused 422 DISPUTE_REFUND_PENDING while a proposed refund has not completed',
+    tags: ['disputes'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/disputes',
+    summary:
+      'The Trust & Safety dispute queue, live disputes first then created_at ASC (FIFO among equals); admin (disputes/read — Operations, Trust & Safety, Super Admin; finance_admin is excluded). The read itself is audited',
+    tags: ['disputes'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/disputes/{id}',
+    summary:
+      'One dispute in full, the only shape carrying real identities, the advisory AI summary, the refund approval chain, the safety cross-reference and the legal-hold flag; admin (disputes/read). An admin who is a party to the booking is refused 403 DISPUTE_PARTICIPANT_CONFLICT, reads included. Audited separately from the queue',
+    tags: ['disputes'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/disputes/{id}/claim',
+    summary:
+      'Claim a dispute into under_review and record the owning admin; admin (disputes/resolve). Optional — open->resolved is legal too. No reason required: claiming changes no outcome',
+    tags: ['disputes'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/disputes/{id}/resolve',
+    summary:
+      'Record the decision and its mandatory reasoning; admin (disputes/resolve, medium — Trust & Safety per master §69). MOVES NO MONEY: a refund decision stores a PROPOSED amount only, bounded by spec 022 readRefundablePosition under the payment lock. The dispute becomes resolved, not closed, so the payout stays held through the appeal window',
+    tags: ['disputes'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/disputes/{id}/link-refund',
+    summary:
+      'Record the adminActionId that spec 022 POST /admin/refunds returned, connecting the proposal to its approval chain; admin (disputes/resolve). Stores an admin_actions id, never a refunds id — no refund row exists until a second admin approves. At most one chain per resolution, so a duplicate refund request cannot be attached',
+    tags: ['disputes'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/disputes/{id}/appeal-decision',
+    summary:
+      'Decide the appeal; admin (disputes/review_appeal, medium) whose user id MUST differ from the original resolver, else 403 APPEAL_REQUIRES_DIFFERENT_ADMIN. The original resolution is never edited. The decision is final and closes the dispute; a still-moving refund defers only the closure, never the recorded decision',
+    tags: ['disputes'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/disputes/{id}/legal-hold',
+    summary:
+      'Set or clear the legal hold on a dispute evidence; admin (disputes/resolve). Reason required, both directions audited. Reuses the existing file_assets.legal_hold flag spec 027 purge sweep already honours — no second hold mechanism. Never set automatically by any rule',
+    tags: ['disputes'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/disputes/{id}/escalate-safety',
+    summary:
+      'File a spec 030 safety report about a participant of this dispute; admin holding BOTH disputes/resolve and safety_reports/read; requires Idempotency-Key. Calls spec 030 own creation path — sets no priority, applies no restriction, writes no lifecycle_status. One-way: spec 030 never opens a dispute. The dispute is not paused',
+    tags: ['disputes'],
+  },
 ];
