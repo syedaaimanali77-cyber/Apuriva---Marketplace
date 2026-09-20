@@ -16,6 +16,7 @@ import {
   Skeleton,
   Textarea,
 } from '@/components';
+import { UrgencyEmergencyNotice } from '@/app/_components/UrgencyEmergencyNotice';
 import type { AddressDto } from '@/lib/types/location';
 import type { ServiceFieldDto } from '@/lib/types/service-page';
 import type { CreateRequestRequest, RequestDto, RequestUrgency } from '@/lib/types/requests';
@@ -351,6 +352,9 @@ export default function NewRequestPage() {
                 onChange={(e) => setUrgency(e.target.value as RequestUrgency)}
                 options={URGENCY_OPTIONS}
               />
+              {/* Spec 030 AC-6 — adjacent to the control and always visible while urgent is
+                  selectable, never behind a tooltip or fine print. */}
+              <UrgencyEmergencyNotice />
             </FormField>
           </div>
 

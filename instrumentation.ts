@@ -53,4 +53,16 @@ export async function register(): Promise<void> {
   // shipped spec breaks.
   const { registerReviewsIntegration } = await import('@/lib/reviews');
   registerReviewsIntegration();
+
+  // Spec 030 makes three more ports real that shipped inert on purpose: spec 025's
+  // `ConversationBlockGate` (default: nobody blocked), spec 017's `ProviderBlockSource` (default:
+  // nobody blocked) and spec 027's `safety_evidence` context (default:
+  // `422 FILE_CONTEXT_NOT_AVAILABLE`). It must run AFTER spec 027, which resets and registers its
+  // own shipped policies, and after spec 029, which registers its own context.
+  //
+  // IT DELIBERATELY DOES NOT REGISTER `SafetyRestrictionGate`. Spec 030 owns no enforcement action;
+  // that registration is SPEC 038's, from this same root, when it ships. Until then the port's
+  // refusing default is what tells an admin the capability is not installed (spec 030 DECIDED-3).
+  const { registerSafetyIntegration } = await import('@/lib/safety');
+  registerSafetyIntegration();
 }

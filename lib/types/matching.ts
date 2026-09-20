@@ -71,7 +71,13 @@ export type ExclusionReason =
   | 'unavailable'
   | 'not_verified'
   /** Reserved (spec 017 DECIDED-1). E5 is a documented no-op this release, so nothing emits this. */
-  | 'at_capacity';
+  | 'at_capacity'
+  /**
+   * Spec 030 (AC-1) — the requesting customer and this provider have blocked one another.
+   * Supplied through `registerProviderBlockSource()`, whose default is "nobody blocked", so the
+   * pre-030 behaviour is unchanged. Admin-only, like every other exclusion reason.
+   */
+  | 'blocked';
 
 export type ProviderResponse = 'none' | 'accepted' | 'declined' | 'offer_sent';
 

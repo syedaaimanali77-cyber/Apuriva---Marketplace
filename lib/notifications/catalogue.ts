@@ -89,6 +89,19 @@ export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, Catalogue
     title: 'You received a review',
     body: 'A customer left a review for one of your completed bookings. You can read it and reply once.',
   },
+  /**
+   * Spec 030 §9. Confirms to the REPORTER that their report reached a human. Carries the report id
+   * and NOTHING of its content: no category, no description, no target. It promises no timeline and
+   * no outcome, because master §64's restricted workflow means we can honestly promise neither.
+   *
+   * There is deliberately NO notification to the reported user, here or anywhere.
+   */
+  safety_report_received: {
+    category: 'security',
+    params: [],
+    title: 'We received your safety report',
+    body: 'Your report has been sent to our Trust & Safety team. We review every report; we cannot share the outcome.',
+  },
   review_response_posted: {
     category: 'booking',
     params: [],

@@ -23,6 +23,7 @@ export type RateLimitDomain =
   | 'bookings'
   | 'files'
   | 'reviews'
+  | 'safety'
   | 'default';
 
 export interface RateLimitRule {
@@ -71,6 +72,10 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   // guest, so the public list cannot be scraped at 'default' speed. The per-user 20-reports/24h cap
   // in `lib/reviews/report.ts` bounds sustained volume on top of this rate budget.
   reviews: { limit: 30, windowMs: 60_000 },
+  // Spec 030 §3: blocking, safety reporting and the Trust & Safety admin routes — the same
+  // write-surface budget specs 015/017/018/020/027/029 chose. Deliberately NOT looser for the
+  // admin queue: a safety surface is exactly where an enumeration attempt should be bounded.
+  safety: { limit: 30, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 

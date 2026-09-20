@@ -27,6 +27,8 @@ import {
   requestProviderMatches,
   requests,
   reviewReports,
+  safetyReports,
+  userBlocks,
   reviewResponses,
   reviews,
   users,
@@ -119,6 +121,27 @@ export interface DataExportPayload {
     status: string;
     createdAt: string;
   }>;
+  /**
+   * Spec 030 §4 "Retention and privacy" (DECIDED-5) — the safety reports this user FILED and the
+   * blocks they CREATED.
+   *
+   * The reporter's own `description` IS included: it is their own authored words, and spec 008
+   * already exports a user's own prose (spec 029 exports review text). `targetUserId` is
+   * deliberately NOT — the reporter knows who they reported, and an export file is a document that
+   * travels.
+   *
+   * Deliberately absent entirely: any report filed ABOUT this user (another person's statement,
+   * and returning it would tell a reported user they were reported — master §64), `priority`,
+   * `ai_summary`, any admin identity, the resolution reason, and every idempotency column.
+   */
+  safetyReports: Array<{
+    id: string;
+    category: string;
+    description: string;
+    status: string;
+    createdAt: string;
+  }>;
+  blocks: Array<{ id: string; createdAt: string }>;
   /** "Permitted messages" (spec 008 §3): messages in a conversation `userId` participates in —
    * the same participant boundary spec 025 uses to authorize a messaging read, never a broader
    * query (e.g. never all messages the user merely sent, if they'd since left the conversation).
@@ -453,6 +476,29 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     })
     .from(reviewReports)
     .where(eq(reviewReports.reporterUserId, userId));
+
+  // Spec 030 (DECIDED-5): the safety reports this user FILED. Reports filed ABOUT them are
+  // deliberately absent — a reported user is never told a report exists (master §64) — and so is
+  // every moderation-internal column. An explicit allowlist, exactly like every section above, so
+  // `priority`, `ai_summary`, the admin identities and the resolution reason cannot reach an
+  // export even by accident.
+  const safetyReportRows = await db
+    .select({
+      id: safetyReports.id,
+      category: safetyReports.category,
+      description: safetyReports.description,
+      status: safetyReports.status,
+      createdAt: safetyReports.createdAt,
+    })
+    .from(safetyReports)
+    .where(eq(safetyReports.reporterUserId, userId));
+
+  // The blocks this user CREATED. Never who blocked THEM: that would hand a harasser the very
+  // signal spec 030 withholds from every other surface.
+  const blockRows = await db
+    .select({ id: userBlocks.id, createdAt: userBlocks.createdAt })
+    .from(userBlocks)
+    .where(eq(userBlocks.blockerUserId, userId));
 
   const messageRows = await db
     .select({
@@ -820,6 +866,8 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
     })),
     reviewResponses: reviewResponseRows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     reviewReports: reviewReportRows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    safetyReports: safetyReportRows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    blocks: blockRows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     messages: messageRows.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),
     preferences: preferences
       ? {

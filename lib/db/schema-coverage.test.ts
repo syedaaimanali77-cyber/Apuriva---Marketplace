@@ -96,6 +96,9 @@ const EXPECTED_TABLES = [
   'dispute_appeals',
   // Support & safety
   'safety_reports',
+  // Spec 030 §4: one user's block of another. NOT a spec 003 baseline skeleton — no block table
+  // of any kind existed before migration 0027, which is why spec 025 shipped its gate inert.
+  'user_blocks',
   'support_tickets',
   'support_messages',
   'support_notes',

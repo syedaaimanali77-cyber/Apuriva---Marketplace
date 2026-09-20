@@ -53,6 +53,8 @@ export const NOTIFICATION_TYPES = [
   'review_received',
   // booking — spec 029 (the reviewer learns their provider replied)
   'review_response_posted',
+  // security — spec 030 (the REPORTER only; a reported user is never notified, master §64)
+  'safety_report_received',
   // operational — spec 023 (a response deadline that affects the recipient's account standing)
   'no_show_response_requested',
   'service_notice',

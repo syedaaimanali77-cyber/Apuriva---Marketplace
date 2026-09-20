@@ -9,6 +9,7 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import {
+  customerProfiles,
   providerProfiles,
   providerServices,
   requestProviderMatches,
@@ -25,6 +26,7 @@ import { effectivePoolSize, effectiveWeights } from './weights';
 import { matchingNotFoundError } from './errors';
 import { loadProviderCenterPoints, loadTerminalResponderIds } from './repository';
 import { getProviderRatingSource } from './rating-source';
+import { loadBlockedProviderProfileIds } from './block-source';
 import type { ExclusionReason, MatchingWeights } from '@/lib/types/matching';
 
 export interface MatchingRunResult {
@@ -53,6 +55,7 @@ export async function runMatching(requestId: string): Promise<MatchingRunResult>
       serviceId: requests.serviceId,
       preferredAt: requests.preferredAt,
       addressId: requests.addressId,
+      customerProfileId: requests.customerProfileId,
     })
     .from(requests)
     .where(eq(requests.id, requestId));
@@ -93,7 +96,17 @@ export async function runMatching(requestId: string): Promise<MatchingRunResult>
   };
 
   const providerIds = candidates.map((c) => c.providerProfileId);
-  const [centerPoints, terminalResponders, ratings] = await Promise.all([
+
+  // Spec 030 §3 "Blocking -> matching" (AC-1). Blocks are USER-scoped while candidates are
+  // PROVIDER-PROFILE-scoped, so the customer's user id is resolved once here and the port does the
+  // profile mapping in one batched query. Unregistered, the port returns an empty set — exactly
+  // spec 017's pre-030 behaviour.
+  const [customerUser] = await db
+    .select({ userId: customerProfiles.userId })
+    .from(customerProfiles)
+    .where(eq(customerProfiles.id, request.customerProfileId));
+
+  const [centerPoints, terminalResponders, ratings, blockedProviderProfileIds] = await Promise.all([
     loadProviderCenterPoints(providerIds, request.serviceId),
     loadTerminalResponderIds(providerIds),
     // Spec 029 §3 "Ranking" — THE ONE CHANGE TO A SPEC 017 FILE. The `rating` factor's data source,
@@ -101,6 +114,9 @@ export async function runMatching(requestId: string): Promise<MatchingRunResult>
     // nothing about the algorithm, the weights or the renormalization moves. See
     // `lib/matching/rating-source.ts`.
     getProviderRatingSource()(providerIds),
+    customerUser
+      ? loadBlockedProviderProfileIds(customerUser.userId, providerIds)
+      : Promise.resolve(new Set<string>() as ReadonlySet<string>),
   ]);
 
   const excluded: Array<{ providerProfileId: string; reason: ExclusionReason }> = [];
@@ -114,6 +130,14 @@ export async function runMatching(requestId: string): Promise<MatchingRunResult>
       offersService: true,
       durationMinutes: candidate.durationMinutes,
     };
+
+    // Spec 030 (AC-1) — a block excludes BEFORE any score is computed, alongside spec 017's own
+    // hard rules. Evaluated first because it is categorical and cheaper than availability: a
+    // provider the customer has blocked is not a candidate at all, whatever their schedule says.
+    if (blockedProviderProfileIds.has(candidate.providerProfileId)) {
+      excluded.push({ providerProfileId: candidate.providerProfileId, reason: 'blocked' });
+      continue;
+    }
 
     const outcome = await evaluateEligibility(input, context);
     if (!outcome.eligible) {

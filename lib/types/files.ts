@@ -32,6 +32,7 @@ export const FILE_CONTEXT_TYPES = [
   'dispute_evidence', // spec 031 — reserved, no resolver yet
   'verification_document', // provider identity documents — reserved, no resolver yet
   'review_media', // spec 029 — registered by `lib/reviews/media-policy.ts`
+  'safety_evidence', // spec 030 — registered by `lib/safety/evidence-policy.ts`; PRIVATE only
 ] as const;
 export type FileContextType = (typeof FILE_CONTEXT_TYPES)[number];
 

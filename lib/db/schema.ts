@@ -930,6 +930,12 @@ export const MATCH_EXCLUSION_REASONS = [
   'unavailable',
   'not_verified',
   'at_capacity',
+  /**
+   * Spec 030 (AC-1) — the requesting customer and this provider have blocked one another. Supplied
+   * through `registerProviderBlockSource()`, whose default is "nobody blocked", so spec 017's
+   * pre-030 behaviour is unchanged when spec 030 is rolled back.
+   */
+  'blocked',
 ] as const;
 
 /** Spec 017 §3 AC-5 — a provider's response to a distributed request. A response vocabulary, not
@@ -1009,7 +1015,7 @@ export const requestProviderMatches = pgTable(
     ),
     check(
       'request_provider_matches_exclusion_reason_ck',
-      sql`${t.exclusionReason} is null or ${t.exclusionReason} in ('service_not_offered','outside_service_area','unavailable','not_verified','at_capacity')`,
+      sql`${t.exclusionReason} is null or ${t.exclusionReason} in ('service_not_offered','outside_service_area','unavailable','not_verified','at_capacity','blocked')`,
     ),
     check(
       'request_provider_matches_provider_response_ck',
@@ -2571,6 +2577,46 @@ export const disputeAppeals = pgTable(
 // Support & safety
 // ---------------------------------------------------------------------------
 
+/**
+ * Spec 030 §4 — the safety vocabulary, authored once, here.
+ *
+ * `resolved` IS TERMINAL (DECIDED-4): a report is never re-opened, because mutating a closed
+ * safety finding is what an audit trail exists to prevent. A new concern produces a new report.
+ */
+export const SAFETY_REPORT_STATUSES = ['submitted', 'under_review', 'escalated', 'resolved'] as const;
+
+/** Spec 009's `risk_tier` vocabulary, reused rather than inventing a second severity scale. */
+export const SAFETY_PRIORITIES = ['low', 'medium', 'high', 'critical'] as const;
+
+/**
+ * A REPORTING vocabulary, not a severity taxonomy. Nothing anywhere derives a priority from a
+ * category (spec 030 DECIDED-1) — `lib/safety/reports.ts` has no branch on this value.
+ */
+export const SAFETY_CATEGORIES = [
+  'harassment',
+  'threat',
+  'unsafe_behaviour',
+  'impersonation',
+  'property_damage',
+  'other',
+] as const;
+
+/**
+ * Spec 030 §4 — one user's safety report about another.
+ *
+ * ALTERED, never recreated: spec 003 already ships this table with `reporter_user_id` and
+ * `booking_id`; `0027_add_blocking_safety_incidents.sql` fills in the columns that make a report
+ * mean something. `0001_baseline_schema.sql` is immutable and untouched.
+ *
+ * THERE IS NO ENFORCEMENT COLUMN HERE (DECIDED-3). `restriction_requested_at` /
+ * `restriction_requested_by_admin_id` / `restriction_moderation_action_id` record that a named
+ * admin ASKED spec 038 for a restriction — never that one was applied, and never any account
+ * state. Spec 030 writes no `users.lifecycle_status` anywhere.
+ *
+ * The `restrict` foreign keys are load-bearing for retention (DECIDED-5): spec 008's deletion
+ * sweep cannot remove these rows, so a safety record survives its reporter closing their account,
+ * retained keyed to the now-anonymized user.
+ */
 export const safetyReports = pgTable(
   'safety_reports',
   {
@@ -2579,10 +2625,90 @@ export const safetyReports = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     bookingId: uuid('booking_id').references(() => bookings.id, { onDelete: 'restrict' }),
+    /** Spec 030 §4 — feature columns. */
+    targetUserId: uuid('target_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    category: text('category', { enum: SAFETY_CATEGORIES }).notNull(),
+    description: text('description').notNull(),
+    priority: text('priority', { enum: SAFETY_PRIORITIES }).notNull().default('medium'),
+    status: text('status', { enum: SAFETY_REPORT_STATUSES }).notNull().default('submitted'),
+    /** AC-4: advisory only. Never read by any decision, and null whenever spec 033 is unavailable. */
+    aiSummary: text('ai_summary'),
+    claimedByAdminId: uuid('claimed_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedByAdminId: uuid('resolved_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    resolutionReason: text('resolution_reason'),
+    restrictionRequestedAt: timestamp('restriction_requested_at', { withTimezone: true }),
+    restrictionRequestedByAdminId: uuid('restriction_requested_by_admin_id').references(() => adminProfiles.id, {
+      onDelete: 'restrict',
+    }),
+    /** Spec 038's `moderation_actions.id`. Deliberately NOT a foreign key: that table does not exist yet. */
+    restrictionModerationActionId: uuid('restriction_moderation_action_id'),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
   (t) => [
     index('safety_reports_reporter_user_id_idx').on(t.reporterUserId),
     index('safety_reports_booking_id_idx').on(t.bookingId),
+    index('safety_reports_target_user_id_idx').on(t.targetUserId),
+    /** Spec 003 AC-4: every foreign-key column carries its own covering btree index. */
+    index('safety_reports_claimed_by_admin_id_idx').on(t.claimedByAdminId),
+    index('safety_reports_resolved_by_admin_id_idx').on(t.resolvedByAdminId),
+    index('safety_reports_restriction_requested_by_admin_id_idx').on(t.restrictionRequestedByAdminId),
+    /** §3 "Priority" — `priority DESC, created_at ASC`, i.e. FIFO among equals. */
+    index('safety_reports_queue_idx').on(t.priority, t.createdAt),
+    uniqueIndex('safety_reports_author_idempotency_uq').on(t.reporterUserId, t.idempotencyKey),
+    check('safety_reports_status_ck', sql`${t.status} in ('submitted','under_review','escalated','resolved')`),
+    check('safety_reports_priority_ck', sql`${t.priority} in ('low','medium','high','critical')`),
+    check(
+      'safety_reports_category_ck',
+      sql`${t.category} in ('harassment','threat','unsafe_behaviour','impersonation','property_damage','other')`,
+    ),
+    check('safety_reports_no_self_ck', sql`${t.reporterUserId} <> ${t.targetUserId}`),
+    check('safety_reports_description_length_ck', sql`char_length(${t.description}) between 10 and 2000`),
+    /**
+     * AC-3/AC-5, the mechanical form: a resolution without a named human admin, an instant and a
+     * recorded reason is PHYSICALLY UNREPRESENTABLE, whatever application code does. The same
+     * device as spec 029's `reviews_removal_pairing_ck`.
+     */
+    check(
+      'safety_reports_resolution_pairing_ck',
+      sql`(${t.status} = 'resolved') = (${t.resolutionReason} is not null and ${t.resolvedByAdminId} is not null and ${t.resolvedAt} is not null)`,
+    ),
+    /** A restriction request likewise always names the admin who asked and when. */
+    check(
+      'safety_reports_restriction_pairing_ck',
+      sql`(${t.restrictionRequestedAt} is null) = (${t.restrictionRequestedByAdminId} is null)`,
+    ),
+  ],
+);
+
+/**
+ * Spec 030 §4 (AC-1) — one user's block of another. NEW: no block table of any kind existed in
+ * `0001_baseline_schema.sql` or any later migration.
+ *
+ * The record is one-directional; its EFFECT on messaging is bidirectional, because spec 025's
+ * `ConversationBlockGate` is documented as "a block in EITHER direction must report `blocked`".
+ */
+export const userBlocks = pgTable(
+  'user_blocks',
+  {
+    ...baseColumns(),
+    blockerUserId: uuid('blocker_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    blockedUserId: uuid('blocked_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+  },
+  (t) => [
+    /** The concurrency authority: a duplicate block replays rather than creating a second row. */
+    uniqueIndex('user_blocks_pair_uq').on(t.blockerUserId, t.blockedUserId),
+    /** The gate's lookup direction. */
+    index('user_blocks_blocked_user_id_idx').on(t.blockedUserId),
+    check('user_blocks_no_self_ck', sql`${t.blockerUserId} <> ${t.blockedUserId}`),
   ],
 );
 

@@ -14,6 +14,7 @@ import {
   RequestStatusTimeline,
   Skeleton,
 } from '@/components';
+import { UrgencyEmergencyNotice } from '@/app/_components/UrgencyEmergencyNotice';
 import type { CancelPreviewDto, RequestDto } from '@/lib/types/requests';
 import { isCancellable } from '@/lib/types/requests';
 import { apiFetch, mutateHeaders } from '../api-client';
@@ -209,6 +210,10 @@ export default function RequestStatusPage() {
           <div className={styles.detail}>
             <span className={styles.detailLabel}>Urgency</span>
             <p className={styles.detailValue}>{request.urgency === 'urgent' ? 'Urgent' : 'Normal'}</p>
+            {/* Spec 030 AC-6 — shown where urgency is DISPLAYED too, not only where it is chosen:
+                someone rereading an urgent request is as likely to be waiting for help that is not
+                coming. */}
+            {request.urgency === 'urgent' ? <UrgencyEmergencyNotice /> : null}
           </div>
 
           {request.preferredAt ? (

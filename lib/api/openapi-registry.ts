@@ -989,4 +989,84 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'The ONLY route that can remove a review: keep/remove/reinstate with a required reason and expectedStatus; admin (reviews/moderate, medium tier); audited in-transaction; 409 CONFLICT when another admin already resolved it',
     tags: ['reviews'],
   },
+  // Spec 030 §3 — blocking, reporting & safety incidents. NOTE WHAT IS ABSENT: there is no
+  // restriction route. Spec 030 owns no enforcement action; restrictions are spec 038's, reached
+  // from the resolve route through an unregistered port that refuses until 038 ships (DECIDED-3).
+  {
+    method: 'POST',
+    path: '/blocks',
+    summary:
+      "Block another user; session, either mode. Named by targetUserId in the body because this repository has no users/{id} convention. Prevents future messaging in BOTH directions and excludes the pair from future matching; never alters an existing booking or hides message history. A duplicate replays 200",
+    tags: ['safety'],
+  },
+  {
+    method: 'GET',
+    path: '/blocks',
+    summary:
+      "The caller's own blocks, newest first. There is deliberately no 'who blocked me' route anywhere: telling someone they were blocked hands a harasser a signal to act on",
+    tags: ['safety'],
+  },
+  {
+    method: 'DELETE',
+    path: '/blocks/{id}',
+    summary:
+      'Unblock; session. Idempotent — removing a block that is not there is 204. Sending is restored immediately because the gate reads user_blocks live on every send',
+    tags: ['safety'],
+  },
+  {
+    method: 'POST',
+    path: '/safety-reports',
+    summary:
+      'File a safety report about another user; session, either mode, never a guest; requires Idempotency-Key. The body carries NO priority: nothing classifies a report automatically, so every report starts at one constant and only a Trust & Safety admin moves it. The reported user is never notified',
+    tags: ['safety'],
+  },
+  {
+    method: 'GET',
+    path: '/safety-reports/{id}',
+    summary:
+      "The reporter's own restricted view (id, status, category, createdAt, own attachments). Carries no priority, no AI summary, no admin identity and no resolution reason. Anyone else — including the reported user — gets 404, never 403",
+    tags: ['safety'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/safety-reports',
+    summary:
+      'The Trust & Safety queue, priority DESC then created_at ASC (FIFO among equals); admin (safety_reports/read — Trust & Safety, Super Admin only; support_admin is excluded). The read itself is audited',
+    tags: ['safety'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/safety-reports/{id}',
+    summary:
+      'One report in full, including the advisory AI summary; admin (safety_reports/read). Audited separately from the queue, because who opened a given report is a different fact from who scanned the list',
+    tags: ['safety'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/safety-reports/{id}/claim',
+    summary:
+      'Claim a report into under_review and record the owning admin; admin (safety_reports/resolve). No reason required — claiming changes no outcome',
+    tags: ['safety'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/safety-reports/{id}/escalate',
+    summary:
+      'Escalate to a different set of eyes; admin (safety_reports/escalate, medium). Reason required. Changes WHO LOOKS, never what happens to anyone',
+    tags: ['safety'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/safety-reports/{id}/resolve',
+    summary:
+      'Close a report with a required reason and expectedStatus; admin (safety_reports/resolve, medium). resolved is terminal. requestRestriction asks SPEC 038 through a port that is unregistered here, so it returns 422 RESTRICTION_UNAVAILABLE and leaves the report open and the account untouched rather than fabricating an enforcement outcome',
+    tags: ['safety'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/safety-reports/{id}/priority',
+    summary:
+      'Set a report priority by hand; admin (safety_reports/resolve). The ONLY way a priority ever moves — nothing derives one from content. Audited with both the old and the new value',
+    tags: ['safety'],
+  },
 ];
