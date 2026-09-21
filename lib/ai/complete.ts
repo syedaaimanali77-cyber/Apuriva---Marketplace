@@ -94,7 +94,21 @@ export async function completeAi(request: AiCompletionRequest): Promise<AiComple
   // 4. Quota — rolling 24h requests and real tokens for this subject.
   const quotas = quotasFor(request.subject);
   if (quotas) {
-    const used = await rollingUsageSince(request.subject, new Date(Date.now() - DAY_MS));
+    let used;
+    try {
+      used = await rollingUsageSince(request.subject, new Date(Date.now() - DAY_MS));
+    } catch (err) {
+      // FAIL CLOSED (spec 033 §3.5). A quota that cannot be READ is not a quota with room left:
+      // reporting zero usage here would suspend the daily request and token ceilings for as long
+      // as the database was unreachable, which is the one failure this control exists to prevent.
+      // Consumers degrade on `AI_QUOTA_EXCEEDED` exactly as they do on a real overage (§3.9), so
+      // the workflow above still completes by its documented non-AI path.
+      console.error(JSON.stringify({ event: 'ai.quota_read_failed', task: request.task, error: String(err) }));
+      if (shouldRecordRejection(`quota:${key}`, 60_000)) {
+        await recordAiUsage({ ...accounting, outcome: 'rejected', rejectionReason: 'quota_exceeded' });
+      }
+      throw new AiQuotaExceededError('AI usage quota could not be verified.');
+    }
     if (used.requests >= quotas.requests || used.tokens >= quotas.tokens) {
       if (shouldRecordRejection(`quota:${key}`, 60_000)) {
         await recordAiUsage({ ...accounting, outcome: 'rejected', rejectionReason: 'quota_exceeded' });

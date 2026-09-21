@@ -193,6 +193,30 @@ A rejection at step 3 or 4 writes at most **one** `rejected` row per subject per
 de-duplicated in process the same way the limiter itself keeps its windows. Without that bound a
 caller being rate-limited could still drive one database write per attempt.
 
+**When the accounting database is unreachable.** Steps 4 and 7 both touch `ai_usage_events`, so
+their failure modes are part of this contract rather than an implementation detail:
+
+- **A usage-event write that fails (step 3, 4, 6 or 7) is swallowed, logged and never propagated.**
+  Accounting is observability, not the transaction. A completion that actually happened must still
+  be returned, and the workflow above it must still complete, rather than being failed by its own
+  bookkeeping — master spec §94's "do not break critical transactional workflows because of an AI
+  limit" applies to the record of the limit as much as to the limit. The failure is logged
+  (`ai.usage_record_failed`) so it is never silent. The visible consequence is that the admin
+  aggregate and the abuse signals undercount for that period; neither ever over-reports.
+
+- **A rolling-quota read that fails (step 4) FAILS CLOSED.** `completeAi` rejects with
+  `AI_QUOTA_EXCEEDED`, and the cache and the provider are never reached. A quota that cannot be
+  READ is not a quota with room left: reporting zero usage would suspend the daily request and
+  token ceilings for exactly as long as the database was unreachable, which is the one failure this
+  control exists to prevent. The spend ceiling is the thing being guarded, and it is guarded the
+  way spec 024 §3 guards its approval checks.
+
+  This costs availability rather than enforcement, and that trade is deliberate. It is not an
+  outage: `AI_QUOTA_EXCEEDED` is one of the three degradable errors (§3.9), so every consumer falls
+  back to its documented non-AI path — search still works, keyword-only — exactly as it does for a
+  real overage. The rejection is recorded as `quota_exceeded`, de-duplicated per subject per window
+  like any other step-4 rejection, so abuse signal S2 still sees it.
+
 ### 3.6 Error codes
 
 | HTTP | `code` | When |
@@ -335,11 +359,29 @@ export interface AiUsageSummaryDto {
   totalTokens: number;
   estimatedCostMinorUnits: number; // derived at read time (§3.7), never stored
   currencyCode: string;
+  /** EVERY `AiTask` key is always present; a task with no traffic in the range reports
+   *  `{ requests: 0, tokens: 0 }`, never an absent key. */
   byTask: Record<AiTask, { requests: number; tokens: number }>;
+  /** Open-ended by contrast: provider names are a registry, not a closed union, so a provider
+   *  with no traffic in the range is simply absent. */
   byProvider: Record<string, { requests: number; tokens: number }>;
   costAlertThresholds: { dailyMinorUnits: number; monthlyMinorUnits: number; dailyTokens: number };
 }
 ```
+
+`byTask` is a **total** map over the closed `AiTask` union, and that is deliberate rather than
+incidental. It follows the convention this repository already applies to every closed key set —
+`ScoreBreakdown = Record<RankingFactor, FactorScore>` in `lib/types/matching.ts`, whose own comment
+says it is strongly typed precisely because "the factor set is closed and known at compile time",
+and `CategoryChannelMap = Record<NotificationCategory, ChannelToggles>` in
+`lib/types/notifications.ts`, which reserves `Partial<Record<...>>` for the genuinely partial case.
+`AiTask` is likewise closed and known at compile time.
+
+It also matters across a spec boundary: spec 040 §3 reuses this exact DTO for
+`GET /api/v1/admin/analytics/ai-usage` rather than re-deriving usage, so a consumer written against
+`Record<AiTask, ...>` must not receive `undefined` for a task that merely had no traffic. A zero row
+is a fact about the period; a missing key is an absence of contract. Adding a task to `AiTask` is
+therefore a breaking change to this DTO, which is the correct signal.
 
 ### Breaking-change check
 
@@ -430,18 +472,26 @@ One admin screen, composed entirely from existing design-system primitives.
 **Reached from:** one new entry in `app/admin/settings/page.tsx`'s existing `links` array —
 `{ href: '/admin/settings/ai-usage', label: 'AI usage & cost' }`, the pattern spec 014's
 `PlaceholderPage` already provides for `/admin/roles`. No new nav item and no new top-level route,
-so the admin console's existing header stays the page's single brand placement. That one-line entry
-is prepared in the working tree but ships with the earlier design-system work already in flight in
-the same file, rather than being committed under this spec — the route itself is complete and
-directly reachable, and the link is discoverability only.
+so the admin console's existing header stays the page's single brand placement.
+
+**This spec owns that link.** An earlier draft of this section assigned it to the design-system work
+already in flight in the same file; that was wrong, and auditing the file settles it. Of the pending
+changes to `app/admin/settings/page.tsx`, the `links` entry, the page description naming AI usage &
+cost, and the header comment naming spec 033 are all this spec's content, and no other spec in
+`docs/specs/` references the file at all. A route nothing links to is not a delivered admin screen,
+so the entry ships with this spec.
+
+One caveat for whoever commits it: that file *also* carries one genuinely unrelated in-flight change
+(`density="dense"`), so it is a mixed file. The unrelated change must not be swept in — split the
+commit rather than staging the file whole.
 
 | State | Behaviour |
 |---|---|
-| **Loading** | `Skeleton` blocks in the stat row and the table |
+| **Loading** | a `Card` wrapping a single `Skeleton` block, the shape every admin page already uses (`app/admin/roles/page.tsx`, `app/admin/marketplace/matching/page.tsx`). One skeleton for the whole screen, not a separate one per region |
 | **Empty** | `EmptyState` — "No AI usage recorded in this period". A real, expected state before AI traffic exists; never a fabricated figure |
-| **Forbidden** | caller lacks `ai:read_usage` — `ErrorState` naming the missing permission, the same shape `app/admin/roles/page.tsx` uses |
+| **Forbidden** | caller lacks `ai:read_usage` — `Alert tone="warning"` naming the roles that hold the permission, the same shape `app/admin/roles/page.tsx`, `app/admin/marketplace/catalog/page.tsx` and `app/admin/marketplace/matching/page.tsx` all use. `ErrorState` is for a failed request, not for a permission the caller simply does not hold |
 | **Error** | `ErrorState` with retry |
-| **Success** | a `StatBlock` row (total requests, total tokens, estimated cost, cache-hit rate) above a `Table` broken down by task and by provider, with rejected/failed counts as `Badge`s |
+| **Success** | a `StatBlock` row (total requests, total tokens, estimated cost, cache-hit rate) above a `Table` broken down by task and by provider. Rejected and failed counts are reported as text alongside the breakdown, **not** as `Badge`s: `Badge` is documented in `ui/components/core/Badge.prompt.md` as a "pill-shaped status marker" whose semantic tones pair an icon so that *state* is never colour-only, and every one of its uses in `app/admin/**` wraps a discrete status or label. A count is a quantity, not a state, so it is not a badge |
 
 **Shared components used/added:** existing `Alert`, `Card`, `Table`, `Skeleton`, `EmptyState`,
 `ErrorState`. `StatBlock` already exists at `ui/components/data/StatBlock` but is not yet
@@ -530,6 +580,7 @@ precisely so these tests assert control behaviour rather than prose.
 | 5 | Spec 008's account anonymisation does not clear `ai_usage_events` | Privacy | **Deliberate:** the table holds no exportable personal content, and the 90-day retention sweep removes the linkage. Revisit only if a future spec adds anything content-bearing to it |
 | 6 | Spec 036 §4 records `AIToolCall` as "stubbed spec 033" | Platform | **Reported, not edited:** `ai_tool_calls` is a spec 003 baseline table keyed by `ai_action_id`, so spec 036 extends spec 003's table directly. Spec 033 adds `ai_usage_events` instead and touches `ai_tool_calls` nowhere. Spec 036 is still Draft; correcting its wording belongs to its own review |
 | 7 | "Flagged for abuse review" has no moderation queue to land in (spec 038 unbuilt) | Trust & Safety | **Resolved for MVP:** a flag is a `security_events` row, type `ai.abuse_signal`, severity `warning` — the same interim store `lib/admin-rbac/audit.ts` already uses. It triggers no automatic block, throttle, suspension or ban (master spec §132.11, §132.17). Spec 038 later reads these rows into its queue |
+| 8 | A rolling-quota read that fails could suspend quota enforcement entirely (§3.5) | Platform / Security | **RESOLVED — fail closed.** An earlier implementation returned zero usage on a read failure, which silently lifted the daily request and token ceilings for as long as the database was unreachable. The decision is that the quota read fails CLOSED: `completeAi` rejects with `AI_QUOTA_EXCEEDED`, preserving the spend ceiling, and every consumer degrades to its documented non-AI path (§3.9) rather than the platform losing a control. This matches spec 024 §3's posture for its approval checks; no spec in this repository documents a fail-open control |
 
 ### Abuse signals — the deterministic MVP set
 
