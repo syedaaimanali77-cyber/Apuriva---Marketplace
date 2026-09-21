@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Button, Card, EmptyState, ErrorState, FAQList, Icon, PackageCard, PriceDisplay, Skeleton } from '@/components';
 import type { ServicePageDto } from '@/lib/types/service-page';
+import { AskApuriva } from '@/app/_components/AskApurivaPanel';
 import styles from '../../explore.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
@@ -141,6 +142,9 @@ export default function ServicePage() {
           </ul>
         </div>
       ) : null}
+
+      {/* Spec 034 §5: Ask Apuriva is contextual (spec 014 AC-8), placed here per master spec §16. */}
+      <AskApuriva />
     </main>
   );
 }

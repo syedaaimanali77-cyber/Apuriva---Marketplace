@@ -27,8 +27,53 @@ import { sendCustomerMessage, sendProviderMessage } from '@/lib/negotiation/mess
 import { reviseOffer } from '@/lib/negotiation/revise';
 import { reviseBody, seedOffersFromEachProvider } from '@/lib/negotiation/negotiation-test-support';
 import { randomUUID } from 'node:crypto';
+import { seedAiAssistantData } from '@/lib/ai-assistant/ai-assistant-test-support';
 
 const dbReachable = await isDatabaseReachable();
+
+// Spec 034's cases run BEFORE spec 008's suite below, whose afterAll ends the shared pool.
+describe.skipIf(!dbReachable)('spec 034 §4 — Ask Apuriva data in the export (AC-17)', () => {
+  it('export includes conversations, messages, memory and activity', async () => {
+    const userId = await seedUser();
+    const { conversationId, actionId } = await seedAiAssistantData(userId);
+
+    const payload = await generateExportPayload(userId);
+    expect(payload.aiAssistant.conversations).toHaveLength(1);
+    expect(payload.aiAssistant.conversations[0]!.id).toBe(conversationId);
+    expect(payload.aiAssistant.conversations[0]!.messages.map((m) => [m.role, m.body])).toEqual([
+      ['user', 'Find me an electrician in DHA'],
+      ['assistant', 'Here are three options.'],
+    ]);
+    expect(payload.aiAssistant.memory).toEqual([
+      expect.objectContaining({ key: 'preferred_area', value: { city: 'Lahore', area: 'DHA' }, valueSummary: 'DHA, Lahore' }),
+    ]);
+    expect(payload.aiAssistant.activity.map((a) => a.id)).toEqual([actionId]);
+
+    // Never exported: idempotency columns and the raw tool identifier (master spec §85).
+    const serialized = JSON.stringify(payload.aiAssistant);
+    expect(serialized).not.toContain('idempotency');
+    expect(serialized).not.toContain('search_providers');
+  });
+
+  it('a deleted conversation’s transcript is not exported, but its activity entry is', async () => {
+    const userId = await seedUser();
+    const { conversationId, actionId } = await seedAiAssistantData(userId);
+    await getPool().query('DELETE FROM ai_messages WHERE ai_conversation_id = $1', [conversationId]);
+    await getPool().query('UPDATE ai_conversations SET deleted_at = clock_timestamp() WHERE id = $1', [conversationId]);
+
+    const payload = await generateExportPayload(userId);
+    expect(payload.aiAssistant.conversations).toEqual([]);
+    expect(payload.aiAssistant.activity.map((a) => a.id)).toEqual([actionId]);
+  });
+
+  it('another user’s Ask Apuriva data never appears', async () => {
+    const mine = await seedUser();
+    const theirs = await seedUser();
+    await seedAiAssistantData(theirs);
+    const payload = await generateExportPayload(mine);
+    expect(payload.aiAssistant).toEqual({ conversations: [], memory: [], activity: [] });
+  });
+});
 
 describe.skipIf(!dbReachable)('lib/privacy/export (spec 008 AC-3, integration)', () => {
   const pool = getPool();

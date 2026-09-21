@@ -39,6 +39,7 @@ import type { DataExportStatusDto } from '@/lib/types/privacy';
 import { exportProviderEarnings, type ExportedProviderEarnings } from '@/lib/payouts/privacy';
 import { exportNotificationData } from '@/lib/notifications/privacy';
 import { exportFileAssetData, type ExportedFileAsset } from '@/lib/files/privacy';
+import { exportAiAssistantData, type ExportedAiAssistantData } from '@/lib/ai-assistant/privacy';
 import type { CategoryChannelMap, NotificationDto } from '@/lib/types/notifications';
 import { buildDownloadUrl, verifyDownloadToken } from './download-token';
 import { getFileAssetStorage } from './file-asset-storage';
@@ -385,6 +386,13 @@ export interface DataExportPayload {
     body: string;
     createdAt: string;
   }>;
+  /**
+   * Spec 034 §4 "Retention and privacy" (AC-17) — the caller's non-deleted Ask Apuriva conversations
+   * with their messages, their AI memory and their activity entries. Never exported: idempotency
+   * columns and the raw `action_type` (a tool identifier, master spec §85). Temporary conversations
+   * are never stored, so they cannot appear here.
+   */
+  aiAssistant: ExportedAiAssistantData;
 }
 
 /**
@@ -564,6 +572,8 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
   const notificationData = await exportNotificationData(userId);
   // Spec 027 §4: metadata for the caller's own file assets, ownership-scoped by uploader.
   const fileAssetData = await exportFileAssetData(userId);
+  // Spec 034 §4: Ask Apuriva transcripts, memory and activity, ownership-scoped by user.
+  const aiAssistantData = await exportAiAssistantData(userId);
 
   const paymentRows = await db
     .select({
@@ -1041,6 +1051,7 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
       body: row.body,
       createdAt: row.createdAt.toISOString(),
     })),
+    aiAssistant: aiAssistantData,
   };
 }
 

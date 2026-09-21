@@ -11,8 +11,53 @@ import { reviseOffer } from '@/lib/negotiation/revise';
 import { messageRows, reviseBody, revisionRows, seedOffersFromEachProvider } from '@/lib/negotiation/negotiation-test-support';
 import { cancelDeletion, getGracePeriodDays, REDACTED_DESCRIPTION, requestDeletion, sweepDeletions } from './deletion';
 import { seedBooking, seedUser } from './test-support';
+import { seedAiAssistantData } from '@/lib/ai-assistant/ai-assistant-test-support';
 
 const dbReachable = await isDatabaseReachable();
+
+// Spec 034's cases run BEFORE spec 008's suite below, whose afterAll ends the shared pool.
+describe.skipIf(!dbReachable)('spec 034 §4 — Ask Apuriva data in the deletion sweep (AC-16, AC-17)', () => {
+  async function aiCounts(userId: string) {
+    const { rows } = await getPool().query<{ messages: number; memories: number; live: number; conversations: number; actions: number }>(
+      `SELECT
+         (SELECT count(*)::int FROM ai_messages m JOIN ai_conversations c ON c.id = m.ai_conversation_id WHERE c.user_id = $1) AS messages,
+         (SELECT count(*)::int FROM ai_memories WHERE user_id = $1) AS memories,
+         (SELECT count(*)::int FROM ai_conversations WHERE user_id = $1 AND deleted_at IS NULL) AS live,
+         (SELECT count(*)::int FROM ai_conversations WHERE user_id = $1) AS conversations,
+         (SELECT count(*)::int FROM ai_actions a JOIN ai_conversations c ON c.id = a.ai_conversation_id WHERE c.user_id = $1) AS actions`,
+      [userId],
+    );
+    return rows[0]!;
+  }
+
+  it('sweep deletes messages and memory, tombstones conversations, retains actions', async () => {
+    const userId = await seedUser();
+    await seedAiAssistantData(userId);
+    await getDb()
+      .update(users)
+      .set({ lifecycleStatus: 'deletion_pending', deletionGraceEndsAt: new Date(Date.now() - 1000) })
+      .where(eq(users.id, userId));
+
+    await sweepDeletions();
+    expect(await aiCounts(userId)).toEqual({ messages: 0, memories: 0, live: 0, conversations: 1, actions: 1 });
+  });
+
+  it("an active user's old conversation is never swept — there is no time-based retention (AC-16)", async () => {
+    const userId = await seedUser();
+    const { conversationId } = await seedAiAssistantData(userId);
+    await getPool().query(
+      "UPDATE ai_conversations SET created_at = clock_timestamp() - interval '5 years', updated_at = clock_timestamp() - interval '5 years' WHERE id = $1",
+      [conversationId],
+    );
+    await getPool().query(
+      "UPDATE ai_messages SET created_at = clock_timestamp() - interval '5 years' WHERE ai_conversation_id = $1",
+      [conversationId],
+    );
+
+    await sweepDeletions();
+    expect(await aiCounts(userId)).toEqual({ messages: 2, memories: 1, live: 1, conversations: 1, actions: 1 });
+  });
+});
 
 describe.skipIf(!dbReachable)('lib/privacy/deletion (spec 008 AC-4, integration)', () => {
   const pool = getPool();

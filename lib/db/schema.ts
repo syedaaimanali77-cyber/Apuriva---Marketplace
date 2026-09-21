@@ -137,6 +137,8 @@ export const users = pgTable(
     dataExportRequestId: uuid('data_export_request_id'),
     dataExportStatus: text('data_export_status', { enum: DATA_EXPORT_STATUSES }),
     dataExportFileAssetId: uuid('data_export_file_asset_id').references((): AnyPgColumn => fileAssets.id, { onDelete: 'restrict' }),
+    /** Spec 034 §3.10: `false` turns off EVERY proactive suggestion. System notifications are unaffected. */
+    aiProactiveSuggestionsEnabled: boolean('ai_proactive_suggestions_enabled').notNull().default(true),
   },
   (t) => [
     index('users_data_export_file_asset_id_idx').on(t.dataExportFileAssetId),
@@ -3158,6 +3160,29 @@ export const notificationDeliveries = pgTable(
 // AI
 // ---------------------------------------------------------------------------
 
+/** Spec 034 §4 — the two transcript roles. */
+export const AI_MESSAGE_ROLES = ['user', 'assistant'] as const;
+
+/**
+ * Spec 034 §3.9 — the CLOSED memory allow-list, mirrored by `ai_memories_key_ck`. Preferred
+ * provider characteristics and communication preferences are deliberately absent (AC-19).
+ */
+export const AI_MEMORY_KEYS = ['preferred_category', 'preferred_area', 'language'] as const;
+
+/** Spec 034 §3.5 — `restricted` is refused before execution, so it can never be recorded (AC-7). */
+export const AI_ACTION_RISK_TIERS = ['low', 'medium', 'high'] as const;
+
+/** Spec 034 §3.4 — `pending` until the executor confirms an outcome; never `reversed` (§3.8). */
+export const AI_ACTION_RESULTS = ['pending', 'succeeded', 'failed'] as const;
+
+/** Spec 034 §3.6 — the recovery-path targets of an activity entry (§3.8). */
+export const AI_ACTION_RELATED_ENTITY_TYPES = ['request', 'booking'] as const;
+
+/**
+ * Spec 034 §4 extends this spec 003 baseline skeleton. A deleted conversation is a TOMBSTONE
+ * (`deleted_at` set, messages hard-deleted) because `ai_actions` rows keep referencing it.
+ * Temporary conversations are never stored, so there is no temporary flag (§3.11).
+ */
 export const aiConversations = pgTable(
   'ai_conversations',
   {
@@ -3165,10 +3190,22 @@ export const aiConversations = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    /** Spec 034 §4 idempotency: scoped per user by the unique index below, never globally. */
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
   },
-  (t) => [index('ai_conversations_user_id_idx').on(t.userId)],
+  (t) => [
+    index('ai_conversations_user_id_idx').on(t.userId),
+    index('ai_conversations_user_updated_at_idx').on(t.userId, t.updatedAt),
+    uniqueIndex('ai_conversations_user_idempotency_key_uq').on(t.userId, t.idempotencyKey),
+  ],
 );
 
+/**
+ * Spec 034 §4. A turn writes one `user` and one `assistant` row in one transaction; the turn's
+ * `Idempotency-Key` is stored on the ASSISTANT row, which is the one the route returns.
+ */
 export const aiMessages = pgTable(
   'ai_messages',
   {
@@ -3176,10 +3213,28 @@ export const aiMessages = pgTable(
     aiConversationId: uuid('ai_conversation_id')
       .notNull()
       .references(() => aiConversations.id, { onDelete: 'restrict' }),
+    role: text('role', { enum: AI_MESSAGE_ROLES }).notNull(),
+    body: text('body').notNull(),
+    idempotencyKey: text('idempotency_key'),
+    idempotencyFingerprint: text('idempotency_fingerprint'),
   },
-  (t) => [index('ai_messages_ai_conversation_id_idx').on(t.aiConversationId)],
+  (t) => [
+    index('ai_messages_ai_conversation_id_idx').on(t.aiConversationId),
+    index('ai_messages_conversation_created_at_id_idx').on(t.aiConversationId, t.createdAt, t.id),
+    uniqueIndex('ai_messages_conversation_idempotency_key_uq').on(t.aiConversationId, t.idempotencyKey),
+    check('ai_messages_role_ck', sql`${t.role} in ('user','assistant')`),
+    check(
+      'ai_messages_idempotency_ck',
+      sql`(${t.role} = 'assistant') = (${t.idempotencyKey} is not null) and (${t.idempotencyKey} is null) = (${t.idempotencyFingerprint} is null)`,
+    ),
+  ],
 );
 
+/**
+ * Spec 034 §3.9 / §4. One value per `(user_id, key)`; the key is CHECK-limited to the closed
+ * allow-list, and each key's `value` shape is validated in `lib/ai-assistant/memory-keys.ts`.
+ * No source-conversation column: a preference must survive its conversation's deletion.
+ */
 export const aiMemories = pgTable(
   'ai_memories',
   {
@@ -3187,10 +3242,20 @@ export const aiMemories = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    key: text('key', { enum: AI_MEMORY_KEYS }).notNull(),
+    value: jsonb('value').notNull(),
   },
-  (t) => [index('ai_memories_user_id_idx').on(t.userId)],
+  (t) => [
+    index('ai_memories_user_id_idx').on(t.userId),
+    uniqueIndex('ai_memories_user_key_uq').on(t.userId, t.key),
+    check('ai_memories_key_ck', sql`${t.key} in ('preferred_category','preferred_area','language')`),
+  ],
 );
 
+/**
+ * Spec 034 §4. Carries NO free text: `actionLabel` is derived at read time from `action_type`
+ * through the executor port (§8 risk 6). Ownership comes from the parent conversation.
+ */
 export const aiActions = pgTable(
   'ai_actions',
   {
@@ -3198,8 +3263,30 @@ export const aiActions = pgTable(
     aiConversationId: uuid('ai_conversation_id')
       .notNull()
       .references(() => aiConversations.id, { onDelete: 'restrict' }),
+    actionType: text('action_type').notNull(),
+    riskTier: text('risk_tier', { enum: AI_ACTION_RISK_TIERS }).notNull(),
+    requiredConfirmation: boolean('required_confirmation').notNull(),
+    result: text('result', { enum: AI_ACTION_RESULTS }).notNull().default('pending'),
+    reversible: boolean('reversible').notNull().default(false),
+    relatedEntityType: text('related_entity_type', { enum: AI_ACTION_RELATED_ENTITY_TYPES }),
+    relatedEntityId: uuid('related_entity_id'),
+    /** Set only by `POST …/confirm` (§3.5 "Replay"); a low-risk action run inside a turn has none. */
+    idempotencyKey: text('idempotency_key'),
+    idempotencyFingerprint: text('idempotency_fingerprint'),
   },
-  (t) => [index('ai_actions_ai_conversation_id_idx').on(t.aiConversationId)],
+  (t) => [
+    index('ai_actions_ai_conversation_id_idx').on(t.aiConversationId),
+    index('ai_actions_conversation_created_at_idx').on(t.aiConversationId, t.createdAt),
+    uniqueIndex('ai_actions_conversation_idempotency_key_uq').on(t.aiConversationId, t.idempotencyKey),
+    check('ai_actions_risk_tier_ck', sql`${t.riskTier} in ('low','medium','high')`),
+    check('ai_actions_result_ck', sql`${t.result} in ('pending','succeeded','failed')`),
+    check(
+      'ai_actions_related_entity_type_ck',
+      sql`${t.relatedEntityType} is null or ${t.relatedEntityType} in ('request','booking')`,
+    ),
+    check('ai_actions_related_pair_ck', sql`(${t.relatedEntityType} is null) = (${t.relatedEntityId} is null)`),
+    check('ai_actions_idempotency_pair_ck', sql`(${t.idempotencyKey} is null) = (${t.idempotencyFingerprint} is null)`),
+  ],
 );
 
 export const aiToolCalls = pgTable(

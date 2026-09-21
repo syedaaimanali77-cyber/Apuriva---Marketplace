@@ -937,6 +937,90 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Aggregate AI usage, tokens and estimated cost by task and provider — never per-user, never prompt content',
     tags: ['ai'],
   },
+  // Spec 034 §3.2 — Ask Apuriva. Every route requires a session (guests get 401 and nothing is stored).
+  // The creating routes return 503 AI_PROVIDER_UNAVAILABLE when the assistant or platform AI is off;
+  // every read, delete, the preference and export keep working (privacy rights are never flag-gated).
+  {
+    method: 'POST',
+    path: '/ai/conversations',
+    summary: 'Start an empty conversation; session + CSRF + Idempotency-Key (201 created, 200 replay, 409 changed body)',
+    tags: ['ai'],
+  },
+  {
+    method: 'GET',
+    path: '/ai/conversations',
+    summary: "The caller's own non-deleted conversations, most recently updated first; optional q searches message bodies (paged)",
+    tags: ['ai'],
+  },
+  {
+    method: 'DELETE',
+    path: '/ai/conversations',
+    summary: 'Clear history: tombstone every conversation and delete its messages; activity and AI memory are kept',
+    tags: ['ai'],
+  },
+  {
+    method: 'DELETE',
+    path: '/ai/conversations/{id}',
+    summary: 'Delete one conversation (messages removed, activity and memory kept); not owned is 404',
+    tags: ['ai'],
+  },
+  {
+    method: 'GET',
+    path: '/ai/conversations/{id}/messages',
+    summary: 'The transcript in created_at, id order (paged); not owned or deleted is 404',
+    tags: ['ai'],
+  },
+  {
+    method: 'POST',
+    path: '/ai/conversations/{id}/messages',
+    summary:
+      'One turn; Idempotency-Key (201, 200 replay). Returns the reply, optionally with a memoryProposal (never stored) or a pendingConfirmation. A degradable AI failure (429/503) stores nothing',
+    tags: ['ai'],
+  },
+  {
+    method: 'POST',
+    path: '/ai/conversations/{id}/confirm',
+    summary:
+      'Explicitly confirm a medium/high-risk action by confirmationId; Idempotency-Key. 404 for any id until specs 035/036 register an executor; a stale confirmation passes spec 035 error through',
+    tags: ['ai'],
+  },
+  {
+    method: 'POST',
+    path: '/ai/temporary-turns',
+    summary:
+      'One temporary/private turn: conversation-only and server-stateless. Stores nothing, proposes no memory, executes no action; no Idempotency-Key',
+    tags: ['ai'],
+  },
+  { method: 'GET', path: '/ai/memory', summary: "The caller's AI memory (at most one entry per allow-listed key)", tags: ['ai'] },
+  {
+    method: 'POST',
+    path: '/ai/memory',
+    summary:
+      'Explicitly confirm a proposed memory item { conversationId, key, value }; keys preferred_category, preferred_area, language only (400 otherwise). 201 created, 200 replaced',
+    tags: ['ai'],
+  },
+  { method: 'DELETE', path: '/ai/memory', summary: 'Reset AI memory (every entry); conversations are untouched', tags: ['ai'] },
+  { method: 'DELETE', path: '/ai/memory/{id}', summary: 'Delete one AI memory entry; not owned is 404', tags: ['ai'] },
+  {
+    method: 'GET',
+    path: '/ai/suggestions',
+    summary:
+      'Current proactive suggestions (upcoming_booking, unfinished_request), derived at read time; navigation-only, never an action; [] when turned off',
+    tags: ['ai'],
+  },
+  {
+    method: 'GET',
+    path: '/ai/activity',
+    summary: "The caller's AI activity history, newest first, in plain language — never a raw tool identifier (paged)",
+    tags: ['ai'],
+  },
+  { method: 'GET', path: '/users/me/ai-preferences', summary: 'Read the proactive-suggestions preference', tags: ['ai'] },
+  {
+    method: 'PATCH',
+    path: '/users/me/ai-preferences',
+    summary: 'Turn every proactive suggestion on or off; system notifications are unaffected',
+    tags: ['ai'],
+  },
   // Spec 029 §3 — reviews & ratings. The public list returns `published` AND `flagged` reviews and
   // carries no `status` field, so a flagged review is indistinguishable from a published one to a
   // reader (AC-4/AC-5); only an authorized human moderation decision can hide anything.

@@ -6,6 +6,7 @@ import { activeBookingBlocksDeletionError, deletionAlreadyPendingError, deletion
 import { removePayoutMethodsForDeletedUser } from '@/lib/payouts/privacy';
 import { redactNotificationsForDeletedUser, sweepNotificationRetention } from '@/lib/notifications/privacy';
 import { redactFileAssetsForDeletedUser } from '@/lib/files/deletion';
+import { removeAiAssistantDataForDeletedUser } from '@/lib/ai-assistant/privacy';
 
 const DEFAULT_GRACE_PERIOD_DAYS = 14;
 
@@ -164,6 +165,13 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
     // party's record. `legal_hold` assets are the exception: evidence a later spec marked is
     // RETAINED, with the owner already anonymized and the file name redacted just the same.
     await redactFileAssetsForDeletedUser(db, id, REDACTED_DESCRIPTION);
+
+    // Spec 034 §4 "Retention and privacy" (AC-17): Ask Apuriva transcripts and AI memory are
+    // hard-deleted (nothing references either) and the conversations tombstoned. `ai_actions` rows are
+    // RETAINED, keyed to the now-anonymized user through their conversation — they carry no free text.
+    // This is the ONLY removal path for a conversation besides the user's own delete: no time-based
+    // retention sweep exists (AC-16).
+    await removeAiAssistantDataForDeletedUser(db, id);
 
     // Spec 015 §4: redact the request's free-text PII, keeping the row itself. `not null` on the
     // column means a sentinel rather than NULL; every read path treats it as ordinary text, so a
