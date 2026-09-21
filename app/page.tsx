@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ActiveBookingBanner, Button, EmptyState, ErrorState, Icon, ResultCard, SearchBar, Skeleton, Switch } from '@/components';
+import { ActiveBookingBanner, Button, EmptyState, ErrorState, ResultCard, SearchBar, Skeleton, Switch } from '@/components';
+import { AskApuriva } from '@/app/_components/AskApurivaPanel';
 import { branding } from '@/lib/config/branding';
 import type { CategoryDto } from '@/lib/types/catalog';
 import type { HomeFeedDto, PersonalizationSettingsDto } from '@/lib/types/home';
@@ -233,20 +234,7 @@ export default function HomePage() {
         ))
       )}
 
-      <div className={styles.promoBanner}>
-        <span className={styles.promoIcon}>
-          <Icon name="sparkles" size="lg" color="var(--teal-600)" />
-        </span>
-        <div>
-          <h2 className={styles.promoTitle}>Apuriva AI Assistant</h2>
-          <p className={styles.promoDescription}>
-            Smart suggestions and offer comparisons, right from the app — coming soon.
-          </p>
-        </div>
-        <Button variant="secondary" disabled title="Coming soon">
-          Ask AI Assistant
-        </Button>
-      </div>
+      <AskApuriva />
     </main>
   );
 }
