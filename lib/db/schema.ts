@@ -3918,3 +3918,65 @@ export const recentSearches = pgTable(
     index('recent_searches_category_id_idx').on(t.categoryId),
   ],
 );
+
+/** Spec 035 §4 — only medium and high are ever confirmed (spec 034's risk policy). */
+export const MCP_CONFIRMATION_RISK_TIERS = ['medium', 'high'] as const;
+
+/**
+ * Spec 035 §4 — the MCP confirmation record (master spec §90, AC-3).
+ *
+ * Spec 034 allocated this to spec 035 (§3.4: "the confirmation record, its binding to exact
+ * parameters, expiry, and detecting stale parameters"). It is a table of this spec's OWN:
+ * `ai_actions` stays wholly spec 034's and is neither extended nor written here — the two are
+ * linked only by the opaque id spec 034 already carries as `confirmationId`.
+ *
+ * `consumed_at` makes a confirmation single-use: a binding the user approved once authorises one
+ * execution, never a replay. `expires_at` bounds how long an unanswered card stays valid.
+ */
+export const mcpConfirmations = pgTable(
+  'mcp_confirmations',
+  {
+    ...baseColumns(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    /** The tool this binding was issued for; presenting it for another tool is a tampering signal. */
+    toolName: text('tool_name').notNull(),
+    riskTier: text('risk_tier', { enum: MCP_CONFIRMATION_RISK_TIERS }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('mcp_confirmations_user_id_idx').on(t.userId),
+    index('mcp_confirmations_expires_at_idx').on(t.expiresAt),
+    // Only medium and high are ever confirmed: `low` executes without one and `restricted` is
+    // refused before a confirmation could exist (spec 034's risk policy).
+    check('mcp_confirmations_risk_tier_ck', sql`${t.riskTier} in ('medium','high')`),
+  ],
+);
+
+/**
+ * Spec 035 §4 — the bound parameters, one row each, in display order (master spec §90: provider,
+ * service, date/time, location, price, currency).
+ *
+ * Deliberately relational rather than a single `jsonb` column: these are the exact values the user
+ * approved and the pipeline compares against, which is core data, and spec 003 AC-5 reserves
+ * `jsonb` for genuinely variable service-specific attributes rather than for data the application
+ * reads back field by field.
+ */
+export const mcpConfirmationParameters = pgTable(
+  'mcp_confirmation_parameters',
+  {
+    ...baseColumns(),
+    mcpConfirmationId: uuid('mcp_confirmation_id')
+      .notNull()
+      .references(() => mcpConfirmations.id, { onDelete: 'restrict' }),
+    label: text('label').notNull(),
+    value: text('value').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    index('mcp_confirmation_parameters_mcp_confirmation_id_idx').on(t.mcpConfirmationId),
+    uniqueIndex('mcp_confirmation_parameters_confirmation_label_uq').on(t.mcpConfirmationId, t.label),
+  ],
+);

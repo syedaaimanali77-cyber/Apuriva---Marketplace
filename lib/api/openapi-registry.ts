@@ -1406,4 +1406,13 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'Hand a ticket to the spec that owns its outcome; admin (support/resolve); reason required; requires Idempotency-Key. Files a spec 030 safety report through spec 030 own path, records the id of a dispute a participant already opened through spec 031 own route, or records that the matter is Finance. Sets legal_hold. Applies no sanction, creates no refund, resolves no dispute, writes no lifecycle_status - and nothing comes back',
     tags: ['admin'],
   },
+  // Spec 035 §3 "Admin surface" — the MCP tool registry. Metadata only: no tool input, no output
+  // and no call history (the persisted tool-call log is spec 036's, and so is any view of it).
+  {
+    method: 'GET',
+    path: '/admin/mcp/tools',
+    summary:
+      'List registered MCP tools and what each may do; admin (mcp/read_registry, Super Admin only). Metadata only - name, risk tier, plain-language label, reversibility, allowed modes, confirmation and idempotency declarations. Empty until the tool catalogue spec registers tools',
+    tags: ['admin'],
+  },
 ];

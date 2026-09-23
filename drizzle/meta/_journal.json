@@ -211,6 +211,13 @@
       "when": 1790800000000,
       "tag": "0030_add_ai_conversation_memory",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790800100000,
+      "tag": "0031_add_mcp_authorization",
+      "breakpoints": true
     }
   ]
 }

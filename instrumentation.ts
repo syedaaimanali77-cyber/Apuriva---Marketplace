@@ -96,4 +96,18 @@ export async function register(): Promise<void> {
   // spec breaks.
   const { registerSupportIntegration } = await import('@/lib/support');
   registerSupportIntegration();
+
+  // Spec 035 makes spec 034's `AiActionExecutor` port real: from here the assistant's actions run
+  // through the eight-step MCP authorization pipeline (master spec §89) instead of the inert
+  // default. It must come AFTER spec 034 ships the port, which it does at import time.
+  //
+  // NOTE WHAT IS ABSENT. Spec 035 registers NO business tool — the read/action catalogue is spec
+  // 036's — so both tool registries are empty and the assistant still proposes nothing. What
+  // changes here is only that a tool, once 036 registers one, cannot run without passing all eight
+  // checks. No booking transition, payment gate or audit table is registered either: check 8
+  // writes through spec 035's audit port, whose durable sink is spec 039's.
+  //
+  // Rolling spec 035 back returns spec 034's port to its inert default, so no shipped spec breaks.
+  const { registerMcpIntegration } = await import('@/lib/mcp');
+  registerMcpIntegration();
 }
