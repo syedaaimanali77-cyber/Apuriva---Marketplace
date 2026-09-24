@@ -31,13 +31,21 @@ import type {
 import { runLowRiskAction } from './actions';
 import { loadOwnedConversation, toMessageDto, transcriptOf, type StoredMessage } from './conversations';
 import { aiNotFoundError, idempotencyKeyConflictError } from './errors';
-import { getAiActionExecutor, type AiActionContext, type AiProposedAction } from './executor';
+import {
+  getAiActionExecutor,
+  isRejectedToolCall,
+  type AiActionContext,
+  type AiModelTool,
+  type AiProposedAction,
+  type AiRejectedToolCall,
+} from './executor';
 import { requireAskApurivaAvailable } from './feature-flags';
 import { AI_TURN_BODY_MAX_LENGTH } from './limits';
 import { memoryContextFor } from './memory';
 import { summarizeMemoryValues, validateMemoryEntry } from './memory-keys';
 import { parseReplyEnvelope } from './reply-envelope';
 import { decideRisk } from './risk-policy';
+import { replyFromOutcome } from './tool-outcome';
 
 type Turn = { role: AiMessageRole; body: string };
 
@@ -49,13 +57,17 @@ function validateTurnBody(value: unknown, field: string): string {
   return value;
 }
 
-/** §3.3 step 3: `input` is `{ memory, turns }` as JSON — never system instructions. */
-async function callConversationModel(userId: string, turns: Turn[]): Promise<string> {
+/**
+ * §3.3 step 3: `input` is `{ memory, turns }` as JSON — never system instructions. A normal turn
+ * adds spec 036's model-facing catalogue as `tools`, as DATA, and only when it is non-empty; a
+ * temporary turn never passes one, because it can never act (AC-18).
+ */
+async function callConversationModel(userId: string, turns: Turn[], tools: AiModelTool[] = []): Promise<string> {
   const memory = await memoryContextFor(userId);
   const { output } = await completeAi({
     task: 'conversation',
     subject: { kind: 'user', userId },
-    input: JSON.stringify({ memory, turns }),
+    input: JSON.stringify(tools.length > 0 ? { memory, turns, tools } : { memory, turns }),
   });
   return output;
 }
@@ -98,16 +110,18 @@ export async function sendTurn(
   const prior = await transcriptOf(getDb(), ctx.conversationId);
   const turns: Turn[] = [...prior.map((m) => ({ role: m.role, body: m.body })), { role: 'user', body: text }];
 
-  const output = await callConversationModel(ctx.userId, turns);
+  const executor = getAiActionExecutor();
+  const output = await callConversationModel(ctx.userId, turns, await executor.catalogFor(ctx));
   const envelope = parseReplyEnvelope(output);
   const memoryProposal = await toMemoryProposal(envelope.memoryProposal);
 
-  // Spec 035/036 interpret tool requests; this spec only applies the risk decision to the result.
-  const proposed = await getAiActionExecutor().interpretTurn(ctx, output);
+  // Specs 035/036 interpret the tool request; this spec applies the risk decision to the result.
+  const proposed = await executor.interpretTurn(ctx, output);
+  const { replyText, pendingConfirmation } = await applyProposedAction(ctx, turns, envelope.reply, proposed);
 
   let reply: StoredMessage;
   try {
-    reply = await persistTurn(ctx.conversationId, text, envelope.reply, idempotencyKey, fingerprint);
+    reply = await persistTurn(ctx.conversationId, text, replyText, idempotencyKey, fingerprint);
   } catch (err) {
     if (err instanceof TurnReplay) return replayTurn(err.row, fingerprint);
     throw err;
@@ -115,33 +129,50 @@ export async function sendTurn(
 
   const message: AiMessageDto = toMessageDto(reply);
   if (memoryProposal) message.memoryProposal = memoryProposal;
-  const pendingConfirmation = await applyProposedAction(ctx, proposed);
   if (pendingConfirmation) message.pendingConfirmation = pendingConfirmation;
 
   return { message, replayed: false };
 }
 
 /**
- * The risk decision for the (at most one) action the executor proposed. Low runs now; medium/high
- * are only PRESENTED (they need an explicit `POST …/confirm`); restricted is dropped — never offered,
- * never executed, never recorded (AC-7).
+ * The risk decision for the (at most one) tool call the executor interpreted, and the reply it
+ * leaves (spec 036 §3):
+ *
+ *   - REJECTED (unknown/unavailable tool, or input failing its strict schema) — nothing runs or is
+ *     recorded; the failure goes back to the model, whose reply explains it.
+ *   - LOW — runs NOW, before the turn is persisted, and the reply is regenerated from its real
+ *     outcome; the model's earlier text, written before anything ran, is never shown.
+ *   - MEDIUM/HIGH — only PRESENTED (they need an explicit `POST …/confirm`); the reply is the model's.
+ *   - RESTRICTED — dropped: never offered, never executed, never recorded (AC-7).
+ *
+ * A failing follow-up completion propagates like any model failure, so nothing is persisted.
  */
 async function applyProposedAction(
   ctx: AiActionContext,
-  proposed: AiProposedAction | null,
-): Promise<AiPendingConfirmationDto | undefined> {
-  if (!proposed) return undefined;
+  turns: Turn[],
+  modelReply: string,
+  proposed: AiProposedAction | AiRejectedToolCall | null,
+): Promise<{ replyText: string; pendingConfirmation?: AiPendingConfirmationDto }> {
+  if (!proposed) return { replyText: modelReply };
+  if (isRejectedToolCall(proposed)) {
+    return { replyText: await replyFromOutcome(ctx.userId, turns, proposed.toolName, proposed.outcome) };
+  }
+
   const decision = decideRisk(proposed.riskTier);
   if (decision.kind === 'execute') {
-    await runLowRiskAction(ctx, proposed);
-    return undefined;
+    const outcome = await runLowRiskAction(ctx, proposed);
+    if (!outcome) return { replyText: modelReply };
+    return { replyText: await replyFromOutcome(ctx.userId, turns, proposed.actionType, outcome) };
   }
-  if (decision.kind === 'refuse' || !proposed.confirmationId) return undefined;
+  if (decision.kind === 'refuse' || !proposed.confirmationId) return { replyText: modelReply };
   return {
-    confirmationId: proposed.confirmationId,
-    riskTier: decision.tier,
-    actionLabel: proposed.actionLabel,
-    parameters: proposed.parameters,
+    replyText: modelReply,
+    pendingConfirmation: {
+      confirmationId: proposed.confirmationId,
+      riskTier: decision.tier,
+      actionLabel: proposed.actionLabel,
+      parameters: proposed.parameters,
+    },
   };
 }
 

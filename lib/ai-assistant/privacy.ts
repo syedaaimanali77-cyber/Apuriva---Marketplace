@@ -8,9 +8,9 @@
  */
 import { asc, eq, inArray, isNull, and, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { aiActions, aiConversations, aiMemories, aiMessages } from '@/lib/db/schema';
+import { aiActions, aiConversations, aiMemories, aiMessages, aiToolCalls } from '@/lib/db/schema';
 import type { Executor } from '@/lib/offers/db';
-import type { AiMemoryEntry, AiMemoryKey } from '@/lib/types/ai-assistant';
+import type { AiMemoryEntry, AiMemoryKey, AiToolCallExportEntry } from '@/lib/types/ai-assistant';
 import { getAiActionExecutor } from './executor';
 import { summarizeMemoryValues } from './memory-keys';
 
@@ -36,6 +36,11 @@ export interface ExportedAiAssistantData {
     result: string;
     related: { type: 'request' | 'booking'; id: string } | null;
     createdAt: string;
+    /**
+     * Spec 036 (AC-11): the tool calls behind the entry, in spec 036's minimal redacted structure
+     * only — exactly what `ai_tool_calls` stores; never the idempotency key, never content.
+     */
+    toolCalls: AiToolCallExportEntry[];
   }>;
 }
 
@@ -84,6 +89,20 @@ export async function exportAiAssistantData(userId: string): Promise<ExportedAiA
     .innerJoin(aiConversations, eq(aiConversations.id, aiActions.aiConversationId))
     .where(eq(aiConversations.userId, userId))
     .orderBy(asc(aiActions.createdAt), asc(aiActions.id));
+  const actionIds = actionRows.map((a) => a.id);
+  const toolCallRows = actionIds.length
+    ? await db
+        .select({
+          aiActionId: aiToolCalls.aiActionId,
+          inputParams: aiToolCalls.inputParams,
+          outputSummary: aiToolCalls.outputSummary,
+          errorCode: aiToolCalls.errorCode,
+          createdAt: aiToolCalls.createdAt,
+        })
+        .from(aiToolCalls)
+        .where(inArray(aiToolCalls.aiActionId, actionIds))
+        .orderBy(asc(aiToolCalls.createdAt), asc(aiToolCalls.id))
+    : [];
   const executor = getAiActionExecutor();
 
   return {
@@ -111,6 +130,14 @@ export async function exportAiAssistantData(userId: string): Promise<ExportedAiA
       result: a.result,
       related: a.relatedEntityType && a.relatedEntityId ? { type: a.relatedEntityType, id: a.relatedEntityId } : null,
       createdAt: a.createdAt.toISOString(),
+      toolCalls: toolCallRows
+        .filter((call) => call.aiActionId === a.id)
+        .map((call) => ({
+          inputParams: call.inputParams as AiToolCallExportEntry['inputParams'],
+          outputSummary: call.outputSummary as AiToolCallExportEntry['outputSummary'],
+          errorCode: call.errorCode,
+          createdAt: call.createdAt.toISOString(),
+        })),
     })),
   };
 }

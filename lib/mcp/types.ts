@@ -35,6 +35,12 @@ export interface McpAuthContext {
   sessionId: string;
   /** Present only after the user explicitly confirmed a medium/high action (spec 034 §3.4). */
   confirmationId?: string;
+  /**
+   * Spec 036 §3 "Idempotency": the SERVER-GENERATED key for a state-changing tool, issued once per
+   * accepted intent and reused on any retry or replay. Never from tool input (a tool's `validate`
+   * rejects an `idempotencyKey` field) and never from model output.
+   */
+  idempotencyKey?: string;
 }
 
 export interface McpToolResult<T> {

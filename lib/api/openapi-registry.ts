@@ -981,7 +981,7 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     method: 'POST',
     path: '/ai/conversations/{id}/confirm',
     summary:
-      'Explicitly confirm a medium/high-risk action by confirmationId; Idempotency-Key. 404 for any id until specs 035/036 register an executor; a stale confirmation passes spec 035 error through',
+      'Explicitly confirm a medium/high-risk action by confirmationId; Idempotency-Key. Runs it with the server-stored validated input and returns the recorded action (real result) plus, when it could be generated, `message` — the assistant reply written from the real outcome (spec 036). 404 for an unknown id; a stale confirmation passes spec 035 error through',
     tags: ['ai'],
   },
   {

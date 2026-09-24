@@ -16,12 +16,13 @@ import { idempotencyFingerprint } from '@/lib/api/idempotency';
 import { buildPage, type PageParams } from '@/lib/api/pagination';
 import { getDb } from '@/lib/db';
 import { isUniqueViolation, queryRows } from '@/lib/offers/db';
-import type { AiActionDto, AiActionRiskTier } from '@/lib/types/ai-assistant';
+import type { AiActionDto, AiActionRiskTier, AiMessageDto } from '@/lib/types/ai-assistant';
 import { loadOwnedConversation } from './conversations';
 import { aiNotFoundError, idempotencyKeyConflictError } from './errors';
-import { getAiActionExecutor, type AiActionContext, type AiProposedAction } from './executor';
+import { getAiActionExecutor, type AiActionContext, type AiActionOutcome, type AiProposedAction } from './executor';
 import { requireAskApurivaAvailable } from './feature-flags';
 import { decideRisk } from './risk-policy';
+import { replyAfterConfirmedAction } from './tool-outcome';
 
 interface ActionRow {
   id: string;
@@ -74,39 +75,55 @@ async function insertPendingAction(
 }
 
 /**
- * Runs the executor for a recorded row. Only a confirmed outcome is written; a throw leaves the row
- * `pending` ("outcome unknown") and is re-thrown so a route passes spec 035's error through.
+ * Runs the executor for a recorded row and returns its REAL outcome (spec 036 §3). Only a confirmed
+ * outcome is written: `succeeded` or `failed`. An `unknown` outcome — or a throw — leaves the row
+ * `pending` ("outcome unknown"); a throw is re-thrown so a route passes the error through.
  */
-async function executeRecorded(ctx: AiActionContext, row: ActionRow, action: AiProposedAction): Promise<ActionRow> {
-  let outcome: { succeeded: boolean };
+async function executeRecorded(
+  ctx: AiActionContext,
+  row: ActionRow,
+  action: AiProposedAction,
+): Promise<{ row: ActionRow; outcome: AiActionOutcome }> {
+  let outcome: AiActionOutcome;
   try {
     outcome = await getAiActionExecutor().execute(ctx, row.id, action);
   } catch (err) {
     console.error(JSON.stringify({ event: 'ai_assistant.action_outcome_unknown', aiActionId: row.id, error: String(err) }));
     throw err;
   }
+  if (outcome.status === 'unknown') {
+    console.error(JSON.stringify({ event: 'ai_assistant.action_outcome_unknown', aiActionId: row.id, error: outcome.error.code }));
+    return { row, outcome };
+  }
   const [updated] = await queryRows<ActionRow>(
     getDb(),
     sql`UPDATE ai_actions
-           SET result = ${outcome.succeeded ? 'succeeded' : 'failed'}, updated_at = clock_timestamp(), version = version + 1
+           SET result = ${outcome.status === 'succeeded' ? 'succeeded' : 'failed'}, updated_at = clock_timestamp(), version = version + 1
          WHERE id = ${row.id} AND result = 'pending'
      RETURNING ${ACTION_COLUMNS}`,
   );
-  return updated ?? row;
+  return { row: updated ?? row, outcome };
 }
 
+/** Spec 004's own wording for an unexpected failure — the outcome of a throwing executor. */
+const UNKNOWN_OUTCOME: AiActionOutcome = {
+  status: 'unknown',
+  error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.', retryable: false },
+};
+
 /**
- * A LOW-risk action proposed during a normal turn runs immediately, without confirmation (AC-4).
- * A throw is logged and swallowed here — the turn's reply is still returned and the row stays
- * `pending` — because the user never asked this call to act; activity history shows the truth.
+ * A LOW-risk action proposed during a normal turn runs immediately, without confirmation (AC-4),
+ * and its outcome is returned so the turn's reply can be generated from it (spec 036 §3). A throw is
+ * logged and reported as `unknown` — the row stays `pending` — never as a success.
  */
-export async function runLowRiskAction(ctx: AiActionContext, action: AiProposedAction): Promise<void> {
-  if (decideRisk(action.riskTier).kind !== 'execute') return;
+export async function runLowRiskAction(ctx: AiActionContext, action: AiProposedAction): Promise<AiActionOutcome | null> {
+  if (decideRisk(action.riskTier).kind !== 'execute') return null;
   const row = await insertPendingAction(ctx.conversationId, action, 'low', null);
   try {
-    await executeRecorded(ctx, row, action);
+    return (await executeRecorded(ctx, row, action)).outcome;
   } catch {
     // Already logged by executeRecorded; the row remains `pending` ("outcome unknown").
+    return UNKNOWN_OUTCOME;
   }
 }
 
@@ -119,7 +136,7 @@ export async function confirmAction(
   ctx: AiActionContext,
   idempotencyKey: string,
   rawBody: unknown,
-): Promise<{ action: AiActionDto; replayed: boolean }> {
+): Promise<{ action: AiActionDto; message?: AiMessageDto; replayed: boolean }> {
   requireAskApurivaAvailable();
 
   const body = (typeof rawBody === 'object' && rawBody !== null && !Array.isArray(rawBody) ? rawBody : {}) as Record<string, unknown>;
@@ -158,7 +175,10 @@ export async function confirmAction(
   }
 
   const executed = await executeRecorded(ctx, row, action);
-  return { action: toActionDto(executed, action.actionLabel), replayed: false };
+  // Spec 036 §3: the model's reply about the action is generated from the real outcome only. If it
+  // cannot be produced, there is no reply — the recorded result stands on its own.
+  const message = await replyAfterConfirmedAction(ctx, action.actionType, executed.outcome, { key: idempotencyKey, fingerprint });
+  return { action: toActionDto(executed.row, action.actionLabel), ...(message ? { message } : {}), replayed: false };
 }
 
 async function findActionByKey(conversationId: string, idempotencyKey: string): Promise<ActionRow | null> {

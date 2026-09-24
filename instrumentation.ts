@@ -110,4 +110,14 @@ export async function register(): Promise<void> {
   // Rolling spec 035 back returns spec 034's port to its inert default, so no shipped spec breaks.
   const { registerMcpIntegration } = await import('@/lib/mcp');
   registerMcpIntegration();
+
+  // Spec 036 registers the business-tool catalogue (exactly ten tools: seven reads plus
+  // create_booking, cancel_booking and authorize_payment) in spec 035's USER registry, and its own
+  // executor with spec 034's port. It must run AFTER spec 035, whose executor it takes the place of;
+  // every tool still runs only through spec 035's eight-check pipeline.
+  //
+  // Rolling spec 036 back leaves spec 035's executor with an empty registry: the assistant proposes
+  // nothing, exactly as before this spec.
+  const { registerMcpToolCatalog } = await import('@/lib/mcp-tools');
+  await registerMcpToolCatalog();
 }

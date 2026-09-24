@@ -3,6 +3,7 @@ import { requireIdempotencyKey } from '@/lib/api/idempotency';
 import { apiSuccess } from '@/lib/api/response';
 import { requireCsrf, requireSession } from '@/lib/auth/require-session';
 import { confirmAction } from '@/lib/ai-assistant';
+import type { AiConfirmResultDto } from '@/lib/types/ai-assistant';
 import { aiIdFromUrl, enforceDefaultRateLimit } from '../../../ai-route-support';
 
 /**
@@ -19,10 +20,13 @@ export const POST = withApiRoute(async (request, correlationId) => {
 
   const idempotencyKey = requireIdempotencyKey(request);
   const body = await request.json().catch(() => ({}));
-  const { action } = await confirmAction(
+  const { action, message } = await confirmAction(
     { userId: session.userId, sessionId: session.id, conversationId: aiIdFromUrl(request, 1) },
     idempotencyKey,
     body,
   );
-  return apiSuccess(action, correlationId);
+  // Spec 036 amendment: `message` is the assistant's reply generated from the REAL outcome. It is
+  // absent on a replay (it is already in the transcript) and when it could not be generated.
+  const result: AiConfirmResultDto = message ? { ...action, message } : action;
+  return apiSuccess(result, correlationId);
 });

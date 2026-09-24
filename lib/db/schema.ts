@@ -3289,6 +3289,11 @@ export const aiActions = pgTable(
   ],
 );
 
+/**
+ * Spec 003 baseline, extended by spec 036 §4 (migration 0032): one row per tool-call execution for an
+ * `ai_actions` row. `input_params`/`output_summary` hold ONLY spec 036's minimal redacted structure
+ * (IDs, enums, minor units + currency, timestamps, booleans, free-text field NAMES) — never content.
+ */
 export const aiToolCalls = pgTable(
   'ai_tool_calls',
   {
@@ -3296,8 +3301,17 @@ export const aiToolCalls = pgTable(
     aiActionId: uuid('ai_action_id')
       .notNull()
       .references(() => aiActions.id, { onDelete: 'restrict' }),
+    /** Server-generated per accepted intent (spec 036 §3 "Idempotency"); null for a read tool. */
+    idempotencyKey: text('idempotency_key'),
+    inputParams: jsonb('input_params').notNull(),
+    outputSummary: jsonb('output_summary'),
+    errorCode: text('error_code'),
+    retriedFromCallId: uuid('retried_from_call_id').references((): AnyPgColumn => aiToolCalls.id, { onDelete: 'restrict' }),
   },
-  (t) => [index('ai_tool_calls_ai_action_id_idx').on(t.aiActionId)],
+  (t) => [
+    index('ai_tool_calls_ai_action_id_idx').on(t.aiActionId),
+    index('ai_tool_calls_retried_from_call_id_idx').on(t.retriedFromCallId),
+  ],
 );
 
 /** Spec 033 §4 — the AI tasks `lib/ai` can be asked for (master spec §80.2, minus voice

@@ -1,7 +1,8 @@
 /**
- * Spec 035 §3 — this spec's implementation of spec 034's `AiActionExecutor` port, and the ONLY
- * way MCP reaches the assistant. Registered from `instrumentation.ts`, the pattern specs 021,
- * 027, 030 and 034 already use. No parallel AI execution path exists or may be added.
+ * Spec 035 §3 — this spec's implementation of spec 034's `AiActionExecutor` port. Registered from
+ * `instrumentation.ts`, the pattern specs 021, 027, 030 and 034 already use. Spec 036's catalogue
+ * executor (`lib/mcp-tools/executor.ts`) is registered after it and takes its place; both reach a
+ * tool ONLY through `authorizeAndExecute`, so no execution path skips the eight checks.
  *
  * What this spec does NOT own, and does not touch here: the conversation surface, the risk
  * decision (`risk-policy.ts`), presenting and accepting confirmations, and the `ai_actions` rows
@@ -19,22 +20,50 @@
  * How a model REQUESTS a tool — the wire shape of a tool call in model output — is defined by the
  * spec that ships the catalogue (036), together with the tools themselves. This spec deliberately
  * invents no envelope: with nothing to name, there is nothing to parse.
+ *
+ * Spec 036 AC-8: the mode comes from the caller's live session (`resolveSessionActiveMode`), never
+ * a hard-coded value.
  */
-import { registerAiActionExecutor, type AiActionContext, type AiActionExecutor, type AiProposedAction } from '@/lib/ai-assistant/executor';
+import { sql } from 'drizzle-orm';
+import {
+  registerAiActionExecutor,
+  type AiActionContext,
+  type AiActionExecutor,
+  type AiActionOutcome,
+  type AiProposedAction,
+} from '@/lib/ai-assistant/executor';
+import { getDb } from '@/lib/db';
+import { queryRows } from '@/lib/offers/db';
+import type { ActiveMode } from '@/lib/types/users';
 import { authorizeAndExecute } from './authorize';
 import { readMcpConfirmation } from './confirmation';
 import { findUserTool, listMcpTools } from './registry';
 import type { McpAuthContext } from './types';
 
 /**
- * Spec 034's `AiActionContext` carries no mode or admin flag, so the executor cannot invent one:
- * a conversation is a user surface in the caller's current mode. Until spec 036 threads the live
- * session mode through the port, actions run as `customer` and never as an admin — the narrower
- * of the two, so a mode-restricted tool refuses rather than running with more reach than the
- * caller has.
+ * Spec 036 AC-8 — the caller's CURRENT `sessions.active_mode`, read server-side from the session
+ * spec 034 already authenticated. Null when that session no longer resolves (revoked, expired, or
+ * not this user's); the caller then fails step 1 of the pipeline rather than assuming a mode.
  */
-function authContextFor(ctx: AiActionContext): McpAuthContext {
-  return { userId: ctx.userId, sessionId: ctx.sessionId, activeMode: 'customer', isAdmin: false };
+export async function resolveSessionActiveMode(userId: string, sessionId: string): Promise<ActiveMode | null> {
+  const [row] = await queryRows<{ active_mode: ActiveMode }>(
+    getDb(),
+    sql`SELECT active_mode FROM sessions
+         WHERE id = ${sessionId} AND user_id = ${userId} AND revoked_at IS NULL AND expires_at > now()`,
+  );
+  return row?.active_mode ?? null;
+}
+
+/**
+ * The authorization context for a conversation: always a user surface, never an admin, in the
+ * caller's current mode (spec 036 AC-8 — no hard-coded mode). A session that no longer resolves
+ * yields an empty `sessionId`, so the pipeline refuses at step 1 (authenticated identity); the mode
+ * it carries then is never consulted.
+ */
+export async function mcpAuthContextFor(ctx: AiActionContext): Promise<McpAuthContext> {
+  const activeMode = await resolveSessionActiveMode(ctx.userId, ctx.sessionId);
+  if (!activeMode) return { userId: ctx.userId, sessionId: '', activeMode: 'customer', isAdmin: false };
+  return { userId: ctx.userId, sessionId: ctx.sessionId, activeMode, isAdmin: false };
 }
 
 const MCP_EXECUTOR: AiActionExecutor = {
@@ -69,27 +98,37 @@ const MCP_EXECUTOR: AiActionExecutor = {
     };
   },
 
-  /** Runs the action through all eight checks. There is no path that skips them. */
-  async execute(ctx, _aiActionId, action): Promise<{ succeeded: boolean }> {
+  /**
+   * Runs the action through all eight checks. There is no path that skips them. The input is the
+   * server-held validated input the proposal carries (spec 036 §3), never anything re-supplied. A
+   * refusal throws, which spec 034 records as "outcome unknown"; spec 036's catalogue executor,
+   * registered after this one, returns structured failures instead.
+   */
+  async execute(ctx, _aiActionId, action): Promise<AiActionOutcome> {
     const context: McpAuthContext = {
-      ...authContextFor(ctx),
+      ...(await mcpAuthContextFor(ctx)),
       confirmationId: action.confirmationId,
     };
     const result = await authorizeAndExecute(
       {
         toolName: action.actionType,
-        rawInput: {},
+        rawInput: action.input ?? {},
         parameters: action.parameters.map((parameter) => ({ label: parameter.label, value: parameter.value })),
         surface: 'user',
       },
       context,
     );
-    return { succeeded: result.success };
+    return { status: 'succeeded', data: result.data };
   },
 
   /** Plain-language label, from the registry. Null keeps an unknown action out of history. */
   labelFor(actionType) {
     return listMcpTools().find((tool) => tool.name === actionType)?.label ?? null;
+  },
+
+  /** No catalogue of its own: spec 036 supplies the model-facing catalogue with its tools. */
+  async catalogFor() {
+    return [];
   },
 };
 

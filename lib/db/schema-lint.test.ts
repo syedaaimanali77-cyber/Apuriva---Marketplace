@@ -130,6 +130,10 @@ describe('schema lint (spec 003)', () => {
       // its own CHECK, precisely because it IS core/queryable data (AC-5). Never exported.
       reviews: ['flag_signals'],
       review_responses: ['flag_signals'],
+      // Spec 036 §4: a tool call's minimal REDACTED input and its outcome summary (resource type, id,
+      // status) — IDs, enums, minor units + currency, timestamps, booleans and free-text field names
+      // only. Read back whole for the AI data export; never queried or filtered on in SQL.
+      ai_tool_calls: ['input_params', 'output_summary'],
     };
 
     const offenders: string[] = [];

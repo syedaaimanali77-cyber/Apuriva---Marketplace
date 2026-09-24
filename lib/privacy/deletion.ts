@@ -7,6 +7,7 @@ import { removePayoutMethodsForDeletedUser } from '@/lib/payouts/privacy';
 import { redactNotificationsForDeletedUser, sweepNotificationRetention } from '@/lib/notifications/privacy';
 import { redactFileAssetsForDeletedUser } from '@/lib/files/deletion';
 import { removeAiAssistantDataForDeletedUser } from '@/lib/ai-assistant/privacy';
+import { removeAiToolCallsForDeletedUser } from '@/lib/mcp-tools/privacy';
 
 const DEFAULT_GRACE_PERIOD_DAYS = 14;
 
@@ -172,6 +173,11 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
     // This is the ONLY removal path for a conversation besides the user's own delete: no time-based
     // retention sweep exists (AC-16).
     await removeAiAssistantDataForDeletedUser(db, id);
+
+    // Spec 036 §4 "Retention and privacy" (AC-10): the tool-call records behind those retained
+    // `ai_actions` rows do NOT survive account deletion — they are hard-deleted. `ai_actions` itself
+    // stays exactly as spec 034 decided.
+    await removeAiToolCallsForDeletedUser(db, id);
 
     // Spec 015 §4: redact the request's free-text PII, keeping the row itself. `not null` on the
     // column means a sentinel rather than NULL; every read path treats it as ordinary text, so a

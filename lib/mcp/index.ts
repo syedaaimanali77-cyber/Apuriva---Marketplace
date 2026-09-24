@@ -31,7 +31,8 @@ export {
 export { findAdminTool, findUserTool, listMcpToolMetadata, listMcpTools, registerMcpTool } from './registry';
 export { MCP_READ_REGISTRY_ACTION, MCP_RESOURCE, requireMcpRegistryPermission } from './permissions';
 export { registerMcpAuditSink, type McpAuditEntry, type McpAuditSink } from './audit';
-export { registerMcpIntegration } from './executor';
+export { mcpAuthContextFor, registerMcpIntegration, resolveSessionActiveMode } from './executor';
+export { mcpConfirmationStaleError, mcpToolNotAvailableInContextError } from './errors';
 export {
   requireEnum,
   requireExactFields,

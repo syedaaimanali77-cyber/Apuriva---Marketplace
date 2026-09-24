@@ -218,6 +218,13 @@
       "when": 1790800100000,
       "tag": "0031_add_mcp_authorization",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790800200000,
+      "tag": "0032_extend_ai_tool_calls",
+      "breakpoints": true
     }
   ]
 }

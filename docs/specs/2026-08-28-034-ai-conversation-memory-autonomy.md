@@ -155,7 +155,7 @@ spec 015 §3 records from specs 008 and 012).
 | `GET` | `/api/v1/ai/conversations/{id}/messages` | session | `200` `PagedResponse<AiMessageDto>` | the transcript, in `created_at ASC, id ASC` order |
 | `POST` | `/api/v1/ai/conversations/{id}/messages` | session + CSRF + `Idempotency-Key` | `201` `ApiResponse<AiMessageDto>`; `200` on replay | one turn; returns the assistant reply, which may carry a `pendingConfirmation` or a `memoryProposal` |
 | `DELETE` | `/api/v1/ai/conversations/{id}` | session + CSRF | `204` | deletes one conversation |
-| `POST` | `/api/v1/ai/conversations/{id}/confirm` | session + CSRF + `Idempotency-Key` | `200` `ApiResponse<AiActionDto>` | body `{ confirmationId }`; hands the user's confirmation to the executor (§3.4) |
+| `POST` | `/api/v1/ai/conversations/{id}/confirm` | session + CSRF + `Idempotency-Key` | `200` `ApiResponse<AiConfirmResultDto>` | body `{ confirmationId }`; hands the user's confirmation to the executor (§3.4); returns the recorded action plus, when it could be generated, the assistant's reply written from the real outcome (§3.4a) |
 | `POST` | `/api/v1/ai/temporary-turns` | session + CSRF | `200` `ApiResponse<AiTemporaryReplyDto>` | one temporary turn; conversation-only — stores nothing and executes no action (§3.11) |
 | `GET` | `/api/v1/ai/memory` | session | `200` `ApiResponse<AiMemoryItemDto[]>` | the caller's memory; small by construction, so unpaged |
 | `POST` | `/api/v1/ai/memory` | session + CSRF | `201` `ApiResponse<AiMemoryItemDto>` when created; `200` when the key already existed | **the user's explicit confirmation** of a proposed item (§3.9) |
@@ -324,6 +324,69 @@ default returns `null` from both lookups and never reaches `execute`. Specs 035/
 one with `registerAiActionExecutor()` from `instrumentation.ts`; this spec does not touch that file.
 A confirmation is resolved (and a stale one rejected) BEFORE its `ai_actions` row is inserted, so a
 stale confirmation records nothing. An executor that throws leaves its row `pending`.
+
+### 3.4a Amendment — tool outcomes reach the model (spec 036, 2026-09-24)
+
+Spec 036 (the tool catalogue) required this amendment, and it was implemented together with spec 036.
+It changes only the action path described in §3.4; every other behaviour of this spec is unchanged.
+Master spec §87's core flow ends "Result returned → AI reports truthfully", so the model now sees
+the real outcome of an action before the user sees its reply about that action (§92, §132.8).
+
+**Port shape (amended).**
+
+```typescript
+interface AiProposedAction { /* …as above… */ input?: Record<string, unknown> } // server-only validated tool input
+type AiActionOutcome =
+  | { status: 'succeeded'; data: unknown }
+  | { status: 'failed'; error: { code; message; details?; retryable: false } } // the domain's own code, unchanged
+  | { status: 'unknown'; error: { code: 'INTERNAL_ERROR'; message; retryable: false } };
+interface AiRejectedToolCall { rejected: true; toolName: string; outcome: /* failed */ }
+interface AiActionExecutor {
+  interpretTurn(ctx, output): Promise<AiProposedAction | AiRejectedToolCall | null>;
+  resolveConfirmation(ctx, confirmationId): Promise<AiProposedAction | null>;
+  execute(ctx, aiActionId, action): Promise<AiActionOutcome>;              // was { succeeded: boolean }
+  labelFor(actionType): string | null;
+  catalogFor(ctx): Promise<AiModelTool[]>;                                  // new; inert default []
+}
+```
+
+- **Input.** `AiProposedAction.input` is the tool input exactly as the tool's strict `validate`
+  returned it. It never reaches a client DTO. A confirmed action executes with the input spec 035's
+  confirmation record restored — never anything re-supplied by the model or the client.
+- **Recording.** `succeeded` → `ai_actions.result = 'succeeded'`; `failed` → `'failed'`; `unknown`
+  (or a throw) → the row stays `pending` ("outcome unknown"). Nothing else can be read as success.
+- **Catalogue.** A NORMAL turn's `conversation` input becomes `{ memory, turns, tools }` when
+  `catalogFor` returns tools, and stays exactly `{ memory, turns }` when it returns none. A temporary
+  turn never calls `catalogFor` (it can never act, AC-18).
+
+**Turn order (amended).** The model is called; its tool request, if any, is interpreted; then:
+
+| Interpreted as | What happens | The reply the user sees |
+|---|---|---|
+| nothing | as before | the model's reply |
+| **rejected** (unknown/unavailable tool, input failing its schema) | nothing runs, nothing is recorded | a **follow-up** completion's reply, given the failure as `toolResult` |
+| **low** | runs **before** the turn is persisted; recorded in `ai_actions` | a **follow-up** completion's reply, given the real outcome as `toolResult` |
+| **medium/high** | only presented (`pendingConfirmation`), as before | the model's reply |
+| **restricted** | dropped, as before | the model's reply |
+
+The follow-up completion's input is `{ memory, turns, toolResult: { tool, outcome } }`. It gets no
+catalogue, so it cannot chain a second tool call. The reply the model wrote before anything ran is
+never shown or stored. If the follow-up cannot be generated (spec 033's provider unavailable or quota
+exhausted), the turn fails like any model failure and nothing is persisted.
+
+**`POST …/confirm` (amended).** After executing, the model is asked once more with the real outcome,
+and its reply is appended to the transcript as an assistant message. That message carries the
+confirmation's own `Idempotency-Key` and fingerprint, the invariant every assistant message already
+satisfies (`ai_messages_idempotency_ck`). The response is `ApiResponse<AiConfirmResultDto>`: the
+recorded `AiActionDto` plus an optional `message: AiMessageDto`. `message` is absent on a replay (it
+is already in the transcript) and when the follow-up could not be generated. In that case the
+recorded result stands on its own and nothing is invented in its place.
+
+**Export and deletion.** Each exported activity entry gains `toolCalls`: the entry's
+`ai_tool_calls` rows in spec 036's minimal redacted structure (`inputParams`, `outputSummary`,
+`errorCode`, `createdAt`), never the idempotency key and never content. The account deletion sweep
+also hard-deletes the user's `ai_tool_calls` rows (spec 036's step). `ai_actions` stay retained as
+§4 says.
 
 ### 3.5 Risk tiers and confirmation
 
@@ -826,6 +889,9 @@ cover them automatically. Every spec that stores personal data adds its own sect
 - **Account deletion sweep** hard-deletes the user's `ai_messages` and `ai_memories` and tombstones
   their conversations. Their `ai_actions` rows are retained, keyed to the now-anonymized user. They
   carry no free text, so nothing further needs redacting.
+- **Amendment (spec 036, §3.4a).** Export includes each activity entry's `toolCalls`, in spec 036's
+  redacted structure only. The deletion sweep also hard-deletes the user's `ai_tool_calls` rows
+  (spec 036's own step in `lib/privacy/deletion.ts`).
 
 **Retention (normative).** A normal conversation is retained until the user deletes it (one
 conversation or clear history) or spec 008's account deletion sweep removes and anonymizes it. This
@@ -1032,7 +1098,7 @@ points the previous revision left open:
 |---|---|---|---|
 | 5 | Every action tier depends on specs 035/036, which are sequenced after this spec | Platform | **Resolved by design:** the §3.4 port ships inert and those specs register it, the pattern `instrumentation.ts` already uses for specs 021, 027 and 030. Tier enforcement is tested against a test executor |
 | 6 | **Cross-spec gap — reported, not edited.** Spec 035's `McpToolDefinition` declares neither reversibility nor a plain-language label, yet master spec §86 needs the first and §85 (with `AiToolApproval`'s contract) needs the second | Platform | Specs 035/036 are Draft; their own review must add both. Until then every action is recorded irreversible (§3.8), and an action whose tool has no label cannot be shown in activity history |
-| 7 | **Cross-spec open questions not settled here.** Spec 035 open question 2 (confirmation token vs server-side record) and spec 036 open question 1 (who generates tool-call idempotency keys; 036 recommends this spec) | Platform | Left to those specs' reviews. This spec only needs an opaque `confirmationId` and its own HTTP `Idempotency-Key` |
+| 7 | **Cross-spec open questions not settled here.** Spec 035 open question 2 (confirmation token vs server-side record) and spec 036 open question 1 (who generates tool-call idempotency keys; 036 recommends this spec) | Platform | **Resolved by specs 035/036:** a server-side confirmation record (035); tool-call idempotency keys are server-generated per accepted intent and persisted on `ai_tool_calls` (036). This spec still carries only an opaque `confirmationId` and its own HTTP `Idempotency-Key` |
 | 8 | **Mixed files at implementation time.** Account navigation lives in `app/account/page.tsx` and the shell in `app/components/NavShell.tsx`, and both are currently staged with other specs' in-flight work. `components/index.ts` carries unstaged in-flight work too | Platform | The account pages are reachable by route without touching those files. Any link added to them must be committed as its own hunk, never by staging the whole file. Components are imported from their own wrappers (§5) |
 | 9 | **The reply envelope depends on a real provider's prompt template.** Only spec 033's sandbox adapter exists, and it returns a plain placeholder, so no memory is ever proposed in production until a real adapter's `conversation` template emits the §3.3 envelope | Platform | By design this fails closed: a plain reply is valid and proposes nothing. The spec that adds a real provider adapter under `lib/ai/provider` implements the envelope; this spec edits nothing in `lib/ai` |
 | 10 | **Temporary turns resend the whole transcript.** Each temporary turn carries every prior turn, so long temporary conversations cost more tokens per turn | Platform | The same is true of a normal turn's `input` (§3.3). Spec 033's per-request token cap, quotas and cost alerts bound both. No server-side copy is kept to avoid it, because that is exactly what §3.11 forbids |

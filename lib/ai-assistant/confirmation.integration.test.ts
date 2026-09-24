@@ -173,7 +173,7 @@ describe.skipIf(!dbReachable)('spec 034 risk tiers and confirmation (integration
   it('an executor failure is recorded only as the confirmed result; a throw leaves "outcome unknown", never success', async () => {
     const proposed = action({ riskTier: 'medium', confirmationId: 'conf-fail' });
     executor.confirmations.set('conf-fail', proposed);
-    executor.outcome = { succeeded: false };
+    executor.outcome = { status: 'failed', error: { code: 'OFFER_EXPIRED', message: 'This offer expired.', retryable: false } };
     expect((await json(await confirm('conf-fail'))).data.result).toBe('failed');
 
     executor.confirmations.set('conf-crash', proposed);

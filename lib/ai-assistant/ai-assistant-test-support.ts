@@ -18,7 +18,15 @@ import { resetRateLimitState } from '@/lib/api/rate-limit';
 import { IDEMPOTENCY_KEY_HEADER } from '@/lib/api/idempotency';
 import { SESSION_COOKIE_NAME } from '@/lib/auth/session';
 import { CSRF_HEADER_NAME } from '@/lib/auth/csrf';
-import { registerAiActionExecutor, resetAiActionExecutor, type AiActionExecutor, type AiProposedAction } from './executor';
+import {
+  registerAiActionExecutor,
+  resetAiActionExecutor,
+  type AiActionExecutor,
+  type AiActionOutcome,
+  type AiModelTool,
+  type AiProposedAction,
+  type AiRejectedToolCall,
+} from './executor';
 
 export { isDatabaseReachable } from '@/lib/db/test-support';
 export { registerAndLogin, type TestSession } from '@/app/api/v1/users/me/privacy-test-support';
@@ -92,14 +100,20 @@ export function envelope(reply: string, memoryProposal?: { key: string; value: u
 export class TestExecutor implements AiActionExecutor {
   proposal: AiProposedAction | null = null;
   confirmations = new Map<string, AiProposedAction>();
-  outcome: { succeeded: boolean } | Error = { succeeded: true };
+  /** Spec 036 amendment: the port returns the real outcome, not a bare boolean. */
+  outcome: AiActionOutcome | Error = { status: 'succeeded', data: null };
+  /** What `catalogFor` offers the model; empty keeps the input `{ memory, turns }` as before. */
+  catalog: AiModelTool[] = [];
   staleError: Error | null = null;
   labels = new Map<string, string>();
   calls: Array<{ method: string; args: unknown[] }> = [];
 
-  async interpretTurn(...args: Parameters<AiActionExecutor['interpretTurn']>) {
+  /** Spec 036 amendment: a tool call the executor refuses to propose, fed back to the model. */
+  rejection: AiRejectedToolCall | null = null;
+
+  async interpretTurn(...args: Parameters<AiActionExecutor['interpretTurn']>): Promise<AiProposedAction | AiRejectedToolCall | null> {
     this.calls.push({ method: 'interpretTurn', args });
-    return this.proposal;
+    return this.rejection ?? this.proposal;
   }
 
   async resolveConfirmation(...args: Parameters<AiActionExecutor['resolveConfirmation']>) {
@@ -116,6 +130,11 @@ export class TestExecutor implements AiActionExecutor {
 
   labelFor(actionType: string) {
     return this.labels.get(actionType) ?? null;
+  }
+
+  async catalogFor(...args: Parameters<AiActionExecutor['catalogFor']>) {
+    this.calls.push({ method: 'catalogFor', args });
+    return this.catalog;
   }
 
   count(method: string): number {

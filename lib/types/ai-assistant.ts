@@ -50,6 +50,26 @@ export interface AiActionDto {
   createdAt: string;
 }
 
+/**
+ * `POST …/confirm` (spec 034 as amended by spec 036): the recorded action, plus the assistant's
+ * reply generated from the action's REAL outcome. `message` is absent on a replay and whenever the
+ * reply could not be generated — the action's `result` then stands on its own; nothing is invented.
+ */
+export interface AiConfirmResultDto extends AiActionDto {
+  message?: AiMessageDto;
+}
+
+/**
+ * One tool call behind an activity entry, in spec 036's minimal redacted structure — IDs, enums,
+ * minor units + currency, timestamps, booleans and free-text field NAMES only.
+ */
+export interface AiToolCallExportEntry {
+  inputParams: Record<string, unknown>;
+  outputSummary: { type: string; id: string | null; status: string | null } | null;
+  errorCode: string | null;
+  createdAt: string;
+}
+
 /** §3.9 — the closed allow-list. Provider characteristics and communication preferences are
  *  deliberately absent and cannot be stored. */
 export type AiMemoryKey = (typeof AI_MEMORY_KEYS)[number];
