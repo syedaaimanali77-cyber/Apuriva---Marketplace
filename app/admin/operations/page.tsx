@@ -1,26 +1,151 @@
-import { PlaceholderPage } from '@/app/_components/PlaceholderPage';
+'use client';
 
-/** Spec 014 §2 AC-6/§8 risk 6 — the admin "Operations" nav destination. Links out to the
- * already-implemented spec-009 approvals/post-action-review flows rather than moving those
- * routes' files (see spec 014 §8 risk 6 for why). */
+import Link from 'next/link';
+import { useState } from 'react';
+import { Alert, Badge, Button, Card, EmptyState, ErrorState, Skeleton, Table } from '@/components';
+import type { TableColumn } from '@/components';
+import type { OperationsQueueItemDto, OperationsQueueItemType, OperationsQueuePriority } from '@/lib/types/admin-dashboard';
+import type { PagedResponse } from '@/lib/types/api';
+import styles from '../admin.module.css';
+import dashboard from '../_components/admin-dashboard.module.css';
+import { usePolledResource } from '../_components/usePolledResource';
+
+const QUEUE_PAGE_SIZE = 20;
+
+const TYPE_LABEL: Record<OperationsQueueItemType, string> = {
+  dispute: 'Dispute',
+  support_ticket: 'Support ticket',
+  safety_report: 'Safety report',
+};
+
+const PRIORITY_TONE: Record<OperationsQueuePriority, 'neutral' | 'info' | 'warning' | 'error'> = {
+  low: 'neutral',
+  medium: 'info',
+  high: 'warning',
+  critical: 'error',
+};
+
+interface QueuePage {
+  items: OperationsQueueItemDto[];
+  total: number;
+  nextOffset: number | null;
+}
+
+function selectQueue(json: unknown): QueuePage {
+  const body = json as PagedResponse<OperationsQueueItemDto>;
+  return { items: body.data, total: body.page.total, nextOffset: body.page.nextOffset };
+}
+
+const COLUMNS: TableColumn<OperationsQueueItemDto>[] = [
+  { key: 'type', header: 'Item', render: (row) => TYPE_LABEL[row.type] },
+  { key: 'status', header: 'Status', render: (row) => row.status.replace(/_/g, ' ') },
+  {
+    key: 'priority',
+    header: 'Priority',
+    render: (row) => (row.priority ? <Badge tone={PRIORITY_TONE[row.priority]}>{row.priority}</Badge> : '—'),
+  },
+  { key: 'createdAt', header: 'Opened', render: (row) => new Date(row.createdAt).toLocaleString() },
+  { key: 'open', header: 'Details', render: (row) => <Link href={row.linkTo}>Open</Link> },
+];
+
+/**
+ * Spec 037 §5, `/admin/operations` — the unified queue of disputes, support tickets and safety
+ * reports needing attention (`GET /api/v1/admin/operations/queue`), each source shown only if the
+ * server says this admin may read it. Polled every 10 s. Each row links to its existing workflow;
+ * nothing is acted on here. The existing workspace links stay.
+ */
 export default function AdminOperationsPage() {
+  const [offset, setOffset] = useState(0);
+  const queue = usePolledResource(
+    `/api/v1/admin/operations/queue?limit=${QUEUE_PAGE_SIZE}&offset=${offset}`,
+    selectQueue,
+    { poll: true },
+  );
+
   return (
-    <PlaceholderPage
-      title="Operations"
-      density="dense"
-      description="Approvals and post-action reviews already exist — reachable here rather than as orphaned routes now that Operations is its own nav item."
-      links={[
-        { href: '/admin/approvals', label: 'Pending approvals' },
-        { href: '/admin/actions/review', label: 'Post-action review' },
-        { href: '/admin/operations/refunds', label: 'Refunds' },
-        { href: '/admin/operations/payouts', label: 'Payouts' },
-        // Spec 031 §5. Master §2970 lists Disputes under Operations; Operations can WATCH the queue
-        // (`disputes/read`) but only Trust & Safety and Super Admin can decide one.
-        { href: '/admin/operations/disputes', label: 'Disputes' },
-        // Spec 032 §5. Master §63's admin support workspace. Operations can WATCH the queue
-        // (`support/read`) but only Support Admin and Super Admin can act on a ticket.
-        { href: '/admin/operations/support', label: 'Support' },
-      ]}
-    />
+    <main className={styles.page} data-density="dense">
+      <h1 className={styles.title}>Operations</h1>
+
+      <section className={styles.section} aria-labelledby="operations-queue">
+        <div className={styles.sectionHeader}>
+          <h2 id="operations-queue" className={styles.sectionTitle}>
+            Needs attention
+          </h2>
+        </div>
+
+        {queue.status === 'loading' && (
+          <Card>
+            <Skeleton lines={4} />
+          </Card>
+        )}
+
+        {queue.status === 'forbidden' && (
+          <Alert tone="warning" title="Administrator access required">
+            The operations queue is available to APURIVA administrators only.
+          </Alert>
+        )}
+
+        {queue.status === 'error' && <ErrorState description={queue.error ?? undefined} onRetry={queue.retry} />}
+
+        {queue.status === 'ready' && queue.data && (
+          <>
+            {queue.pollFailed && (
+              <Alert tone="warning" title="Couldn't refresh">
+                Showing the last queue loaded.
+              </Alert>
+            )}
+            {queue.data.items.length === 0 ? (
+              <EmptyState title="No items need attention" />
+            ) : (
+              <>
+                <Table caption="Items needing attention" density="dense" columns={COLUMNS} rows={queue.data.items} />
+                <div className={styles.actions}>
+                  <Button
+                    variant="secondary"
+                    disabled={offset === 0}
+                    onClick={() => setOffset(Math.max(0, offset - QUEUE_PAGE_SIZE))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={queue.data.nextOffset === null}
+                    onClick={() => queue.data?.nextOffset != null && setOffset(queue.data.nextOffset)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </section>
+
+      <nav aria-label="Operations workspaces">
+        <ul className={dashboard.linkList}>
+          <li>
+            <Link href="/admin/approvals">Pending approvals</Link>
+          </li>
+          <li>
+            <Link href="/admin/actions/review">Post-action review</Link>
+          </li>
+          <li>
+            <Link href="/admin/operations/refunds">Refunds</Link>
+          </li>
+          <li>
+            <Link href="/admin/operations/payouts">Payouts</Link>
+          </li>
+          <li>
+            <Link href="/admin/operations/disputes">Disputes</Link>
+          </li>
+          <li>
+            <Link href="/admin/operations/support">Support</Link>
+          </li>
+          <li>
+            <Link href="/admin/operations/safety">Safety</Link>
+          </li>
+        </ul>
+      </nav>
+    </main>
   );
 }

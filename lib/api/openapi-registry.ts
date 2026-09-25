@@ -1415,4 +1415,27 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'List registered MCP tools and what each may do; admin (mcp/read_registry, Super Admin only). Metadata only - name, risk tier, plain-language label, reversibility, allowed modes, confirmation and idempotency declarations. Empty until the tool catalogue spec registers tools',
     tags: ['admin'],
   },
+  // Spec 037 §3 — the Admin Dashboard. Three read-only routes; no configuration write exists here
+  // (spec 017's and spec 023's paths stay the only writers).
+  {
+    method: 'GET',
+    path: '/admin/overview',
+    summary:
+      'Marketplace health from live data - active requests, active bookings, gross captured revenue for the current UTC day per currency (refunds not subtracted) - plus the alerts the caller may see; any admin role',
+    tags: ['admin'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/operations/queue',
+    summary:
+      'One paged queue of open disputes, support tickets and safety reports, each source only for holders of its existing read permission; priority descending then oldest first. Identifiers, status and priority only',
+    tags: ['admin'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/marketplace/config',
+    summary:
+      'Read-only configuration overview - platform-default matching weights, the count of per-service overrides, the active platform cancellation policy - each section for its read permission (matching.config/read, cancellation_policy/read); links to the owning editors. No write',
+    tags: ['admin'],
+  },
 ];

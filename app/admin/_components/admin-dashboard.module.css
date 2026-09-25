@@ -1,0 +1,46 @@
+/*
+ * Spec 037 §5 — layout for the Admin Dashboard screens only. Every value is a design-system token
+ * (app/styles/apuriva-tokens.css); the shared page/title/section classes stay in
+ * app/admin/admin.module.css. No logo or header of its own (CLAUDE.md branding rule).
+ */
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.revenueList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.asOf {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.linkList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.weightsList {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content max-content;
+  gap: var(--space-1) var(--space-6);
+}
+
+/* A <div> grouping one <dt>/<dd> pair, transparent to the grid above. */
+.weightRow {
+  display: contents;
+}

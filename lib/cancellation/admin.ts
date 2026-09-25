@@ -128,7 +128,7 @@ export async function publishCancellationPolicy(
     throw policyConfigInvalidError([{ field: 'scopeId', message: 'is required for a category or service policy' }]);
   }
 
-  const policyId = await getDb().transaction(async (tx) => {
+  const { policyId, beforeConfig } = await getDb().transaction(async (tx) => {
     const [existing] = await queryRows<{ id: string }>(
       tx,
       scopeId === null
@@ -152,11 +152,12 @@ export async function publishCancellationPolicy(
 
     // Close the currently open version, then open the new one at the same instant, so the two
     // intervals abut exactly and no gap exists in which a booking would resolve to nothing.
-    const [closed] = await queryRows<{ effective_to: Date }>(
+    // Spec 037 AC-5 (X-4): the closed version's `config` is also returned, as the audit's `before`.
+    const [closed] = await queryRows<{ effective_to: Date; config: unknown }>(
       tx,
       sql`UPDATE policy_versions SET effective_to = clock_timestamp(), updated_at = clock_timestamp()
            WHERE policy_id = ${id} AND effective_to IS NULL
-           RETURNING effective_to`,
+           RETURNING effective_to, config`,
     );
 
     try {
@@ -172,7 +173,7 @@ export async function publishCancellationPolicy(
       throw err;
     }
 
-    return id;
+    return { policyId: id, beforeConfig: closed ? closed.config : null };
   });
 
   await recordAdminAuditEvent({
@@ -186,6 +187,10 @@ export async function publishCancellationPolicy(
     reason: request.note ?? null,
     // A `medium`-tier action needs no approval, so the chain is empty by definition (spec 009 §3.1.4).
     approvalChain: [],
+    // Spec 037 AC-5 (X-4): the version this publish closed (`null` for a scope's first version) and
+    // the one it published. Everything else about this event is unchanged.
+    before: beforeConfig,
+    after: config,
   });
 
   const all = await listCancellationPolicies();

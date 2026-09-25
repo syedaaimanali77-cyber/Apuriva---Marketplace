@@ -23,6 +23,12 @@ export interface AdminAuditEventInput {
   /** Spec 039 AC-6 / spec 025 AC-5: links the audit entry back to the originating API request. Optional,
    * so every existing caller is unaffected. */
   correlationId?: string | null;
+  /** Spec 037 AC-5 (X-1): the changed value BEFORE the write. Optional and additive — recorded only
+   * when provided, so every existing caller's event is unchanged. Storage, retention and viewing
+   * stay spec 039's. */
+  before?: unknown;
+  /** Spec 037 AC-5 (X-1): the changed value AFTER the write. Same rules as `before`. */
+  after?: unknown;
 }
 
 /**
@@ -48,6 +54,8 @@ export async function recordAdminAuditEvent(input: AdminAuditEventInput): Promis
       approvalChain: input.approvalChain,
       isEmergencyBypass: input.isEmergencyBypass ?? false,
       ...(input.correlationId ? { correlationId: input.correlationId } : {}),
+      ...(input.before !== undefined ? { before: input.before } : {}),
+      ...(input.after !== undefined ? { after: input.after } : {}),
     },
   });
 }

@@ -8,7 +8,8 @@
 import { and, asc, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { matchingSuggestions, providerProfiles, requestProviderMatches, requests, services } from '@/lib/db/schema';
-import { resolvePermission } from '@/lib/admin-rbac/permissions';
+import { recordAdminAuditEvent } from '@/lib/admin-rbac/audit';
+import { getAdminRoleNames, resolvePermission } from '@/lib/admin-rbac/permissions';
 import { adminForbiddenError } from '@/lib/admin-rbac/errors';
 import {
   matchingNotFoundError,
@@ -151,7 +152,12 @@ export async function updateMatchingWeights(
 
   const db = getDb();
   const [current] = await db
-    .select({ id: services.id, version: services.version })
+    .select({
+      id: services.id,
+      version: services.version,
+      matchingWeights: services.matchingWeights,
+      matchingPoolSize: services.matchingPoolSize,
+    })
     .from(services)
     .where(eq(services.id, serviceId));
   if (!current) throw matchingNotFoundError('The requested service does not exist.');
@@ -168,7 +174,42 @@ export async function updateMatchingWeights(
   }
 
   await db.update(services).set(patch).where(eq(services.id, serviceId));
+
+  // Spec 037 AC-5 (X-2): the stored override before and after this write (`null` = no override).
+  // Reached only after validation, concurrency and the UPDATE succeeded, so a 404/409/422 records
+  // nothing. Medium tier: spec 009 requires no reason, and this request carries none.
+  const before = { weights: current.matchingWeights ?? null, poolSize: current.matchingPoolSize ?? null };
+  const after = {
+    weights: body.weights !== undefined ? (patch.matchingWeights ?? null) : before.weights,
+    poolSize: body.poolSize !== undefined ? (patch.matchingPoolSize ?? null) : before.poolSize,
+  };
+  await recordMatchingWeightsAudit(userId, 'admin_rbac.matching_weights_updated', serviceId, before, after);
+
   return readWeightsDto(serviceId);
+}
+
+/** Spec 037 AC-5 (X-2, X-3) — one audit event per matching-weight write, through spec 009's helper. */
+async function recordMatchingWeightsAudit(
+  userId: string,
+  eventType: 'admin_rbac.matching_weights_updated' | 'admin_rbac.matching_suggestion_approved',
+  serviceId: string,
+  before: { weights: unknown; poolSize: unknown },
+  after: { weights: unknown; poolSize: unknown },
+): Promise<void> {
+  await recordAdminAuditEvent({
+    actorUserId: userId,
+    actorRoles: await getAdminRoleNames(userId),
+    eventType,
+    resource: MATCHING_RESOURCE,
+    action: 'configure',
+    targetType: 'service',
+    targetId: serviceId,
+    reason: null,
+    // A `medium`-tier action needs no approval, so the chain is empty by definition (spec 009 §3.1.4).
+    approvalChain: [],
+    before,
+    after,
+  });
 }
 
 function toSuggestionDto(row: {
@@ -266,7 +307,7 @@ export async function recordMatchingSuggestion(input: {
 export async function approveMatchingSuggestion(userId: string, suggestionId: string): Promise<MatchingSuggestionDto> {
   await requireMatchingPermission(userId, 'configure');
 
-  return getDb().transaction(async (tx) => {
+  const { dto, weightChange } = await getDb().transaction(async (tx) => {
     const [suggestion] = await tx
       .select({
         id: matchingSuggestions.id,
@@ -285,11 +326,25 @@ export async function approveMatchingSuggestion(userId: string, suggestionId: st
     // A suggestion scoped to one service applies to that service. A platform-wide suggestion
     // (`service_id` null) is recorded as reviewed but applies to NO service automatically —
     // changing the platform defaults is a code change, never a runtime write.
+    let weightChange: { serviceId: string; before: { weights: unknown; poolSize: unknown }; after: { weights: unknown; poolSize: unknown } } | null =
+      null;
     if (suggestion.serviceId) {
+      // Spec 037 AC-5 (X-3): the service's stored override before this write, read in the same
+      // transaction. The pool size is not touched by a suggestion, so it is the same after.
+      const [prior] = await tx
+        .select({ matchingWeights: services.matchingWeights, matchingPoolSize: services.matchingPoolSize })
+        .from(services)
+        .where(eq(services.id, suggestion.serviceId));
       await tx
         .update(services)
         .set({ matchingWeights: weights, updatedAt: reviewedAt, version: sql`${services.version} + 1` })
         .where(eq(services.id, suggestion.serviceId));
+      const poolSize = prior?.matchingPoolSize ?? null;
+      weightChange = {
+        serviceId: suggestion.serviceId,
+        before: { weights: prior?.matchingWeights ?? null, poolSize },
+        after: { weights, poolSize },
+      };
     }
 
     const [updated] = await tx
@@ -299,8 +354,21 @@ export async function approveMatchingSuggestion(userId: string, suggestionId: st
       .returning(SUGGESTION_COLUMNS);
     if (!updated) throw suggestionAlreadyReviewedError();
 
-    return toSuggestionDto(updated);
+    return { dto: toSuggestionDto(updated), weightChange };
   });
+
+  // Recorded only after the transaction committed, and only when a service's weights were
+  // actually written — a platform-wide suggestion (no `service_id`) writes none and records nothing.
+  if (weightChange) {
+    await recordMatchingWeightsAudit(
+      userId,
+      'admin_rbac.matching_suggestion_approved',
+      weightChange.serviceId,
+      weightChange.before,
+      weightChange.after,
+    );
+  }
+  return dto;
 }
 
 export async function rejectMatchingSuggestion(userId: string, suggestionId: string): Promise<MatchingSuggestionDto> {
