@@ -6,6 +6,7 @@ import { parsePageParams, buildPage } from '@/lib/api/pagination';
 import { getOptionalSession } from '@/lib/auth/require-session';
 import { hashRequestIp } from '@/lib/auth/ip-hash';
 import { searchServices, type SearchParams } from '@/lib/search/query';
+import { recordAnalyticsEvent } from '@/lib/analytics/ingest';
 import type { SearchSort } from '@/lib/types/search';
 
 function numberParam(value: string | null): number | undefined {
@@ -40,5 +41,20 @@ export const GET = withApiRoute(async (request, correlationId) => {
   };
 
   const { items, total } = await searchServices(params, page);
+  // Spec 040 X-1: one `search_performed` per search (first page only — paging is not a new
+  // discovery). Best-effort and non-throwing; the query text itself is never recorded (AC-3).
+  if (page.offset === 0) {
+    recordAnalyticsEvent({
+      type: 'search_performed',
+      actorUserId: session?.userId ?? null,
+      properties: {
+        serviceId: params.serviceId,
+        categoryId: params.categoryId,
+        hasQuery: typeof params.q === 'string' && params.q.trim().length > 0,
+        hasLocation: params.lat !== undefined && params.lng !== undefined,
+        resultCount: total,
+      },
+    });
+  }
   return apiPaged(items, buildPage(total, page.limit, page.offset), correlationId);
 });

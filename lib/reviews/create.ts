@@ -19,6 +19,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
+import { recordAnalyticsEvent } from '@/lib/analytics/ingest';
 import { isUniqueViolation, queryRows, type Executor } from '@/lib/offers/db';
 import type { ReviewDto } from '@/lib/types/reviews';
 import {
@@ -137,6 +138,8 @@ export async function createReview(
     // Best-effort, and deliberately outside the transaction: a notification failure must never
     // roll back a published review.
     await notifyReviewReceived(review.id, bookingId).catch(() => undefined);
+    // Spec 040 X-5: best-effort and non-throwing, after the commit; never on a replay.
+    recordAnalyticsEvent({ type: 'review_submitted', actorUserId: userId, properties: { reviewId: review.id, bookingId, rating: review.rating } });
   }
 
   return { review, replayed: created.replayed };

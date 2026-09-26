@@ -3949,13 +3949,43 @@ export const addresses = pgTable(
   (t) => [index('addresses_user_id_idx').on(t.userId), index('addresses_location_id_idx').on(t.locationId)],
 );
 
+/** Spec 040 §3.4 — the closed analytics event vocabulary (mirrored by `lib/types/analytics.ts`). */
+const ANALYTICS_EVENT_TYPE_VALUES = [
+  'search_performed',
+  'request_submitted',
+  'offer_accepted',
+  'booking_completed',
+  'review_submitted',
+  'ai_conversation_started',
+] as const;
+
+/**
+ * Spec 040 §4 (migration 0035) completes spec 003's `analytics_events` STUB — altered, never
+ * re-created. Written ONLY by `lib/analytics/ingest.ts` (best-effort, after the response); pruned and
+ * de-attributed only by `lib/analytics/retention.ts`. `properties` carries ids/enums/booleans/counts
+ * only, per the key allow-list in `lib/analytics/events.ts` — never free text, names or contact data.
+ * `actor_user_id` is the user reference (null for a guest search).
+ */
 export const analyticsEvents = pgTable(
   'analytics_events',
   {
     ...baseColumns(),
     actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    eventType: text('event_type', { enum: ANALYTICS_EVENT_TYPE_VALUES }).notNull(),
+    /** When the action happened (app clock at emission); `created_at` is when the row was flushed. */
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    properties: jsonb('properties').notNull().default({}),
   },
-  (t) => [index('analytics_events_actor_user_id_idx').on(t.actorUserId)],
+  (t) => [
+    index('analytics_events_actor_user_id_idx').on(t.actorUserId),
+    index('analytics_events_type_occurred_idx').on(t.eventType, t.occurredAt),
+    index('analytics_events_occurred_idx').on(t.occurredAt),
+    check(
+      'analytics_events_event_type_ck',
+      sql`${t.eventType} in ('search_performed','request_submitted','offer_accepted','booking_completed','review_submitted','ai_conversation_started')`,
+    ),
+    check('analytics_events_properties_object_ck', sql`jsonb_typeof(${t.properties}) = 'object'`),
+  ],
 );
 
 /**

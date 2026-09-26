@@ -14,6 +14,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { idempotencyFingerprint } from '@/lib/api/idempotency';
 import { buildPage, type PageParams } from '@/lib/api/pagination';
 import { validationError } from '@/lib/api/errors';
+import { recordAnalyticsEvent } from '@/lib/analytics/ingest';
 import { getDb } from '@/lib/db';
 import { aiConversations, aiMessages } from '@/lib/db/schema';
 import { isUniqueViolation, queryRows, type Executor } from '@/lib/offers/db';
@@ -81,6 +82,8 @@ export async function createConversation(
       .insert(aiConversations)
       .values({ userId, idempotencyKey, idempotencyFingerprint: fingerprint })
       .returning({ id: aiConversations.id, createdAt: aiConversations.createdAt, updatedAt: aiConversations.updatedAt });
+    // Spec 040 X-6: best-effort and non-throwing, after the insert; never on a replay.
+    recordAnalyticsEvent({ type: 'ai_conversation_started', actorUserId: userId, properties: { conversationId: row!.id } });
     return { conversation: toConversationDto(row!), replayed: false };
   } catch (err) {
     if (!isUniqueViolation(err, 'ai_conversations_user_idempotency_key_uq')) throw err;

@@ -12,6 +12,7 @@ import {
 } from '@/lib/db/schema';
 import { idempotencyFingerprint } from '@/lib/api/idempotency';
 import { assertAccountMayTransact } from '@/lib/moderation/standing';
+import { recordAnalyticsEvent } from '@/lib/analytics/ingest';
 import { listServiceFields, validateFieldSubmission } from '@/lib/service-page/fields';
 import type { CreateRequestRequest, RequestDto, RequestUrgency } from '@/lib/types/requests';
 import { parseBudget } from './budget';
@@ -162,6 +163,8 @@ export async function createRequest(
     return id;
   });
 
+  // Spec 040 X-2: best-effort and non-throwing, after the request is committed; never on a replay.
+  recordAnalyticsEvent({ type: 'request_submitted', actorUserId: userId, properties: { requestId, serviceId: body.serviceId } });
   return { request: await toRequestDto(requestId), replayed: false };
 }
 

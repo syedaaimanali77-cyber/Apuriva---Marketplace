@@ -130,6 +130,10 @@ describe('schema lint (spec 003)', () => {
       // its own CHECK, precisely because it IS core/queryable data (AC-5). Never exported.
       reviews: ['flag_signals'],
       review_responses: ['flag_signals'],
+      // Spec 040 §4: an analytics event's properties — ids, enums, booleans and counts only, checked
+      // against each event type's exact key allow-list in `lib/analytics/events.ts`. Never free text.
+      // The queryable parts (`event_type`, `occurred_at`) are real columns with their own index.
+      analytics_events: ['properties'],
       // Spec 036 §4: a tool call's minimal REDACTED input and its outcome summary (resource type, id,
       // status) — IDs, enums, minor units + currency, timestamps, booleans and free-text field names
       // only. Read back whole for the AI data export; never queried or filtered on in SQL.

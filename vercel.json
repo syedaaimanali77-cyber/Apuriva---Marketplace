@@ -64,6 +64,10 @@
     {
       "path": "/api/v1/cron/fraud-signal-sweep",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/v1/cron/analytics-retention-sweep",
+      "schedule": "30 3 * * *"
     }
   ]
 }

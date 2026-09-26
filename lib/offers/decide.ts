@@ -13,6 +13,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
+import { recordAnalyticsEvent } from '@/lib/analytics/ingest';
 import { assertAccountMayTransact } from '@/lib/moderation/standing';
 import { offerSupersededError } from '@/lib/negotiation/errors';
 import type { OfferDto } from '@/lib/types/offers';
@@ -91,6 +92,7 @@ function logSupersededRejection(action: string, offerId: string, err: unknown): 
 /** `POST /api/v1/offers/{id}/accept` — requires `Idempotency-Key`. Creates no booking (spec 020). */
 export async function acceptOffer(customerUserId: string, offerId: string, idempotencyKey: string): Promise<OfferDto> {
   const requestId = await customerOfferRequestId(customerUserId, offerId);
+  let acceptedByThisCall = false;
 
   try {
     await getDb().transaction(async (tx) => {
@@ -130,12 +132,18 @@ export async function acceptOffer(customerUserId: string, offerId: string, idemp
         INSERT INTO requests_status_history (request_id, from_status, to_status, actor_user_id)
         VALUES (${requestId}, 'offers_open', 'provider_selected', ${customerUserId})
       `);
+      acceptedByThisCall = true;
     });
   } catch (err) {
     logSupersededRejection('accept', offerId, err);
     // Database backstop: the partial unique index on accepted offers per request.
     if (isUniqueViolation(err, 'offers_request_accepted_uq')) throw requestAlreadyClaimedError();
     throw err;
+  }
+
+  // Spec 040 X-3: best-effort and non-throwing, after the commit; only when THIS call accepted.
+  if (acceptedByThisCall) {
+    recordAnalyticsEvent({ type: 'offer_accepted', actorUserId: customerUserId, properties: { offerId, requestId } });
   }
 
   return loadOfferDto(offerId);

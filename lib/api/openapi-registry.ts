@@ -1534,4 +1534,51 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'One audit entry (audit_logs/read); unknown and out-of-scope ids are both 404',
     tags: ['audit'],
   },
+  // Spec 040 §3.5 — read-only aggregate reports over W = [from, to) (default the last 30 days, at most
+  // 366). Aggregates only: no user id, name, contact data, search text or ranking score. AI usage
+  // reuses spec 033's `/admin/ai/usage`. The daily `/cron/analytics-retention-sweep` is absent, like
+  // every cron route, and there is deliberately no ingestion endpoint (events are server-side facts).
+  {
+    method: 'GET',
+    path: '/admin/analytics/funnel',
+    summary: 'Funnel period counts discover → request → offer → booking → complete, not a cohort (analytics/read)',
+    tags: ['analytics'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/analytics/revenue',
+    summary: 'Gross, refunds, platform fee, fee reversals and provider net per currency — never summed across currencies (analytics/read_revenue)',
+    tags: ['analytics'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/analytics/supply-demand',
+    summary: 'Requests in the window vs active providers, per service (analytics/read)',
+    tags: ['analytics'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/analytics/provider-performance',
+    summary:
+      'Exposure share, response time, completion rate and rating per provider profile, paged; no name, contact data or ranking score (analytics/read_provider_performance)',
+    tags: ['analytics'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/analytics/matching-fairness',
+    summary: "Spec 017 AC-3 new-provider exposure computed from persisted match rows (analytics/read_provider_performance)",
+    tags: ['analytics'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/analytics/retention',
+    summary: 'Customers active in the previous equal window who were active again in this one (analytics/read)',
+    tags: ['analytics'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/analytics/service-trends',
+    summary: 'Requests per service in the window vs the previous equal window (analytics/read)',
+    tags: ['analytics'],
+  },
 ];

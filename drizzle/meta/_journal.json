@@ -239,6 +239,13 @@
       "when": 1790800400000,
       "tag": "0034_implement_audit_log",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790800500000,
+      "tag": "0035_implement_analytics_events",
+      "breakpoints": true
     }
   ]
 }

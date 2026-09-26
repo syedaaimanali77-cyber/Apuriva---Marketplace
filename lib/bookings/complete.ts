@@ -20,6 +20,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
+import { recordAnalyticsEvent } from '@/lib/analytics/ingest';
 import { queryRows } from '@/lib/offers/db';
 import type { BookingDto, BookingStatus } from '@/lib/types/bookings';
 import { getCompletionEvidenceGate } from './completion-evidence';
@@ -67,6 +68,7 @@ export async function completeBooking(
     throw invalidStatusTransitionError(booking.status);
   }
 
+  let appliedByThisCall = false;
   try {
     await getDb().transaction(async (tx) => {
       await tx.execute(sql`SELECT id FROM bookings WHERE id = ${bookingId} FOR UPDATE`);
@@ -118,12 +120,19 @@ export async function completeBooking(
         if (result.currentStatus !== 'in_progress') throw invalidStatusTransitionError(result.currentStatus);
         throw bookingVersionConflictError(result.currentVersion);
       }
+      appliedByThisCall = true;
     });
   } catch (err) {
     // AC-6: the spec 003 trigger is the independent second line of defence; map its 23514 onto the
     // same `409 INVALID_STATUS_TRANSITION`, never a 500.
     if (isTransitionCheckViolation(err)) throw invalidStatusTransitionError(booking.status);
     throw err;
+  }
+
+  // Spec 040 X-4: best-effort and non-throwing, after the commit; only when THIS call applied the
+  // transition (never for an idempotent retry or the loser of AC-9's race).
+  if (appliedByThisCall) {
+    recordAnalyticsEvent({ type: 'booking_completed', actorUserId: userId, properties: { bookingId, actingAs } });
   }
 
   return loadBookingDto(bookingId);
