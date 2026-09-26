@@ -1520,4 +1520,18 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'File the one appeal an active action may carry (target only); reachable while suspended or banned; requires Idempotency-Key',
     tags: ['moderation'],
   },
+  // Spec 039 §3.8 — the append-only audit log, read-only and domain-scoped (audit_logs/read).
+  {
+    method: 'GET',
+    path: '/admin/audit-logs',
+    summary:
+      "Audit entries within the caller's domain scope (audit_logs/read), newest first; filters actorUserId, resource, eventType, targetType, targetId, correlationId, from, to; a resource outside scope is 403",
+    tags: ['audit'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/audit-logs/{id}',
+    summary: 'One audit entry (audit_logs/read); unknown and out-of-scope ids are both 404',
+    tags: ['audit'],
+  },
 ];

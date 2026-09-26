@@ -94,6 +94,7 @@ export async function authorizeAndInitiate(input: InitiateActionInput): Promise<
       reason: input.reason,
       isEmergencyBypass: true,
       approvalChain: { initiatedBy: adminProfileId, adminActionId: row!.id },
+      approvalRef: row!.id, // spec 039 X-3
     });
     return { outcome: 'emergency_bypass_executed', adminActionId: row!.id };
   }
@@ -122,6 +123,7 @@ export async function authorizeAndInitiate(input: InitiateActionInput): Promise<
     targetId: input.targetId,
     reason: input.reason,
     approvalChain: { initiatedBy: adminProfileId },
+    approvalRef: row!.id, // spec 039 X-3
   });
   return { outcome: 'pending_approval', adminActionId: row!.id };
 }
@@ -198,6 +200,7 @@ export async function decideAction(input: DecideActionInput): Promise<DecideActi
       decision: input.decision,
       decidedAt: approval!.decidedAt,
     },
+    approvalRef: action.id, // spec 039 X-3
   });
 
   return {
@@ -239,6 +242,7 @@ export async function executeApprovedAction(adminActionId: string, executorUserI
     targetId: action.targetId,
     reason: action.reason,
     approvalChain: { initiatedBy: action.adminId, executedBy: executorUserId },
+    approvalRef: action.id, // spec 039 X-3
   });
 }
 

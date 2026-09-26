@@ -1,3 +1,4 @@
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb, getPool } from '@/lib/db';
 import { resetBusyIntervalLoader } from '@/lib/availability/busy-intervals';
@@ -529,7 +530,7 @@ describe.skipIf(!dbReachable)('spec 023 no-show', { timeout: SUITE_TIMEOUT_MS },
 
       const { sql } = await import('drizzle-orm');
       const result = (await getDb().execute(
-        sql`SELECT event_type, metadata FROM security_events
+        sql`SELECT event_type, metadata FROM ${AUDIT_EVENTS}
              WHERE user_id = ${admin.userId} AND event_type = 'admin_rbac.no_show_resolved'`,
       )) as unknown as { rows: Array<{ event_type: string; metadata: Record<string, unknown> }> };
 

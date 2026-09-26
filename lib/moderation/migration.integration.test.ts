@@ -29,9 +29,11 @@ afterAll(async () => {
 
 describe('migration 0033 — file-level guarantees (spec 038 §4)', () => {
   it('is the next journal entry after 0032 and has a hand-written down file', () => {
-    const last = JOURNAL.entries[JOURNAL.entries.length - 1]!;
-    expect(last).toMatchObject({ idx: 33, tag: '0033_add_admin_moderation_fraud' });
-    expect(JOURNAL.entries[JOURNAL.entries.length - 2]!.tag).toBe('0032_extend_ai_tool_calls');
+    // Position-based, not "last": later specs append migrations after 0033 (spec 039 added 0034 —
+    // this one assertion change was approved by the product owner during spec 039).
+    const at = JOURNAL.entries.findIndex((e) => e.tag === '0033_add_admin_moderation_fraud');
+    expect(JOURNAL.entries[at]).toMatchObject({ idx: 33, tag: '0033_add_admin_moderation_fraud' });
+    expect(JOURNAL.entries[at - 1]!.tag).toBe('0032_extend_ai_tool_calls');
   });
 
   it('creates exactly the three spec 038 tables, no jsonb, no money, and never touches the baseline', () => {

@@ -7,6 +7,7 @@
  * is supposed to create, because a faked row would not prove that the policy is what stops a
  * foreign asset existing in the first place.
  */
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
@@ -89,14 +90,14 @@ export async function userLifecycleStatus(userId: string): Promise<string> {
   return row!.lifecycle_status;
 }
 
-/** Counts `security_events` rows of a given type for a report — the audit assertions' primitive. */
+/** Counts audit rows (spec 039 X-6: `audit_logs`) of a given type for a report — the audit assertions' primitive. */
 export async function safetyAuditCount(eventType: string, targetId?: string): Promise<number> {
   const [row] = await queryRows<{ total: string }>(
     getDb(),
     targetId
-      ? sql`SELECT count(*)::text AS total FROM security_events
+      ? sql`SELECT count(*)::text AS total FROM ${AUDIT_EVENTS}
              WHERE event_type = ${eventType} AND metadata->>'targetId' = ${targetId}`
-      : sql`SELECT count(*)::text AS total FROM security_events WHERE event_type = ${eventType}`,
+      : sql`SELECT count(*)::text AS total FROM ${AUDIT_EVENTS} WHERE event_type = ${eventType}`,
   );
   return Number(row?.total ?? 0);
 }

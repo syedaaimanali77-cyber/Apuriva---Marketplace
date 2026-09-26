@@ -6,6 +6,7 @@
  * (0033) seeds — no test re-seeds a moderation permission, so a mis-seeded tier would be caught.
  * Approval uses spec 009's own `decideAction()`.
  */
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
@@ -94,7 +95,7 @@ export async function actionStatus(id: string): Promise<string> {
 export async function auditEvents(eventType: string, targetId: string): Promise<Array<{ metadata: Record<string, any>; user_id: string }>> {
   return queryRows(
     getDb(),
-    sql`SELECT metadata, user_id FROM security_events WHERE event_type = ${eventType} AND metadata->>'targetId' = ${targetId}
+    sql`SELECT metadata, user_id FROM ${AUDIT_EVENTS} WHERE event_type = ${eventType} AND metadata->>'targetId' = ${targetId}
          ORDER BY created_at ASC`,
   );
 }

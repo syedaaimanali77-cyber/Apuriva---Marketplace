@@ -1,3 +1,4 @@
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { getDb, getPool } from '@/lib/db';
@@ -39,7 +40,7 @@ async function adminWith(role: AdminRole) {
 async function auditEventsFor(conversationId: string) {
   return queryRows<{ user_id: string; event_type: string; metadata: Record<string, any> }>(
     getDb(),
-    sql`SELECT user_id, event_type, metadata FROM security_events
+    sql`SELECT user_id, event_type, metadata FROM ${AUDIT_EVENTS}
          WHERE event_type LIKE 'messaging.%' AND metadata->>'targetId' = ${conversationId}
          ORDER BY created_at ASC`,
   );

@@ -232,6 +232,13 @@
       "when": 1790800300000,
       "tag": "0033_add_admin_moderation_fraud",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790800400000,
+      "tag": "0034_implement_audit_log",
+      "breakpoints": true
     }
   ]
 }

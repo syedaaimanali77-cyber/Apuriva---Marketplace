@@ -134,6 +134,12 @@ describe('schema lint (spec 003)', () => {
       // status) — IDs, enums, minor units + currency, timestamps, booleans and free-text field names
       // only. Read back whole for the AI data export; never queried or filtered on in SQL.
       ai_tool_calls: ['input_params', 'output_summary'],
+      // Spec 039 §4 (X-5): the append-only audit record. `actor_roles` is a JSON array of role names
+      // (the repository has no array columns); `before_value`/`after_value` are the changed values
+      // exactly as the calling module recorded them; `approval_chain` is spec 009's chain as given.
+      // All are read back whole — the queryable parts (resource, event type, target, correlation id,
+      // approval reference) are real indexed columns.
+      audit_logs: ['actor_roles', 'before_value', 'after_value', 'approval_chain'],
     };
 
     const offenders: string[] = [];

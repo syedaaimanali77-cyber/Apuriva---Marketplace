@@ -131,4 +131,10 @@ export async function register(): Promise<void> {
   // this file's (Node + Edge) recompile graph. The restriction gate loads its engine on first use.
   const { registerModerationIntegration } = await import('@/lib/moderation/register');
   registerModerationIntegration();
+
+  // Spec 039 X-4 makes spec 035's `McpAuditSink` port durable: every MCP tool call is written to the
+  // append-only `audit_logs` BEFORE the tool runs (a failed write still blocks it). Rolling spec 039
+  // back returns the port to spec 035's stdout default. `lib/mcp` itself is not modified.
+  const { registerAuditIntegration } = await import('@/lib/audit/register');
+  registerAuditIntegration();
 }

@@ -1,3 +1,4 @@
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -25,7 +26,7 @@ interface AuditRow {
 async function eventsFor(userId: string, eventType: string): Promise<AuditRow[]> {
   return queryRows<AuditRow>(
     getDb(),
-    sql`SELECT event_type, metadata FROM security_events
+    sql`SELECT event_type, metadata FROM ${AUDIT_EVENTS}
          WHERE user_id = ${userId} AND event_type = ${eventType} ORDER BY created_at ASC`,
   );
 }

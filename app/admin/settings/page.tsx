@@ -8,7 +8,10 @@ export default function AdminSettingsPage() {
     <PlaceholderPage
       title="Settings"
       description="Role and permission configuration already exists — reachable here. Feature-flag management (spec 041) will join once implemented."
-      links={[{ href: '/admin/roles', label: 'Roles & permissions' }]}
+      links={[
+        { href: '/admin/roles', label: 'Roles & permissions' },
+        { href: '/admin/settings/audit-log', label: 'Audit log' }, // spec 039 X-7
+      ]}
     />
   );
 }

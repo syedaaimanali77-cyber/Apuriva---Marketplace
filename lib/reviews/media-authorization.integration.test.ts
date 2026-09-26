@@ -5,6 +5,7 @@
  * point of these tests is that the upload policy is what stops a foreign asset existing in the
  * first place. A faked `file_assets` row would prove nothing.
  */
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
@@ -249,7 +250,7 @@ describe.skipIf(!reachable)('spec 029 review media authorization', () => {
 
       const rows = await queryRows<{ metadata: Record<string, unknown> }>(
         getDb(),
-        sql`SELECT metadata FROM security_events
+        sql`SELECT metadata FROM ${AUDIT_EVENTS}
              WHERE event_type = 'reviews.read_review_media' AND metadata->>'targetId' = ${assetId}`,
       );
       expect(rows).toHaveLength(1);

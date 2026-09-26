@@ -11,6 +11,7 @@
  * `seedProtectedBooking()` gives exactly the state AC-1 requires: `bookings.status = 'protected'`
  * and `payments.protection_state = 'held'`.
  */
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
@@ -127,14 +128,14 @@ export async function protectionStateOf(bookingId: string): Promise<string | nul
   return row?.protection_state ?? null;
 }
 
-/** Counts `security_events` rows of a given type for a dispute — the audit assertions' primitive. */
+/** Counts audit rows (spec 039 X-6: `audit_logs`) of a given type for a dispute — the audit assertions' primitive. */
 export async function disputeAuditCount(eventType: string, targetId?: string): Promise<number> {
   const [row] = await queryRows<{ total: string }>(
     getDb(),
     targetId
-      ? sql`SELECT count(*)::text AS total FROM security_events
+      ? sql`SELECT count(*)::text AS total FROM ${AUDIT_EVENTS}
              WHERE event_type = ${eventType} AND metadata->>'targetId' = ${targetId}`
-      : sql`SELECT count(*)::text AS total FROM security_events WHERE event_type = ${eventType}`,
+      : sql`SELECT count(*)::text AS total FROM ${AUDIT_EVENTS} WHERE event_type = ${eventType}`,
   );
   return Number(row?.total ?? 0);
 }

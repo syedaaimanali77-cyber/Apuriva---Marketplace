@@ -1,7 +1,5 @@
-import { desc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { getDb } from '@/lib/db';
-import { securityEvents } from '@/lib/db/schema';
+import { auditEventsByActor } from '@/lib/audit/audit-test-support';
 import { authorizeAndInitiate, decideAction, recordPostActionReview } from '@/lib/admin-rbac/actions';
 import { assignRole, revokeRole } from '@/lib/admin-rbac/role-assignment';
 import { isDatabaseReachable, registerAdmin, registerAdminWithPermission, grantRole } from './admin-rbac-test-support';
@@ -9,11 +7,8 @@ import { isDatabaseReachable, registerAdmin, registerAdminWithPermission, grantR
 const dbReachable = await isDatabaseReachable();
 
 async function latestEventFor(userId: string, eventType: string) {
-  const [row] = await getDb()
-    .select()
-    .from(securityEvents)
-    .where(eq(securityEvents.userId, userId))
-    .orderBy(desc(securityEvents.createdAt));
+  // Spec 039 X-6: admin audit events now live in `audit_logs` (legacy event shape).
+  const [row] = await auditEventsByActor(userId);
   expect(row?.eventType).toBe(eventType);
   return row!;
 }

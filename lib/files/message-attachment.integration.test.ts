@@ -1,3 +1,4 @@
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -147,7 +148,7 @@ describe.skipIf(!dbReachable)(
     // Spec 009's helper wrote the audit entry, correlated to the originating request.
     const events = await queryRows<{ event_type: string; metadata: Record<string, unknown> }>(
       getDb(),
-      sql`SELECT event_type, metadata FROM security_events
+      sql`SELECT event_type, metadata FROM ${AUDIT_EVENTS}
            WHERE user_id = ${admin.userId} AND event_type = 'files.read_message_attachment'
            ORDER BY created_at DESC LIMIT 1`,
     );

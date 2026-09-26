@@ -4,6 +4,7 @@
  * Drives the REAL route handlers with real sessions, so the assertions are about the product's own
  * path rather than about the domain functions in isolation.
  */
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { getDb, getPool } from '@/lib/db';
@@ -309,7 +310,7 @@ describe.skipIf(!dbReachable)('spec 032 support lifecycle (integration)', () => 
 
     const events = await queryRows<{ event_type: string }>(
       getDb(),
-      sql`SELECT event_type FROM security_events
+      sql`SELECT event_type FROM ${AUDIT_EVENTS}
            WHERE user_id = ${admin.userId} AND event_type LIKE 'support.%'
            ORDER BY created_at ASC`,
     );

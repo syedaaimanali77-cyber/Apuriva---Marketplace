@@ -1,7 +1,5 @@
-import { desc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { getDb } from '@/lib/db';
-import { securityEvents } from '@/lib/db/schema';
+import { auditEventsByActor } from '@/lib/audit/audit-test-support';
 import { resetRateLimitState } from '@/lib/api/rate-limit';
 import { POST as CREATE_CATEGORY } from '@/app/api/v1/admin/categories/route';
 import { POST as RETIRE_CATEGORY } from '@/app/api/v1/admin/categories/[id]/retire/route';
@@ -16,7 +14,8 @@ function uniqueSlug(base: string): string {
 }
 
 async function latestEventFor(userId: string, eventType: string) {
-  const [row] = await getDb().select().from(securityEvents).where(eq(securityEvents.userId, userId)).orderBy(desc(securityEvents.createdAt));
+  // Spec 039 X-6: admin audit events now live in `audit_logs` (legacy event shape).
+  const [row] = await auditEventsByActor(userId);
   expect(row?.eventType).toBe(eventType);
   return row!;
 }

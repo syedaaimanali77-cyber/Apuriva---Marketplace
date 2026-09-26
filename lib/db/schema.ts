@@ -3377,13 +3377,61 @@ export const aiUsageEvents = pgTable(
 // Platform / admin
 // ---------------------------------------------------------------------------
 
+/** Spec 039 §3.2 / §4 — who an audit entry's actor is. There is deliberately no `ai` type (D-7). */
+const AUDIT_LOG_ACTOR_TYPES = ['admin', 'user', 'system'] as const;
+
+/**
+ * Spec 039 §4 (migration 0034) completes spec 003's `audit_logs` STUB — the table is altered, never
+ * re-created. It is the durable, APPEND-ONLY audit store (AC-2): `audit_logs_append_only_trg` and
+ * `audit_logs_no_truncate_trg` refuse UPDATE, DELETE and TRUNCATE with 23514, so `updated_at` and
+ * `version` (kept because spec 003's schema-lint requires them on every table) never change.
+ *
+ * Written ONLY by `lib/audit/write.ts` `writeAuditEntry()`, which only spec 009's
+ * `recordAdminAuditEvent()` and spec 039's durable MCP sink call. Distinct from spec 005's
+ * `security_events` (master §124 lists them as separate entities).
+ */
 export const auditLogs = pgTable(
   'audit_logs',
   {
     ...baseColumns(),
     actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    actorType: text('actor_type', { enum: AUDIT_LOG_ACTOR_TYPES }).notNull(),
+    /** Every admin role held at the time (spec 009's multi-role model); `[]` for a non-admin user. */
+    actorRoles: jsonb('actor_roles').notNull().default([]),
+    eventType: text('event_type').notNull(),
+    /** The scope key read access is resolved against (`lib/audit/scope.ts`). */
+    resource: text('resource').notNull(),
+    action: text('action').notNull(),
+    targetType: text('target_type'),
+    /** Text, not uuid: existing targets include non-uuid ids such as spec 030's `'queue'`. */
+    targetId: text('target_id'),
+    reason: text('reason'),
+    beforeValue: jsonb('before_value'),
+    afterValue: jsonb('after_value'),
+    /** Spec 009's `AdminAction` — the approval record; its decisions stay in `admin_action_approvals`. */
+    approvalRef: uuid('approval_ref').references(() => adminActions.id, { onDelete: 'restrict' }),
+    approvalChain: jsonb('approval_chain').notNull().default([]),
+    isEmergencyBypass: boolean('is_emergency_bypass').notNull().default(false),
+    /** Spec 004's request correlation id; null ⇔ no originating API request (cron/system, §3.5). */
+    correlationId: text('correlation_id'),
   },
-  (t) => [index('audit_logs_actor_user_id_idx').on(t.actorUserId)],
+  (t) => [
+    index('audit_logs_actor_user_id_idx').on(t.actorUserId),
+    index('audit_logs_approval_ref_idx').on(t.approvalRef),
+    index('audit_logs_created_at_idx').on(t.createdAt.desc(), t.id.desc()),
+    index('audit_logs_resource_created_at_idx').on(t.resource, t.createdAt.desc()),
+    index('audit_logs_target_idx').on(t.targetType, t.targetId),
+    index('audit_logs_correlation_id_idx').on(t.correlationId),
+    index('audit_logs_event_type_created_at_idx').on(t.eventType, t.createdAt.desc()),
+    check('audit_logs_actor_type_ck', sql`${t.actorType} in ('admin','user','system')`),
+    check('audit_logs_actor_pairing_ck', sql`(${t.actorType} = 'system') = (${t.actorUserId} is null)`),
+    check('audit_logs_actor_roles_array_ck', sql`jsonb_typeof(${t.actorRoles}) = 'array'`),
+    check('audit_logs_event_type_ck', sql`char_length(${t.eventType}) between 1 and 128`),
+    check('audit_logs_resource_ck', sql`char_length(${t.resource}) between 1 and 64`),
+    check('audit_logs_action_ck', sql`char_length(${t.action}) between 1 and 64`),
+    check('audit_logs_target_pairing_ck', sql`${t.targetId} is null or ${t.targetType} is not null`),
+    check('audit_logs_correlation_id_ck', sql`${t.correlationId} is null or ${t.correlationId} ~ '^[A-Za-z0-9_-]{1,100}$'`),
+  ],
 );
 
 export const featureFlags = pgTable('feature_flags', { ...baseColumns() });

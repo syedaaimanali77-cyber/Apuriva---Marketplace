@@ -1,3 +1,4 @@
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -45,7 +46,7 @@ describe.skipIf(!dbReachable)('moderation audit (spec 038 AC-4)', { timeout: 180
     // Spec 009's own permit event is written too.
     const [permit] = await queryRows<{ n: number }>(
       getDb(),
-      sql`SELECT count(*)::int AS n FROM security_events WHERE event_type = 'admin_rbac.action_permitted' AND metadata->>'targetId' = ${action.id}`,
+      sql`SELECT count(*)::int AS n FROM ${AUDIT_EVENTS} WHERE event_type = 'admin_rbac.action_permitted' AND metadata->>'targetId' = ${action.id}`,
     );
     expect(permit!.n).toBe(1);
   });

@@ -7,6 +7,7 @@
  * to spec 017's matching editor; changes a weight THERE (the only writer); and finds the audit event
  * with before/after that the change produced (AC-5) — while the dashboard itself wrote nothing.
  */
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -93,7 +94,7 @@ describe.skipIf(!dbReachable)('e2e: spec 037 admin dashboard journey', () => {
 
     const [event] = await queryRows<{ metadata: Record<string, unknown> }>(
       getDb(),
-      sql`SELECT metadata FROM security_events
+      sql`SELECT metadata FROM ${AUDIT_EVENTS}
            WHERE user_id = ${admin.userId} AND event_type = 'admin_rbac.matching_weights_updated'`,
     );
     expect(event!.metadata).toMatchObject({

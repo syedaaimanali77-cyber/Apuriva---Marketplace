@@ -8,6 +8,7 @@
  *
  * And the whole of the consequence: a breach is FLAGGED and nothing else happens.
  */
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { getDb, getPool } from '@/lib/db';
@@ -251,7 +252,7 @@ describe.skipIf(!dbReachable)('spec 032 SLA clock (integration)', () => {
 
     const events = await queryRows<{ metadata: unknown }>(
       getDb(),
-      sql`SELECT metadata FROM security_events
+      sql`SELECT metadata FROM ${AUDIT_EVENTS}
            WHERE user_id = ${admin.userId} AND event_type = 'support.priority_changed'
            ORDER BY created_at DESC LIMIT 1`,
     );

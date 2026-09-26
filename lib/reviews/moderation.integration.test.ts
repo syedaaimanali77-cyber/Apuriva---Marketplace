@@ -4,6 +4,7 @@
  * This is the file that makes the spec's central promise observable: a flag is a request for a
  * human to look, never a takedown, and a legitimate negative review is simply a review.
  */
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
@@ -210,7 +211,7 @@ describe.skipIf(!reachable)('spec 029 moderation (AC-4, AC-5, AC-8, AC-9)', () =
       // Exactly one audit event, carrying the actor, the target and the reason.
       const events = await queryRows<{ user_id: string; metadata: Record<string, unknown> }>(
         getDb(),
-        sql`SELECT user_id, metadata FROM security_events
+        sql`SELECT user_id, metadata FROM ${AUDIT_EVENTS}
              WHERE event_type = ${REVIEW_MODERATION_EVENT_TYPE}
                AND metadata->>'targetId' = ${created.id}`,
       );

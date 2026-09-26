@@ -13,6 +13,7 @@
  * written midway never appears in anything the customer can fetch, and that `closed` is genuinely
  * the end of the line.
  */
+import { AUDIT_EVENTS } from '@/lib/audit/audit-test-support';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { getDb, getPool } from '@/lib/db';
@@ -203,7 +204,7 @@ describe.skipIf(!dbReachable)('spec 032 support, end to end', () => {
     await ADMIN_DETAIL(supportRequest(`${BASE}/admin/support/tickets/${ticket.id}`, admin, { method: 'GET' }));
     const events = await queryRows<{ event_type: string }>(
       getDb(),
-      sql`SELECT DISTINCT event_type FROM security_events
+      sql`SELECT DISTINCT event_type FROM ${AUDIT_EVENTS}
            WHERE user_id = ${admin.userId} AND event_type LIKE 'support.%'`,
     );
     const types = events.map((e) => e.event_type);
