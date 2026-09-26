@@ -10,7 +10,7 @@ import { cancelDeletion } from '@/lib/privacy/deletion';
  * nothing was ever pending) — deletion cannot be undone after that point.
  */
 export const POST = withApiRoute(async (request, correlationId) => {
-  const session = await requireSession(request);
+  const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
   requireCsrf(request, session.id);
 
   await cancelDeletion(session.userId);

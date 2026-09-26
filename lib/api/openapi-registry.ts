@@ -1438,4 +1438,86 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
       'Read-only configuration overview - platform-default matching weights, the count of per-service overrides, the active platform cancellation policy - each section for its read permission (matching.config/read, cancellation_policy/read); links to the owning editors. No write',
     tags: ['admin'],
   },
+  // Spec 038 — admin moderation, fraud/abuse signals, appeals.
+  {
+    method: 'GET',
+    path: '/admin/moderation-actions',
+    summary: 'List moderation actions (moderation/read); filters targetUserId, status, actionType; newest first',
+    tags: ['moderation'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/moderation-actions',
+    summary:
+      'Initiate a warning, restriction, suspension, ban, booking intervention or payout freeze (per-type permission); reason required; requires Idempotency-Key. Low/medium apply at once (201); high/critical go through spec 009 four-eyes (202, nothing in effect); replay 200',
+    tags: ['moderation'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/moderation-actions/{id}',
+    summary: 'Moderation action detail with evidence file-asset ids, spec 009 approval chain and appeal (moderation/read)',
+    tags: ['moderation'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/moderation-actions/{id}/execute',
+    summary:
+      'Execute an approved high/critical moderation action (per-type permission); calls spec 009 executeApprovedAction first, then the owning domain path; requires Idempotency-Key; idempotent by state',
+    tags: ['moderation'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/moderation-actions/{id}/reverse',
+    summary: 'Request reversal of an active moderation action (moderation/reverse, four-eyes); reason required; requires Idempotency-Key; 202',
+    tags: ['moderation'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/moderation-actions/{id}/reverse/execute',
+    summary: 'Execute an approved reversal, restoring the prior standing (moderation/reverse); requires Idempotency-Key',
+    tags: ['moderation'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/fraud-signals',
+    summary: 'Fraud/abuse signal review queue (fraud_signals/read); review items only, never enforcement',
+    tags: ['moderation'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/fraud-signals/{id}/dismiss',
+    summary: 'Dismiss a fraud signal (fraud_signals/triage); conditional on expectedStatus; reason required; requires Idempotency-Key',
+    tags: ['moderation'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/fraud-signals/{id}/escalate',
+    summary: 'Escalate a fraud signal (fraud_signals/triage); conditional on expectedStatus; reason required; requires Idempotency-Key',
+    tags: ['moderation'],
+  },
+  {
+    method: 'GET',
+    path: '/admin/moderation-appeals',
+    summary: 'Moderation appeal queue (moderation/review_appeal); FIFO; filter status',
+    tags: ['moderation'],
+  },
+  {
+    method: 'POST',
+    path: '/admin/moderation-appeals/{id}/decide',
+    summary:
+      'Decide an appeal (moderation/review_appeal) as an admin who neither initiated nor approved the action; upheld reverses it; requires Idempotency-Key',
+    tags: ['moderation'],
+  },
+  {
+    method: 'GET',
+    path: '/moderation-actions',
+    summary: "The caller's own moderation actions, without internal reason, evidence or admin identity; reachable while suspended or banned",
+    tags: ['moderation'],
+  },
+  {
+    method: 'POST',
+    path: '/moderation-actions/{id}/appeals',
+    summary: 'File the one appeal an active action may carry (target only); reachable while suspended or banned; requires Idempotency-Key',
+    tags: ['moderation'],
+  },
 ];

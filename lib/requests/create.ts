@@ -11,6 +11,7 @@ import {
   services,
 } from '@/lib/db/schema';
 import { idempotencyFingerprint } from '@/lib/api/idempotency';
+import { assertAccountMayTransact } from '@/lib/moderation/standing';
 import { listServiceFields, validateFieldSubmission } from '@/lib/service-page/fields';
 import type { CreateRequestRequest, RequestDto, RequestUrgency } from '@/lib/types/requests';
 import { parseBudget } from './budget';
@@ -59,6 +60,9 @@ export async function createRequest(
     if (existing.fingerprint !== fingerprint) throw idempotencyKeyConflictError();
     return { request: await toRequestDto(existing.id), replayed: true };
   }
+
+  // Spec 038 X-3 (§3.5): a restricted, suspended or banned account starts no new request.
+  await assertAccountMayTransact(db, userId);
 
   const errors: { field: string; message: string }[] = [];
 

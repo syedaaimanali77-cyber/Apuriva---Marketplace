@@ -13,7 +13,7 @@ const STEP_UP_ACTION = 'request_data_export';
  * scheduled sweep (app/api/v1/cron/data-export-sweep), never inline in this request.
  */
 export const POST = withApiRoute(async (request, correlationId) => {
-  const session = await requireSession(request);
+  const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
   requireCsrf(request, session.id);
   requireStepUp(request, session, STEP_UP_ACTION);
 

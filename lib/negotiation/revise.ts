@@ -11,6 +11,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
+import { assertAccountMayTransact, assertProviderMayTransact } from '@/lib/moderation/standing';
 import { idempotencyFingerprint } from '@/lib/api/idempotency';
 import { validationError } from '@/lib/api/errors';
 import { findOfferByIdempotencyKey, insertSentOffer, redactOfferTerms } from '@/lib/offers/create';
@@ -76,6 +77,10 @@ export async function reviseOffer(
 
   // Rule 2 — validation (spec 018 bounds), then contact redaction.
   const { terms, redactedFields } = redactOfferTerms(validateOfferTerms(body));
+
+  // Spec 038 X-4 (§3.5): neither a sanctioned account nor a sanctioned provider profile revises offers.
+  await assertAccountMayTransact(getDb(), providerUserId);
+  await assertProviderMayTransact(getDb(), providerProfileId);
 
   // Rule 3 — the caller's own non-draft offer.
   const [owned] = await queryRows<{ request_id: string }>(

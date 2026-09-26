@@ -103,6 +103,23 @@ export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, Catalogue
     body: 'Your report has been sent to our Trust & Safety team. We review every report; we cannot share the outcome.',
   },
   /**
+   * Spec 038 §3.11. CONTENT-FREE: tells the affected user an action exists and where to read it —
+   * never the internal reason, the evidence, the origin or which admin acted. The account page shows
+   * the standard explanation for the action type and any message the admin chose to share.
+   */
+  moderation_action_applied: {
+    category: 'security',
+    params: [],
+    title: 'An action was taken on your account',
+    body: 'Our Trust & Safety team has taken an action on your account. Open Account → Moderation to read it and, where available, appeal.',
+  },
+  moderation_appeal_decided: {
+    category: 'security',
+    params: [],
+    title: 'Your appeal has been decided',
+    body: 'A decision has been made on your appeal. Open Account → Moderation to see the outcome.',
+  },
+  /**
    * Spec 031 §8 "Notifications". Tells the counterparty a dispute exists and where to read it, and
    * NOTHING of its substance: not the reason, not who is arguing what. The reason is one party's
    * words about another and must reach them inside the dispute, where both sides are visible.

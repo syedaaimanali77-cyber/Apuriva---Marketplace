@@ -71,6 +71,10 @@ export const NOTIFICATION_TYPES = [
   // operational — spec 023 (a response deadline that affects the recipient's account standing)
   'no_show_response_requested',
   'service_notice',
+  // security — spec 038. Both CONTENT-FREE: the action type and a pointer to /account/moderation,
+  // never the internal reason, the evidence or who acted.
+  'moderation_action_applied',
+  'moderation_appeal_decided',
   // security
   'security_alert',
   // promotions — consent-gated (AC-3) and capped (AC-5)

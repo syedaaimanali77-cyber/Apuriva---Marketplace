@@ -13,6 +13,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
+import { assertAccountMayTransact } from '@/lib/moderation/standing';
 import { offerSupersededError } from '@/lib/negotiation/errors';
 import type { OfferDto } from '@/lib/types/offers';
 import { isUniqueViolation, queryRows, type Executor } from './db';
@@ -97,6 +98,8 @@ export async function acceptOffer(customerUserId: string, offerId: string, idemp
 
       // Step 3 — idempotent replay of this very accept.
       if (offer.status === 'accepted' && offer.accept_idempotency_key === idempotencyKey) return;
+      // Spec 038 X-4 (§3.5): a sanctioned account accepts no new offer.
+      await assertAccountMayTransact(tx, customerUserId);
       // Spec 019 — a revised row's price is never acceptable.
       await rejectIfSuperseded(tx, offerId, offer);
       // Step 4 — already decided another way.

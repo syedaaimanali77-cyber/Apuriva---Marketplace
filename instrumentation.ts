@@ -120,4 +120,15 @@ export async function register(): Promise<void> {
   // nothing, exactly as before this spec.
   const { registerMcpToolCatalog } = await import('@/lib/mcp-tools');
   await registerMcpToolCatalog();
+
+  // Spec 038 makes three ports real that shipped inert on purpose: spec 030's
+  // `SafetyRestrictionGate` (default: `422 RESTRICTION_UNAVAILABLE`), spec 024's `PayoutHoldGate`
+  // (default: nothing held) and spec 027's `moderation_evidence` context (default:
+  // `422 FILE_CONTEXT_NOT_AVAILABLE`). It must run AFTER specs 024, 027 and 030 register theirs.
+  // Rolling spec 038 back returns all three ports to those documented defaults.
+  // `@/lib/moderation/register`, not the `@/lib/moderation` barrel: only the three registrations
+  // are needed at startup, and the barrel would pull the whole moderation implementation into
+  // this file's (Node + Edge) recompile graph. The restriction gate loads its engine on first use.
+  const { registerModerationIntegration } = await import('@/lib/moderation/register');
+  registerModerationIntegration();
 }

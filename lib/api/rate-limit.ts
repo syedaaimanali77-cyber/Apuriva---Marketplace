@@ -26,6 +26,7 @@ export type RateLimitDomain =
   | 'safety'
   | 'disputes'
   | 'support'
+  | 'moderation'
   | 'default';
 
 export interface RateLimitRule {
@@ -89,6 +90,9 @@ export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   // which bounds it per ticket. The AI assistant route deliberately uses the 'ai' domain instead,
   // so assistant traffic can never consume the budget a user needs to reach a human.
   support: { limit: 30, windowMs: 60_000 },
+  // Spec 038 §3.13: every moderation, fraud-signal and appeal route — the same write-surface budget
+  // the safety/disputes/support domains chose.
+  moderation: { limit: 30, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 

@@ -11,7 +11,7 @@ import { markNotificationRead } from '@/lib/notifications';
  * `withApiRoute` forwards no route context, so `{id}` is read from the URL.
  */
 export const POST = withApiRoute(async (request, correlationId) => {
-  const session = await requireSession(request);
+  const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
   requireCsrf(request, session.id);
 
   const limit = checkRateLimit('default', session.userId);

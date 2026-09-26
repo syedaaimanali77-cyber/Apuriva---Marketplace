@@ -12,7 +12,7 @@ import { listNotifications } from '@/lib/notifications';
  * User-level, not mode-scoped: one inbox across customer and provider mode, so no `requireActiveMode`.
  */
 export const GET = withApiRoute(async (request, correlationId) => {
-  const session = await requireSession(request);
+  const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
 
   const limit = checkRateLimit('default', session.userId);
   if (!limit.allowed) throw rateLimitedError(limit.retryAfterSeconds);

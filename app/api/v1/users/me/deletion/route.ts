@@ -10,7 +10,7 @@ const STEP_UP_ACTION = 'request_account_deletion';
 /** Read side of the same resource — lets the UI show "Deletion Pending until <date>" and the
  * cancel option again after a reload. */
 export const GET = withApiRoute(async (request, correlationId) => {
-  const session = await requireSession(request);
+  const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
   const status = await getDeletionStatus(session.userId);
   return apiSuccess(status, correlationId);
 });
@@ -22,7 +22,7 @@ export const GET = withApiRoute(async (request, correlationId) => {
  * period (lib/privacy/deletion.ts owns the 14-day default).
  */
 export const POST = withApiRoute(async (request, correlationId) => {
-  const session = await requireSession(request);
+  const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
   requireCsrf(request, session.id);
   requireStepUp(request, session, STEP_UP_ACTION);
 

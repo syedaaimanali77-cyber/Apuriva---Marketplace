@@ -10,6 +10,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
+import { assertAccountMayTransact, assertProviderMayTransact } from '@/lib/moderation/standing';
 import { idempotencyFingerprint } from '@/lib/api/idempotency';
 import { validationError } from '@/lib/api/errors';
 import { actionForPricingModel } from '@/lib/matching/actions';
@@ -115,6 +116,10 @@ export async function createOffer(
   // Rule 2 — body validation (only whitelisted fields are ever read), then spec 019 contact redaction.
   const validated = validateCreateOfferBody(body);
   const { terms: input, redactedFields } = redactOfferTerms(validated);
+
+  // Spec 038 X-4 (§3.5): neither a sanctioned account nor a sanctioned provider profile sends offers.
+  await assertAccountMayTransact(getDb(), providerUserId);
+  await assertProviderMayTransact(getDb(), providerProfileId);
 
   let outcome: { offerId: string; replayed: boolean };
   try {

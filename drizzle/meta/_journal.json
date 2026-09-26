@@ -225,6 +225,13 @@
       "when": 1790800200000,
       "tag": "0032_extend_ai_tool_calls",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790800300000,
+      "tag": "0033_add_admin_moderation_fraud",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { and, eq, lte, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { customerProfiles, providerAvailabilityNotificationRequests, providerProfiles, requests, users } from '@/lib/db/schema';
+import { getAccountStanding, standingToLifecycle } from '@/lib/moderation/standing';
 import { hasActiveBooking } from './booking-lifecycle-adapter';
 import { activeBookingBlocksDeletionError, deletionAlreadyPendingError, deletionNotPendingError } from './errors';
 import { removePayoutMethodsForDeletedUser } from '@/lib/payouts/privacy';
@@ -76,9 +77,13 @@ export async function cancelDeletion(userId: string): Promise<void> {
   const [user] = await db.select({ lifecycleStatus: users.lifecycleStatus }).from(users).where(eq(users.id, userId));
   if (user?.lifecycleStatus !== 'deletion_pending') throw deletionNotPendingError();
 
+  // Spec 038 X-6 (§3.5, AC-11): cancelling deletion restores the account's MODERATION standing,
+  // never an unconditional `active` — otherwise request-then-cancel would lift a ban. While
+  // `deletion_pending`, the standing is carried by spec 038's active actions.
+  const restored = standingToLifecycle(await getAccountStanding(db, userId));
   await db
     .update(users)
-    .set({ lifecycleStatus: 'active', deletionRequestedAt: null, deletionGraceEndsAt: null })
+    .set({ lifecycleStatus: restored, deletionRequestedAt: null, deletionGraceEndsAt: null })
     .where(and(eq(users.id, userId), eq(users.lifecycleStatus, 'deletion_pending')));
 }
 

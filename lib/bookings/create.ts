@@ -17,6 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
+import { assertAccountMayTransact, assertProviderMayTransact } from '@/lib/moderation/standing';
 import { validationError } from '@/lib/api/errors';
 import { idempotencyFingerprint } from '@/lib/api/idempotency';
 import { reserveProviderSlot } from '@/lib/availability/reserve';
@@ -167,6 +168,11 @@ export async function createBooking(
         console.log(JSON.stringify({ event: 'booking.idempotent_replay', bookingId }));
         return;
       }
+
+      // Spec 038 X-5 (§3.5): neither a sanctioned customer nor a sanctioned provider enters a new
+      // booking. Also covers spec 036's `create_booking` MCP tool, which calls this service.
+      await assertAccountMayTransact(tx, customerUserId);
+      await assertProviderMayTransact(tx, context.providerProfileId);
 
       // Step 8 — one booking per offer.
       const [existingByOffer] = await queryRows<{ id: string }>(

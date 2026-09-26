@@ -15,7 +15,7 @@ function exportIdFromUrl(request: Request): string {
  * `downloadUrl` is present only once `status` is `ready` (lib/privacy/export.ts).
  */
 export const GET = withApiRoute(async (request, correlationId) => {
-  const session = await requireSession(request);
+  const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
   const exportRequestId = exportIdFromUrl(request);
   const dto = await getExportStatusDto(session.userId, exportRequestId);
   return apiSuccess(dto, correlationId);

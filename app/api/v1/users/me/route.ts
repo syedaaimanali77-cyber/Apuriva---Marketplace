@@ -8,7 +8,7 @@ import type { ActiveMode, UserDto } from '@/lib/types/users';
 /** Spec 006 §3, `GET /api/v1/users/me` — which profiles exist, and the current session's
  * active mode (never a global `User` preference — see spec 006 §4). */
 export const GET = withApiRoute(async (request, correlationId) => {
-  const session = await requireSession(request);
+  const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
 
   const [flags, isAdmin] = await Promise.all([getProfileFlags(session.userId), isAdminUser(session.userId)]);
 

@@ -7,7 +7,7 @@ import { markAllNotificationsRead } from '@/lib/notifications';
 
 /** Spec 026 §3, `POST /api/v1/users/me/notifications/read-all` — marks every unread notification read. */
 export const POST = withApiRoute(async (request, correlationId) => {
-  const session = await requireSession(request);
+  const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
   requireCsrf(request, session.id);
 
   const limit = checkRateLimit('default', session.userId);

@@ -8,6 +8,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
+import { assertAccountMayTransact } from '@/lib/moderation/standing';
 import { idempotencyFingerprint } from '@/lib/api/idempotency';
 import { isUniqueViolation, queryRows } from '@/lib/offers/db';
 import { currentOfferIdFor } from '@/lib/offers/lineage';
@@ -44,6 +45,9 @@ export async function createChangeRequest(
 
   // Step 2 — validation.
   const input = validateChangeRequestBody(body);
+
+  // Spec 038 X-4 (§3.5): a sanctioned account raises no change request.
+  await assertAccountMayTransact(getDb(), customerUserId);
 
   // Step 3 — ownership (404 for a non-owner, indistinguishable from a missing offer).
   const [owned] = await queryRows<{ request_id: string; provider_profile_id: string }>(

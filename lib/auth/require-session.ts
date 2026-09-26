@@ -1,4 +1,6 @@
 import { ApiRouteError } from '@/lib/api/errors';
+import { getDb } from '@/lib/db';
+import { getAccountStanding, isSessionBlockingStanding, standingError } from '@/lib/moderation/standing';
 import { CSRF_HEADER_NAME, verifyCsrfToken } from './csrf';
 import { getSessionIdFromRequest } from './cookies';
 import { mfaRequiredError, csrfTokenInvalidError } from './errors';
@@ -12,8 +14,18 @@ function unauthenticated(message = 'No valid session.'): ApiRouteError {
  * Route guard for `session` / `session (partial)` auth (spec 005 §3 endpoint table). Silently
  * refreshes a valid full session (§8 risk #3) as a side effect. `allowPartial: true` is only for
  * `/api/v1/auth/mfa/verify`, the one endpoint an MFA-pending session is allowed to call.
+ *
+ * Spec 038 X-1 (§3.5): a SUSPENDED or BANNED account is refused with `403 ACCOUNT_SUSPENDED` /
+ * `ACCOUNT_BANNED` on every route except the spec 038 allow-list, which opts in with
+ * `allowModeratedAccount: true` (logout, the account's own profile/notifications/privacy routes, and
+ * viewing/appealing moderation actions). `restricted` and good standing pass unchanged. The standing
+ * is read fresh on every call from spec 038's leaf `@/lib/moderation/standing`, so a reversal takes
+ * effect on the next request.
  */
-export async function requireSession(request: Request, options?: { allowPartial?: boolean }): Promise<SessionRow> {
+export async function requireSession(
+  request: Request,
+  options?: { allowPartial?: boolean; allowModeratedAccount?: boolean },
+): Promise<SessionRow> {
   const sessionId = getSessionIdFromRequest(request);
   if (!sessionId) throw unauthenticated();
 
@@ -21,6 +33,11 @@ export async function requireSession(request: Request, options?: { allowPartial?
   if (!result.valid) throw unauthenticated();
 
   if (!result.session.mfaSatisfied && !options?.allowPartial) throw mfaRequiredError();
+
+  if (options?.allowModeratedAccount !== true) {
+    const standing = await getAccountStanding(getDb(), result.session.userId);
+    if (standing !== 'good' && isSessionBlockingStanding(standing)) throw standingError(standing);
+  }
 
   return result.session;
 }
@@ -36,7 +53,10 @@ export async function getOptionalSession(request: Request): Promise<SessionRow |
   if (!sessionId) return null;
 
   const result = await validateAndRefreshSession(sessionId);
-  return result.valid ? result.session : null;
+  if (!result.valid) return null;
+  // Spec 038 X-1: a suspended or banned account is treated as a guest on guest-or-session routes.
+  if (isSessionBlockingStanding(await getAccountStanding(getDb(), result.session.userId))) return null;
+  return result.session;
 }
 
 /**

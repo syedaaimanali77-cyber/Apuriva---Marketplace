@@ -140,6 +140,11 @@ const EXPECTED_TABLES = [
   'addresses',
   'analytics_events',
   'recent_searches',
+  // Spec 038 §4 (X-7): not in master spec §124's minimum list — the durable moderation record, the
+  // fraud/abuse review queue and moderation appeals, the same allowance specs 009/016/017/023/024 used.
+  'moderation_actions',
+  'fraud_signals',
+  'moderation_appeals',
 ] as const;
 
 const STATE_MACHINE_ENTITIES = ['requests', 'offers', 'bookings', 'payments', 'payouts'] as const;

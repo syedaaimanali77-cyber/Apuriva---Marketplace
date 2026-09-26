@@ -3835,7 +3835,8 @@ export const fileAssets = pgTable(
       // `safety_evidence` by spec 030 (migration 0027) and `support_attachment` by spec 032
       // (migration 0029). All ten below are what the live constraint holds; `safety_evidence` was
       // missing from this declaration until 0029 had to recreate the constraint and surfaced it.
-      sql`${t.contextType} is null or ${t.contextType} in ('request_attachment','message_attachment','portfolio','data_export','booking_evidence','dispute_evidence','verification_document','review_media','safety_evidence','support_attachment')`,
+      // Spec 038 adds `moderation_evidence` (migration 0033).
+      sql`${t.contextType} is null or ${t.contextType} in ('request_attachment','message_attachment','portfolio','data_export','booking_evidence','dispute_evidence','verification_document','review_media','safety_evidence','support_attachment','moderation_evidence')`,
     ),
     check('file_assets_context_pairing_ck', sql`${t.contextId} is null or ${t.contextType} is not null`),
     check('file_assets_ready_pairing_ck', sql`(${t.status} = 'ready') = (${t.readyAt} is not null)`),
@@ -3992,5 +3993,222 @@ export const mcpConfirmationParameters = pgTable(
   (t) => [
     index('mcp_confirmation_parameters_mcp_confirmation_id_idx').on(t.mcpConfirmationId),
     uniqueIndex('mcp_confirmation_parameters_confirmation_label_uq').on(t.mcpConfirmationId, t.label),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Spec 038 — admin moderation, fraud/abuse signals, moderation appeals
+// ---------------------------------------------------------------------------
+
+/**
+ * Spec 038 §3.6 — a rule-based (or, behind `AI_FRAUD_SIGNALS_ENABLED`, AI-assisted) review item.
+ *
+ * A signal ENFORCES NOTHING. It is a queue entry for a human; the only way it leads anywhere is an
+ * admin initiating a `moderation_actions` row that names it (`origin_fraud_signal_id`). Typed
+ * columns rather than a `jsonb` detail blob, so spec 003's jsonb allow-list is untouched.
+ */
+export const FRAUD_SIGNAL_SOURCES = ['rule_based', 'ai_assisted'] as const;
+export const FRAUD_SIGNAL_STATUSES = ['pending_review', 'escalated', 'dismissed', 'actioned'] as const;
+
+export const fraudSignals = pgTable(
+  'fraud_signals',
+  {
+    ...baseColumns(),
+    targetUserId: uuid('target_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    source: text('source', { enum: FRAUD_SIGNAL_SOURCES }).notNull(),
+    ruleKey: text('rule_key').notNull(),
+    observedCount: integer('observed_count').notNull(),
+    threshold: integer('threshold').notNull(),
+    windowDays: integer('window_days').notNull(),
+    status: text('status', { enum: FRAUD_SIGNAL_STATUSES }).notNull().default('pending_review'),
+    triagedByAdminId: uuid('triaged_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    triageReason: text('triage_reason'),
+    triagedAt: timestamp('triaged_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('fraud_signals_target_user_id_idx').on(t.targetUserId),
+    index('fraud_signals_triaged_by_admin_id_idx').on(t.triagedByAdminId),
+    index('fraud_signals_status_created_idx').on(t.status, t.createdAt),
+    uniqueIndex('fraud_signals_open_rule_target_uq')
+      .on(t.ruleKey, t.targetUserId)
+      .where(sql`${t.status} in ('pending_review','escalated')`),
+    check('fraud_signals_source_ck', sql`${t.source} in ('rule_based','ai_assisted')`),
+    check('fraud_signals_status_ck', sql`${t.status} in ('pending_review','escalated','dismissed','actioned')`),
+    check('fraud_signals_rule_key_length_ck', sql`char_length(${t.ruleKey}) between 1 and 64`),
+    check('fraud_signals_counts_ck', sql`${t.observedCount} > 0 and ${t.threshold} > 0 and ${t.windowDays} > 0`),
+    check('fraud_signals_triage_reason_length_ck', sql`${t.triageReason} is null or char_length(${t.triageReason}) <= 500`),
+    check(
+      'fraud_signals_triage_pairing_ck',
+      sql`${t.status} = 'pending_review' or (${t.triagedByAdminId} is not null and ${t.triagedAt} is not null)`,
+    ),
+  ],
+);
+
+/**
+ * Spec 038 §4 — THE durable moderation record. Spec 009's `admin_actions` is only the approval
+ * record of one step (`admin_action_id` for the action, `reversal_admin_action_id` for its
+ * reversal); it is never the moderation record itself.
+ *
+ * `initiated_by_admin_id` is NOT NULL: an action with no human initiator is unrepresentable — AC-3's
+ * "no enforcement from a signal alone" in mechanical form.
+ */
+export const MODERATION_ACTION_TYPES = [
+  'warning',
+  'restriction',
+  'suspension',
+  'ban',
+  'booking_intervention',
+  'payout_freeze',
+] as const;
+export const MODERATION_SCOPES = ['account', 'provider_profile', 'booking'] as const;
+export const MODERATION_ACTION_STATUSES = [
+  'pending_approval',
+  'active',
+  'executed',
+  'superseded',
+  'reversed',
+  'rejected',
+] as const;
+export const ACCOUNT_STANDINGS = ['good', 'restricted', 'suspended', 'banned'] as const;
+
+export const moderationActions = pgTable(
+  'moderation_actions',
+  {
+    ...baseColumns(),
+    actionType: text('action_type', { enum: MODERATION_ACTION_TYPES }).notNull(),
+    scope: text('scope', { enum: MODERATION_SCOPES }).notNull(),
+    targetUserId: uuid('target_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    providerProfileId: uuid('provider_profile_id').references(() => providerProfiles.id, { onDelete: 'restrict' }),
+    bookingId: uuid('booking_id').references(() => bookings.id, { onDelete: 'restrict' }),
+    refundTreatment: text('refund_treatment', { enum: ['policy', 'full'] as const }),
+    riskTier: text('risk_tier', { enum: RISK_TIERS }).notNull(),
+    status: text('status', { enum: MODERATION_ACTION_STATUSES }).notNull(),
+    reason: text('reason').notNull(),
+    userMessage: text('user_message'),
+    initiatedByAdminId: uuid('initiated_by_admin_id')
+      .notNull()
+      .references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    adminActionId: uuid('admin_action_id').references(() => adminActions.id, { onDelete: 'restrict' }),
+    reversalAdminActionId: uuid('reversal_admin_action_id').references(() => adminActions.id, { onDelete: 'restrict' }),
+    previousUserStanding: text('previous_user_standing', { enum: ACCOUNT_STANDINGS }),
+    previousProviderLifecycleStatus: text('previous_provider_lifecycle_status', { enum: PROVIDER_PROFILE_LIFECYCLE_STATUSES }),
+    supersededByModerationActionId: uuid('superseded_by_moderation_action_id').references((): AnyPgColumn => moderationActions.id, {
+      onDelete: 'restrict',
+    }),
+    originSafetyReportId: uuid('origin_safety_report_id').references(() => safetyReports.id, { onDelete: 'restrict' }),
+    originFraudSignalId: uuid('origin_fraud_signal_id').references(() => fraudSignals.id, { onDelete: 'restrict' }),
+    activatedAt: timestamp('activated_at', { withTimezone: true }),
+    reversedAt: timestamp('reversed_at', { withTimezone: true }),
+    reversedByAdminId: uuid('reversed_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    reversalReason: text('reversal_reason'),
+    idempotencyKey: text('idempotency_key'),
+    idempotencyFingerprint: text('idempotency_fingerprint'),
+  },
+  (t) => [
+    index('moderation_actions_target_user_id_idx').on(t.targetUserId, t.createdAt),
+    index('moderation_actions_provider_profile_id_idx').on(t.providerProfileId),
+    index('moderation_actions_booking_id_idx').on(t.bookingId),
+    index('moderation_actions_initiated_by_admin_id_idx').on(t.initiatedByAdminId),
+    uniqueIndex('moderation_actions_admin_action_id_uq').on(t.adminActionId),
+    uniqueIndex('moderation_actions_reversal_admin_action_id_uq').on(t.reversalAdminActionId),
+    index('moderation_actions_superseded_by_idx').on(t.supersededByModerationActionId),
+    index('moderation_actions_origin_safety_report_id_idx').on(t.originSafetyReportId),
+    index('moderation_actions_origin_fraud_signal_id_idx').on(t.originFraudSignalId),
+    index('moderation_actions_reversed_by_admin_id_idx').on(t.reversedByAdminId),
+    uniqueIndex('moderation_actions_active_freeze_uq')
+      .on(t.providerProfileId)
+      .where(sql`${t.actionType} = 'payout_freeze' and ${t.status} in ('pending_approval','active')`),
+    uniqueIndex('moderation_actions_open_intervention_uq')
+      .on(t.bookingId)
+      .where(sql`${t.actionType} = 'booking_intervention' and ${t.status} in ('pending_approval','executed')`),
+    uniqueIndex('moderation_actions_origin_safety_restriction_uq')
+      .on(t.originSafetyReportId)
+      .where(sql`${t.actionType} = 'restriction'`),
+    uniqueIndex('moderation_actions_admin_idempotency_uq')
+      .on(t.initiatedByAdminId, t.idempotencyKey)
+      .where(sql`${t.idempotencyKey} is not null`),
+    index('moderation_actions_active_account_idx')
+      .on(t.targetUserId)
+      .where(sql`${t.scope} = 'account' and ${t.status} = 'active'`),
+    check(
+      'moderation_actions_action_type_ck',
+      sql`${t.actionType} in ('warning','restriction','suspension','ban','booking_intervention','payout_freeze')`,
+    ),
+    check('moderation_actions_scope_ck', sql`${t.scope} in ('account','provider_profile','booking')`),
+    check('moderation_actions_risk_tier_ck', sql`${t.riskTier} in ('low','medium','high','critical')`),
+    check(
+      'moderation_actions_status_ck',
+      sql`${t.status} in ('pending_approval','active','executed','superseded','reversed','rejected')`,
+    ),
+    check('moderation_actions_refund_treatment_ck', sql`${t.refundTreatment} is null or ${t.refundTreatment} in ('policy','full')`),
+    check(
+      'moderation_actions_previous_user_standing_ck',
+      sql`${t.previousUserStanding} is null or ${t.previousUserStanding} in ('good','restricted','suspended','banned')`,
+    ),
+    check(
+      'moderation_actions_previous_provider_status_ck',
+      sql`${t.previousProviderLifecycleStatus} is null or ${t.previousProviderLifecycleStatus} in ('draft','pending_verification','active','paused','restricted','suspended','banned')`,
+    ),
+    check('moderation_actions_reason_length_ck', sql`char_length(${t.reason}) between 1 and 500`),
+    check('moderation_actions_user_message_length_ck', sql`${t.userMessage} is null or char_length(${t.userMessage}) <= 500`),
+    check('moderation_actions_reversal_reason_length_ck', sql`${t.reversalReason} is null or char_length(${t.reversalReason}) <= 500`),
+    check(
+      'moderation_actions_scope_target_ck',
+      sql`((${t.scope} = 'booking') = (${t.bookingId} is not null))
+          and ((${t.scope} = 'booking') = (${t.actionType} = 'booking_intervention'))
+          and (${t.scope} <> 'provider_profile' or ${t.providerProfileId} is not null)
+          and (${t.actionType} <> 'payout_freeze' or ${t.scope} = 'provider_profile')
+          and ((${t.refundTreatment} is not null) = (${t.actionType} = 'booking_intervention'))`,
+    ),
+    check(
+      'moderation_actions_active_pairing_ck',
+      sql`(${t.status} in ('active','executed','superseded','reversed')) = (${t.activatedAt} is not null)`,
+    ),
+    check(
+      'moderation_actions_reversal_pairing_ck',
+      sql`(${t.status} = 'reversed') = (${t.reversedAt} is not null and ${t.reversedByAdminId} is not null and ${t.reversalReason} is not null)`,
+    ),
+    check('moderation_actions_approval_pairing_ck', sql`(${t.riskTier} in ('high','critical')) = (${t.adminActionId} is not null)`),
+  ],
+);
+
+/** Spec 038 §3.12 — one appeal per action, decided by a different admin (AC-5). */
+export const MODERATION_APPEAL_STATUSES = ['pending', 'upheld', 'denied'] as const;
+
+export const moderationAppeals = pgTable(
+  'moderation_appeals',
+  {
+    ...baseColumns(),
+    moderationActionId: uuid('moderation_action_id')
+      .notNull()
+      .references(() => moderationActions.id, { onDelete: 'restrict' }),
+    appellantUserId: uuid('appellant_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    statement: text('statement').notNull(),
+    status: text('status', { enum: MODERATION_APPEAL_STATUSES }).notNull().default('pending'),
+    decidedByAdminId: uuid('decided_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+    decisionReason: text('decision_reason'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    idempotencyFingerprint: text('idempotency_fingerprint').notNull(),
+  },
+  (t) => [
+    uniqueIndex('moderation_appeals_moderation_action_id_uq').on(t.moderationActionId),
+    index('moderation_appeals_appellant_user_id_idx').on(t.appellantUserId),
+    index('moderation_appeals_decided_by_admin_id_idx').on(t.decidedByAdminId),
+    index('moderation_appeals_status_created_idx').on(t.status, t.createdAt),
+    uniqueIndex('moderation_appeals_appellant_idempotency_uq').on(t.appellantUserId, t.idempotencyKey),
+    check('moderation_appeals_status_ck', sql`${t.status} in ('pending','upheld','denied')`),
+    check('moderation_appeals_statement_length_ck', sql`char_length(${t.statement}) between 1 and 2000`),
+    check('moderation_appeals_decision_reason_length_ck', sql`${t.decisionReason} is null or char_length(${t.decisionReason}) <= 500`),
+    check(
+      'moderation_appeals_decision_pairing_ck',
+      sql`(${t.status} <> 'pending') = (${t.decidedByAdminId} is not null and ${t.decisionReason} is not null and ${t.decidedAt} is not null)`,
+    ),
   ],
 );
