@@ -13,6 +13,7 @@
  * consuming module changes — that is exactly what AC-2 asserts.
  */
 import { AiProviderConfigurationError } from '../errors';
+import { getOpenAiProvider } from './openai';
 import { getSandboxAiProvider } from './sandbox';
 import type { AiProviderAdapter } from './types';
 
@@ -25,6 +26,7 @@ const DEFAULT_PROVIDER = 'sandbox';
 /** The adapter providers this repository actually has. A real vendor registers its name here. */
 const PROVIDERS: Record<string, () => AiProviderAdapter> = {
   sandbox: getSandboxAiProvider,
+  openai: getOpenAiProvider,
 };
 
 /** Every registered adapter name, for the admin/diagnostic surfaces that need to list them. */
