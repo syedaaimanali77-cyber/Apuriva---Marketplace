@@ -4,6 +4,9 @@ import { useCallback, useId, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card, EmptyState, Icon } from '@/components';
 import { ProgressBar } from '@/components/ProgressBar';
 import type { FileAssetDto, FileContextType, FileKind, UploadTargetDto } from '@/lib/types/files';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import type { Translator } from '@/lib/i18n/translator';
+import { useLocale } from './LocaleProvider';
 import { MediaPreview } from './MediaPreview';
 import styles from './file-upload.module.css';
 
@@ -61,28 +64,25 @@ function defaultKindOf(file: File): FileKind {
   return 'document';
 }
 
-/** Turns this spec's error codes into something a person can act on. */
-function messageForError(code: string | undefined, fallback: string): string {
-  switch (code) {
-    case 'FILE_TYPE_NOT_ALLOWED':
-      return 'That file type is not accepted here.';
-    case 'FILE_TOO_LARGE':
-      return 'That file is too large.';
-    case 'FILE_REJECTED':
-      return 'This file did not pass our security check and cannot be attached.';
-    case 'FILE_CONTEXT_LIMIT_REACHED':
-      return 'You have already attached the maximum number of files here.';
-    case 'FILE_STORAGE_UNAVAILABLE':
-      return 'File storage is unavailable right now. Please try again shortly.';
-    case 'RATE_LIMITED':
-      return 'Too many uploads just now. Please wait a moment and try again.';
-    default:
-      return fallback;
-  }
+const UPLOAD_ERROR_KEYS: Record<string, MessageKey> = {
+  FILE_TYPE_NOT_ALLOWED: 'upload.errors.FILE_TYPE_NOT_ALLOWED',
+  FILE_TOO_LARGE: 'upload.errors.FILE_TOO_LARGE',
+  FILE_REJECTED: 'upload.errors.FILE_REJECTED',
+  FILE_CONTEXT_LIMIT_REACHED: 'upload.errors.FILE_CONTEXT_LIMIT_REACHED',
+  FILE_STORAGE_UNAVAILABLE: 'upload.errors.FILE_STORAGE_UNAVAILABLE',
+  RATE_LIMITED: 'upload.errors.RATE_LIMITED',
+};
+
+/** Turns this spec's error codes into something a person can act on, in their locale (spec 042 X-3). */
+function messageForError(t: Translator, code: string | undefined, fallback: string): string {
+  const key = code ? UPLOAD_ERROR_KEYS[code] : undefined;
+  return key ? t(key) : fallback;
 }
 
-function formatBytes(bytes: number): string {
-  return bytes >= 1024 * 1024 ? `${Math.round(bytes / (1024 * 1024))} MB` : `${Math.round(bytes / 1024)} KB`;
+function formatBytes(t: Translator, bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? t('upload.megabytes', { n: Math.round(bytes / (1024 * 1024)) })
+    : t('upload.kilobytes', { n: Math.round(bytes / 1024) });
 }
 
 export function FileUpload({
@@ -93,9 +93,10 @@ export function FileUpload({
   maxBytes = DEFAULT_MAX_BYTES,
   maxFiles = 5,
   onChange,
-  label = 'Attachments',
+  label,
   visibility,
 }: FileUploadProps) {
+  const { t } = useLocale();
   const [items, setItems] = useState<Item[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const inputId = useId();
@@ -150,7 +151,7 @@ export function FileUpload({
         });
         if (!reserveRes.ok) {
           const body = await reserveRes.json().catch(() => ({}));
-          update(key, { phase: 'error', message: messageForError(body.code, 'This file could not be uploaded.') });
+          update(key, { phase: 'error', message: messageForError(t, body.code, t('upload.uploadFailed')) });
           return;
         }
         const { data: target } = (await reserveRes.json()) as { data: UploadTargetDto };
@@ -167,22 +168,22 @@ export function FileUpload({
         });
         if (!finalizeRes.ok) {
           const body = await finalizeRes.json().catch(() => ({}));
-          update(key, { phase: 'error', message: messageForError(body.code, 'This file could not be attached.') });
+          update(key, { phase: 'error', message: messageForError(t, body.code, t('upload.attachFailed')) });
           return;
         }
         const { data: asset } = (await finalizeRes.json()) as { data: FileAssetDto };
 
         if (asset.status === 'rejected') {
-          update(key, { phase: 'error', message: messageForError('FILE_REJECTED', 'This file was rejected.') });
+          update(key, { phase: 'error', message: messageForError(t, 'FILE_REJECTED', t('upload.rejected')) });
           return;
         }
         // `scanning` is a legitimate outcome and is shown as such — not as success.
         update(key, { phase: 'done', asset });
       } catch {
-        update(key, { phase: 'error', message: 'The upload did not complete. You can try this file again.' });
+        update(key, { phase: 'error', message: t('upload.incomplete') });
       }
     },
-    [contextType, contextId, kindOf, update, uploadBytes, visibility],
+    [contextType, contextId, kindOf, t, update, uploadBytes, visibility],
   );
 
   const onSelect = useCallback(
@@ -201,18 +202,18 @@ export function FileUpload({
         });
 
         if (tooLarge) {
-          update(key, { phase: 'error', message: `That file is larger than the ${formatBytes(maxBytes)} limit.` });
+          update(key, { phase: 'error', message: t('upload.tooLarge', { limit: formatBytes(t, maxBytes) }) });
           continue;
         }
         if (wrongType) {
-          update(key, { phase: 'error', message: 'That file type is not accepted here.' });
+          update(key, { phase: 'error', message: t('upload.errors.FILE_TYPE_NOT_ALLOWED') });
           continue;
         }
         void uploadOne(file, key);
       }
       if (inputRef.current) inputRef.current.value = '';
     },
-    [accept, maxBytes, maxFiles, update, uploadOne],
+    [accept, maxBytes, maxFiles, t, update, uploadOne],
   );
 
   /** Removing one failed file must never disturb the others that already succeeded. */
@@ -231,15 +232,15 @@ export function FileUpload({
     <Card className={styles.upload}>
       <div className={styles.header}>
         <span className={styles.label} id={`${inputId}-label`}>
-          {label}
+          {label ?? t('upload.label')}
         </span>
         {/* The allowed types and the size cap are stated BEFORE selection, not after a rejection. */}
         <span className={styles.hint}>
-          Up to {maxFiles} files, {formatBytes(maxBytes)} each. Accepted: {accept.replaceAll(',', ', ')}
+          {t('upload.hint', { maxFiles, size: formatBytes(t, maxBytes), types: accept.replaceAll(',', ', ') })}
         </span>
       </div>
 
-      {items.length === 0 ? <EmptyState title="No attachments yet" description="Add a file to attach it here." /> : null}
+      {items.length === 0 ? <EmptyState title={t('upload.emptyTitle')} description={t('upload.emptyDescription')} /> : null}
 
       <ul className={styles.list}>
         {items.map((item) => (
@@ -247,25 +248,25 @@ export function FileUpload({
             <div className={styles.itemHeader}>
               <Icon name="paperclip" />
               <span className={styles.itemName}>{item.fileName}</span>
-              <Button variant="ghost" size="sm" onClick={() => remove(item.key)} aria-label={`Remove ${item.fileName}`}>
-                Remove
+              <Button variant="ghost" size="sm" onClick={() => remove(item.key)} aria-label={t('upload.removeLabel', { fileName: item.fileName })}>
+                {t('common.remove')}
               </Button>
             </div>
 
             {item.state.phase === 'uploading' ? (
-              <ProgressBar value={item.state.percent} label={`Uploading ${item.fileName}`} showValue />
+              <ProgressBar value={item.state.percent} label={t('upload.uploading', { fileName: item.fileName })} showValue />
             ) : null}
 
             {item.state.phase === 'finalizing' ? (
               // 100% of the bytes are sent; the server has not confirmed. Never "Done".
               <p className={styles.status} role="status">
-                Checking file…
+                {t('upload.checking')}
               </p>
             ) : null}
 
             {item.state.phase === 'done' && item.state.asset.status === 'scanning' ? (
               <p className={styles.status} role="status">
-                Still checking this file
+                {t('upload.stillChecking')}
               </p>
             ) : null}
 
@@ -274,7 +275,7 @@ export function FileUpload({
             ) : null}
 
             {item.state.phase === 'error' ? (
-              <Alert tone="error" title="This file was not attached">
+              <Alert tone="error" title={t('upload.notAttached')}>
                 {item.state.message}
               </Alert>
             ) : null}
@@ -294,7 +295,7 @@ export function FileUpload({
           onChange={(event) => onSelect(event.target.files)}
         />
         <Badge tone="neutral">
-          {items.filter((item) => item.state.phase === 'done').length} of {maxFiles} attached
+          {t('upload.attachedCount', { count: items.filter((item) => item.state.phase === 'done').length, maxFiles })}
         </Badge>
       </div>
     </Card>

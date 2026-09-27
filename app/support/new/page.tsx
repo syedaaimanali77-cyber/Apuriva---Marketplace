@@ -20,26 +20,29 @@ import { Suspense, useCallback, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Card, ErrorState, Select, Textarea } from '@/components';
 import { apiFetch, fieldErrorMap, mutateHeaders } from '@/app/requests/api-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
 import { SUPPORT_CATEGORIES, type SupportCategory, type SupportTicketDto } from '@/lib/types/support';
 import styles from '../support.module.css';
 
-const CATEGORY_LABELS: Record<SupportCategory, string> = {
-  booking: 'A booking',
-  payment: 'A payment or charge',
-  account: 'My account or sign-in',
-  provider_quality: 'The quality of a service I received',
-  technical: 'Something is broken or not working',
-  safety: 'A safety concern',
-  other: 'Something else',
+const CATEGORY_LABELS: Record<SupportCategory, MessageKey> = {
+  booking: 'support.new.category.booking',
+  payment: 'support.new.category.payment',
+  account: 'support.new.category.account',
+  provider_quality: 'support.new.category.provider_quality',
+  technical: 'support.new.category.technical',
+  safety: 'support.new.category.safety',
+  other: 'support.new.category.other',
 };
 
-const CONTEXT_LABELS: Record<string, string> = {
-  booking: 'this booking',
-  payment: 'this payment',
-  dispute: 'this dispute',
+const CONTEXT_LABELS: Record<string, MessageKey> = {
+  booking: 'support.new.context.booking',
+  payment: 'support.new.context.payment',
+  dispute: 'support.new.context.dispute',
 };
 
 function NewTicketForm() {
+  const { t } = useLocale();
   const router = useRouter();
   const params = useSearchParams();
   const contextType = params.get('contextType');
@@ -77,32 +80,27 @@ function NewTicketForm() {
 
     setFieldErrors(fieldErrorMap(result.error));
     setError(
-      result.error?.code === 'SUPPORT_CONTEXT_NOT_AVAILABLE'
-        ? 'We could not attach that item to your request. You can still describe it below and send it without the link.'
-        : 'We could not send your request. Your message has been kept — please try again.',
+      result.error?.code === 'SUPPORT_CONTEXT_NOT_AVAILABLE' ? t('support.new.contextUnavailable') : t('support.new.sendFailed'),
     );
     setBusy(false);
-  }, [subject, description, category, contextType, contextId, router]);
+  }, [subject, description, category, contextType, contextId, router, t]);
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Talk to a human</h1>
-      <p className={styles.body}>
-        Tell us what is going on and a support admin will reply in your ticket.
-      </p>
+      <h1 className={styles.title}>{t('support.new.title')}</h1>
+      <p className={styles.body}>{t('support.new.intro')}</p>
 
-      {error ? <ErrorState title="We could not send that" description={error} /> : null}
+      {error ? <ErrorState title={t('support.new.sendFailedTitle')} description={error} /> : null}
 
       <Card>
         {contextType && contextId ? (
           <p className={styles.help}>
-            This request is about {CONTEXT_LABELS[contextType] ?? 'the item you came from'}. We have
-            attached it, so you do not need to explain which one.
+            {t('support.new.about', { context: t(CONTEXT_LABELS[contextType] ?? 'support.new.context.fallback') })}
           </p>
         ) : null}
 
         <label className={styles.label} htmlFor="support-category">
-          What is this about?
+          {t('support.new.whatAbout')}
         </label>
         <Select
           id="support-category"
@@ -111,14 +109,14 @@ function NewTicketForm() {
         >
           {SUPPORT_CATEGORIES.map((value) => (
             <option key={value} value={value}>
-              {CATEGORY_LABELS[value]}
+              {t(CATEGORY_LABELS[value])}
             </option>
           ))}
         </Select>
         {fieldErrors.category ? <p className={styles.help}>{fieldErrors.category}</p> : null}
 
         <label className={styles.label} htmlFor="support-subject">
-          A short summary
+          {t('support.new.summary')}
         </label>
         <Textarea
           id="support-subject"
@@ -130,7 +128,7 @@ function NewTicketForm() {
         {fieldErrors.subject ? <p className={styles.help}>{fieldErrors.subject}</p> : null}
 
         <label className={styles.label} htmlFor="support-description">
-          What happened?
+          {t('support.new.whatHappened')}
         </label>
         <Textarea
           id="support-description"
@@ -143,7 +141,7 @@ function NewTicketForm() {
 
         <div className={styles.actions}>
           <Button onClick={submit} disabled={busy}>
-            {busy ? 'Sending…' : 'Send to support'}
+            {busy ? t('support.new.sending') : t('support.new.send')}
           </Button>
         </div>
       </Card>

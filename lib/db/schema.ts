@@ -139,12 +139,16 @@ export const users = pgTable(
     dataExportFileAssetId: uuid('data_export_file_asset_id').references((): AnyPgColumn => fileAssets.id, { onDelete: 'restrict' }),
     /** Spec 034 §3.10: `false` turns off EVERY proactive suggestion. System notifications are unaffected. */
     aiProactiveSuggestionsEnabled: boolean('ai_proactive_suggestions_enabled').notNull().default(true),
+    /** Spec 042 §4 (AC-5, AC-7): the explicitly chosen UI locale; `NULL` = never chosen. The CHECK is
+     * shape-only — membership in `SUPPORTED_LOCALES` is validated in the application. */
+    locale: text('locale'),
   },
   (t) => [
     index('users_data_export_file_asset_id_idx').on(t.dataExportFileAssetId),
     uniqueIndex('users_data_export_request_id_uq').on(t.dataExportRequestId),
     check('users_lifecycle_status_ck', sql`${t.lifecycleStatus} in ('active','restricted','suspended','banned','deletion_pending','deleted')`),
     check('users_data_export_status_ck', sql`${t.dataExportStatus} is null or ${t.dataExportStatus} in ('pending','processing','ready','failed')`),
+    check('users_locale_shape_ck', sql`${t.locale} is null or (${t.locale} ~ '^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$' and char_length(${t.locale}) <= 35)`),
   ],
 );
 

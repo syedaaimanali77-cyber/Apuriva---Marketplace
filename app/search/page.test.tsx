@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SearchPage from './page';
+import { en } from '@/lib/i18n/dictionaries/en';
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({
@@ -167,7 +168,8 @@ describe('SearchPage (spec 013 §5 UI states)', () => {
     await user.type(screen.getByLabelText('Search for a service'), 'electrician');
     await user.click(screen.getByRole('button', { name: 'Search' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('boom');
+    // Spec 042 §3.7: a known stable code renders its dictionary text, not the server's English message.
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.errors.INTERNAL_ERROR);
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 

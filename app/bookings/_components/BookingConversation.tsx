@@ -6,6 +6,8 @@ import { RequestMessageThread } from '@/app/_components/RequestMessageThread';
 import { DELTA_READ_LIMIT, LIVE_UPDATE_INTERVAL_MS, MESSAGE_BODY_MAX_LENGTH, POLL_MAX_BACKOFF_MS } from '@/lib/messaging/limits';
 import type { ConversationDto, ConversationParticipantRole, MessageDto } from '@/lib/types/messaging';
 import { apiFetch, mutateHeaders } from '../booking-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import { formatDateTime } from '@/lib/i18n/format';
 import styles from '../bookings.module.css';
 
 /** How often the conversation summary (read markers, active state) is refreshed — far below the message poll. */
@@ -14,8 +16,6 @@ export const CONVERSATION_SUMMARY_REFRESH_MS = 30_000;
 const LIVE = { intervalMs: LIVE_UPDATE_INTERVAL_MS, deltaLimit: DELTA_READ_LIMIT, maxBackoffMs: POLL_MAX_BACKOFF_MS } as const;
 const CLOSED_CODES = ['CONVERSATION_ARCHIVED'] as const;
 const BLOCKED_CODES = ['BLOCKED'] as const;
-
-const PRE_CONFIRMATION_GUIDANCE = 'Phone numbers and emails are hidden until this booking is confirmed.';
 
 function isConversationDto(value: unknown): value is ConversationDto {
   return typeof value === 'object' && value !== null && Array.isArray((value as ConversationDto).participants);
@@ -36,6 +36,7 @@ export interface BookingConversationProps {
  * announced once, as a polite aggregate. No new design-system component and no logo (CLAUDE.md branding).
  */
 export function BookingConversation({ bookingId, viewerRole }: BookingConversationProps) {
+  const { locale, t } = useLocale();
   const [status, setStatus] = useState<'loading' | 'error' | 'ready'>('loading');
   const [conversation, setConversation] = useState<ConversationDto | null>(null);
   const [threadMessages, setThreadMessages] = useState<MessageDto[]>([]);
@@ -100,7 +101,7 @@ export function BookingConversation({ bookingId, viewerRole }: BookingConversati
   if (status === 'loading') {
     return (
       <Card>
-        <h2 className={styles.sectionTitle}>Messages</h2>
+        <h2 className={styles.sectionTitle}>{t('bookingParts.conversation.title')}</h2>
         <Skeleton lines={3} />
       </Card>
     );
@@ -109,9 +110,9 @@ export function BookingConversation({ bookingId, viewerRole }: BookingConversati
   if (status === 'error' || conversation === null) {
     return (
       <Card>
-        <h2 className={styles.sectionTitle}>Messages</h2>
+        <h2 className={styles.sectionTitle}>{t('bookingParts.conversation.title')}</h2>
         <ErrorState
-          description="Couldn't load this conversation."
+          description={t('bookingParts.conversation.loadFailed')}
           onRetry={() => {
             summaryLiveRef.current = true;
             void loadSummary();
@@ -122,7 +123,9 @@ export function BookingConversation({ bookingId, viewerRole }: BookingConversati
   }
 
   const counterparty = conversation.participants.find((participant) => participant.role !== viewerRole);
-  const counterpartyLabel = counterparty?.displayName ?? (viewerRole === 'customer' ? 'Your provider' : 'Your customer');
+  const counterpartyLabel =
+    counterparty?.displayName ??
+    (viewerRole === 'customer' ? t('bookingParts.conversation.yourProvider') : t('bookingParts.conversation.yourCustomer'));
   const counterpartyReadAt = counterparty?.lastReadAt ?? null;
   // §5: read state is ONE quiet timestamp on the viewer's own last message the counterparty has read.
   const lastSeenOwn =
@@ -131,24 +134,24 @@ export function BookingConversation({ bookingId, viewerRole }: BookingConversati
       : [...threadMessages].reverse().find((message) => message.senderRole === viewerRole && message.createdAt <= counterpartyReadAt);
 
   const guidance = conversation.contactSharingAllowed
-    ? 'Keep your conversation on APURIVA so there is a record if you need support.'
-    : PRE_CONFIRMATION_GUIDANCE;
+    ? t('bookingParts.conversation.keepOnPlatform')
+    : t('bookingParts.conversation.preConfirmation');
 
   return (
     <Card>
-      <h2 className={styles.sectionTitle}>Messages</h2>
+      <h2 className={styles.sectionTitle}>{t('bookingParts.conversation.title')}</h2>
       <RequestMessageThread<MessageDto>
         listUrl={`${base}/messages`}
         postUrl={`${base}/messages`}
         viewerRole={viewerRole}
         counterpartyLabel={counterpartyLabel}
         canSend={conversation.isActive}
-        closedMessage="This booking has ended, so this conversation is read-only. You can still read it."
-        blockedMessage="You can no longer send messages in this conversation. You can still read it, and our support team can still help."
-        emptyContent={<EmptyState compact title="No messages yet — say hello" description={guidance} />}
+        closedMessage={t('bookingParts.conversation.closed')}
+        blockedMessage={t('bookingParts.conversation.blocked')}
+        emptyContent={<EmptyState compact title={t('bookingParts.conversation.emptyTitle')} description={guidance} />}
         composerHelp={guidance}
         maxLength={MESSAGE_BODY_MAX_LENGTH}
-        redactionNotice="We hid a phone number or email in your message. You can share contact details once this booking is confirmed."
+        redactionNotice={t('bookingParts.conversation.redaction')}
         closedCodes={CLOSED_CODES}
         blockedCodes={BLOCKED_CODES}
         retainKeyOnFailure
@@ -160,7 +163,9 @@ export function BookingConversation({ bookingId, viewerRole }: BookingConversati
         }}
         renderMessageMeta={(message) =>
           lastSeenOwn && message.id === lastSeenOwn.id && counterpartyReadAt ? (
-            <span className={styles.hint}>Seen {new Date(counterpartyReadAt).toLocaleString()}</span>
+            <span className={styles.hint}>
+              {t('bookingParts.conversation.seen', { when: formatDateTime(counterpartyReadAt, locale) })}
+            </span>
           ) : null
         }
       />

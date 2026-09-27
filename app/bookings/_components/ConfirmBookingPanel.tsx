@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { Button, Card } from '@/components';
 import type { BookingDto, SlotAlternativeDto } from '@/lib/types/bookings';
 import { apiFetch, formatAlternative, mutateHeaders, slotConflictDetails } from '../booking-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import styles from '../bookings.module.css';
 
 export interface ConfirmBookingPanelProps {
@@ -26,6 +27,7 @@ export interface ConfirmBookingPanelProps {
  *     shows the coarse next-available date as plain text and offers no misleading retry.
  */
 export function ConfirmBookingPanel({ offerId }: ConfirmBookingPanelProps) {
+  const { locale, t, errorText } = useLocale();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alternatives, setAlternatives] = useState<SlotAlternativeDto[]>([]);
@@ -60,28 +62,25 @@ export function ConfirmBookingPanel({ offerId }: ConfirmBookingPanelProps) {
         setConflict(true);
         setAlternatives(details.alternatives);
         setNextAvailableDate(details.nextAvailableDate);
-        setError('This time is no longer available.');
+        setError(t('bookingParts.confirm.slotGone'));
         return;
       }
 
       setConflict(false);
       setAlternatives([]);
-      setError(result.error?.message ?? 'We could not confirm this booking.');
+      setError(errorText(result.error?.code, result.error?.message, t('bookingParts.confirm.failed')));
     },
-    [offerId],
+    [errorText, offerId, t],
   );
 
   return (
     <Card>
-      <h3 className={styles.sectionTitle}>Confirm your booking</h3>
-      <p className={styles.hint}>
-        We check the provider&apos;s availability and the agreed price before confirming. Nothing is booked until the
-        server confirms it.
-      </p>
+      <h3 className={styles.sectionTitle}>{t('bookingParts.confirm.title')}</h3>
+      <p className={styles.hint}>{t('bookingParts.confirm.hint')}</p>
 
       <div className={styles.actions}>
         <Button variant="primary" loading={pending} onClick={() => void confirm()}>
-          Confirm booking
+          {t('bookingParts.confirm.button')}
         </Button>
       </div>
 
@@ -93,12 +92,12 @@ export function ConfirmBookingPanel({ offerId }: ConfirmBookingPanelProps) {
 
       {conflict && alternatives.length > 0 && (
         <>
-          <p className={styles.hint}>Pick another time with the same provider:</p>
-          <ul className={styles.alternatives} aria-label="Alternative times">
+          <p className={styles.hint}>{t('bookingParts.confirm.pickAnother')}</p>
+          <ul className={styles.alternatives} aria-label={t('bookingParts.confirm.alternatives')}>
             {alternatives.map((alternative) => (
               <li key={alternative.startAt}>
                 <Button variant="secondary" disabled={pending} onClick={() => void confirm(alternative.startAt)}>
-                  {formatAlternative(alternative)}
+                  {formatAlternative(alternative, locale)}
                 </Button>
               </li>
             ))}
@@ -111,8 +110,8 @@ export function ConfirmBookingPanel({ offerId }: ConfirmBookingPanelProps) {
         // repeat an attempt that cannot succeed (§5).
         <p className={styles.hint}>
           {nextAvailableDate
-            ? `This provider's next available day is ${nextAvailableDate}.`
-            : 'This provider has no availability in the next two weeks.'}
+            ? t('bookingParts.confirm.nextDay', { date: nextAvailableDate })
+            : t('bookingParts.confirm.noAvailability')}
         </p>
       )}
     </Card>

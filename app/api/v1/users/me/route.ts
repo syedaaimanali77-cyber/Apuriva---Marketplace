@@ -3,6 +3,7 @@ import { apiSuccess } from '@/lib/api/response';
 import { requireSession } from '@/lib/auth/require-session';
 import { isAdminUser } from '@/lib/auth/session';
 import { getProfileFlags } from '@/lib/auth/profiles';
+import { readSavedUserLocale } from '@/lib/i18n/server';
 import type { ActiveMode, UserDto } from '@/lib/types/users';
 
 /** Spec 006 §3, `GET /api/v1/users/me` — which profiles exist, and the current session's
@@ -10,7 +11,11 @@ import type { ActiveMode, UserDto } from '@/lib/types/users';
 export const GET = withApiRoute(async (request, correlationId) => {
   const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
 
-  const [flags, isAdmin] = await Promise.all([getProfileFlags(session.userId), isAdminUser(session.userId)]);
+  const [flags, isAdmin, locale] = await Promise.all([
+    getProfileFlags(session.userId),
+    isAdminUser(session.userId),
+    readSavedUserLocale(session.userId), // spec 042 X-4
+  ]);
 
   const dto: UserDto = {
     id: session.userId,
@@ -18,6 +23,7 @@ export const GET = withApiRoute(async (request, correlationId) => {
     hasProviderProfile: flags.hasProviderProfile,
     activeMode: session.activeMode as ActiveMode,
     isAdmin,
+    locale,
   };
   return apiSuccess(dto, correlationId);
 });

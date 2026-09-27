@@ -5,6 +5,8 @@
  * pattern) rather than restating it; what lives here is only what is specific to bookings: the
  * poll cadence, the status vocabulary's display labels, and the dwell countdown arithmetic.
  */
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatDateTime } from '@/lib/i18n/format';
 import type { BookingStatus, SlotUnavailableDetails } from '@/lib/types/bookings';
 
 export { apiFetch, mutateHeaders, type ApiErrorBody, type ApiResult } from '@/app/requests/api-client';
@@ -23,7 +25,23 @@ export function isLiveBookingStatus(status: BookingStatus): boolean {
   return LIVE_STATUSES.includes(status);
 }
 
-/** Customer-facing copy for each status. Never a bare colour — §5 accessibility. */
+/** Spec 042 X-12: the same status copy as dictionary keys, for the customer screens' `t()`. */
+export const BOOKING_STATUS_KEYS: Record<BookingStatus, MessageKey> = {
+  pending: 'bookings.status.pending',
+  confirmed: 'bookings.status.confirmed',
+  provider_en_route: 'bookings.status.provider_en_route',
+  arrived: 'bookings.status.arrived',
+  in_progress: 'bookings.status.in_progress',
+  completed: 'bookings.status.completed',
+  protected: 'bookings.status.protected',
+  settled: 'bookings.status.settled',
+  cancelled: 'bookings.status.cancelled',
+  disputed: 'bookings.status.disputed',
+  refunded: 'bookings.status.refunded',
+  failed: 'bookings.status.failed',
+};
+
+/** Customer-facing copy for each status, in English (the English-only provider screens). Never a bare colour — §5 accessibility. */
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   pending: 'Pending confirmation',
   confirmed: 'Confirmed',
@@ -40,12 +58,12 @@ export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
 };
 
 /** The timeline steps a booking moves through, in the order spec 020 seeds them. */
-export const BOOKING_PROGRESSION: { status: BookingStatus; label: string }[] = [
-  { status: 'confirmed', label: 'Booking confirmed' },
-  { status: 'provider_en_route', label: 'Provider on the way' },
-  { status: 'arrived', label: 'Provider arrived' },
-  { status: 'in_progress', label: 'Service in progress' },
-  { status: 'completed', label: 'Completed' },
+export const BOOKING_PROGRESSION: { status: BookingStatus; label: string; labelKey: MessageKey }[] = [
+  { status: 'confirmed', label: 'Booking confirmed', labelKey: 'bookings.progression.confirmed' },
+  { status: 'provider_en_route', label: 'Provider on the way', labelKey: 'bookings.progression.provider_en_route' },
+  { status: 'arrived', label: 'Provider arrived', labelKey: 'bookings.progression.arrived' },
+  { status: 'in_progress', label: 'Service in progress', labelKey: 'bookings.progression.in_progress' },
+  { status: 'completed', label: 'Completed', labelKey: 'bookings.progression.completed' },
 ];
 
 export function progressionIndex(status: BookingStatus): number {
@@ -55,22 +73,21 @@ export function progressionIndex(status: BookingStatus): number {
   return status === 'pending' ? 0 : BOOKING_PROGRESSION.length - 1;
 }
 
-/** Formats an instant in the booking's own scheduling timezone, so both parties read one time. */
-export function formatScheduled(isoInstant: string, timeZone: string): string {
+/**
+ * Formats an instant in the booking's own scheduling timezone, so both parties read one time. Spec 042
+ * X-11: the shared formatter, in the reader's `locale` (the English-only provider screens pass none).
+ */
+export function formatScheduled(isoInstant: string, timeZone: string, locale = 'en'): string {
   try {
-    return new Intl.DateTimeFormat('en-GB', {
-      dateStyle: 'full',
-      timeStyle: 'short',
-      timeZone,
-    }).format(new Date(isoInstant));
+    return formatDateTime(isoInstant, locale, { dateStyle: 'full', timeStyle: 'short', timeZone });
   } catch {
     return new Date(isoInstant).toISOString();
   }
 }
 
 /** Formats one AC-2 alternative for the conflict screen. */
-export function formatAlternative(alternative: { startAt: string; scheduledTimezone: string }): string {
-  return formatScheduled(alternative.startAt, alternative.scheduledTimezone);
+export function formatAlternative(alternative: { startAt: string; scheduledTimezone: string }, locale = 'en'): string {
+  return formatScheduled(alternative.startAt, alternative.scheduledTimezone, locale);
 }
 
 /** Narrows an error body's `details` to AC-2's published shape, or null. */

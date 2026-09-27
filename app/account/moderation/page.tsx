@@ -10,23 +10,32 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, EmptyState, ErrorState, FormField, Skeleton, Textarea } from '@/components';
 import { apiFetch, mutateHeaders } from '@/app/requests/api-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatDateTime } from '@/lib/i18n/format';
 import type { ModerationActionType, MyModerationActionDto } from '@/lib/types/moderation';
 import styles from '@/app/_components/ai-account.module.css';
 
-const EXPLANATIONS: Record<ModerationActionType, string> = {
-  warning: 'Your account received a warning. Nothing about your account has changed.',
-  restriction: 'Your account is restricted. You can keep working on existing bookings, but you cannot start new requests, offers or bookings.',
-  suspension: 'Your account is suspended. You can view this page, manage your privacy settings and appeal, but you cannot use the marketplace.',
-  ban: 'Your account is banned. You can view this page, manage your privacy settings and appeal, but you cannot use the marketplace.',
-  booking_intervention: 'One of your bookings was cancelled by our Trust & Safety team. Any refund follows the booking’s cancellation terms.',
-  payout_freeze: 'Your payouts are on hold. Nothing you have earned is lost; payouts resume when the hold is lifted.',
+const EXPLANATIONS: Record<ModerationActionType, MessageKey> = {
+  warning: 'moderation.explanation.warning',
+  restriction: 'moderation.explanation.restriction',
+  suspension: 'moderation.explanation.suspension',
+  ban: 'moderation.explanation.ban',
+  booking_intervention: 'moderation.explanation.booking_intervention',
+  payout_freeze: 'moderation.explanation.payout_freeze',
 };
 
-const STATUS_LABEL: Record<MyModerationActionDto['status'], string> = {
-  active: 'In effect',
-  executed: 'Completed',
-  superseded: 'Replaced by a later action',
-  reversed: 'Reversed',
+const STATUS_LABEL: Record<MyModerationActionDto['status'], MessageKey> = {
+  active: 'moderation.status.active',
+  executed: 'moderation.status.executed',
+  superseded: 'moderation.status.superseded',
+  reversed: 'moderation.status.reversed',
+};
+
+const APPEAL_STATUS_LABEL: Record<string, MessageKey> = {
+  pending: 'moderation.appealStatus.pending',
+  upheld: 'moderation.appealStatus.upheld',
+  denied: 'moderation.appealStatus.denied',
 };
 
 function newKey(): string {
@@ -34,6 +43,7 @@ function newKey(): string {
 }
 
 export default function AccountModerationPage() {
+  const { locale, t, errorText } = useLocale();
   const [actions, setActions] = useState<MyModerationActionDto[] | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [appealing, setAppealing] = useState<MyModerationActionDto | null>(null);
@@ -46,12 +56,12 @@ export default function AccountModerationPage() {
   const load = useCallback(async () => {
     const response = await apiFetch<MyModerationActionDto[]>('/api/v1/moderation-actions');
     if (!response.ok) {
-      setPageError(response.error?.message ?? 'This page could not be loaded.');
+      setPageError(errorText(response.error?.code, response.error?.message, t('moderation.loadFailed')));
       setActions([]);
       return;
     }
     setActions(response.data ?? []);
-  }, []);
+  }, [errorText, t]);
 
   useEffect(() => {
     void load();
@@ -68,15 +78,15 @@ export default function AccountModerationPage() {
     });
     setBusy(false);
     if (!response.ok) {
-      setFormError(response.error?.message ?? 'Your appeal could not be sent. Please try again.');
+      setFormError(errorText(response.error?.code, response.error?.message, t('moderation.appealFailed')));
       return;
     }
     setAppealing(null);
     setStatement('');
     setIdempotencyKey(newKey());
-    setNotice('Your appeal was sent. A different member of our team will review it.');
+    setNotice(t('moderation.appealSent'));
     await load();
-  }, [appealing, idempotencyKey, load, statement]);
+  }, [appealing, errorText, idempotencyKey, load, statement, t]);
 
   if (actions === null) {
     return (
@@ -89,14 +99,14 @@ export default function AccountModerationPage() {
   if (pageError) {
     return (
       <main className={styles.page}>
-        <ErrorState title="Moderation unavailable" description={pageError} />
+        <ErrorState title={t('moderation.unavailableTitle')} description={pageError} />
       </main>
     );
   }
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Account moderation</h1>
+      <h1 className={styles.title}>{t('moderation.title')}</h1>
 
       {notice ? (
         <Alert tone="success" onDismiss={() => setNotice(null)}>
@@ -105,7 +115,7 @@ export default function AccountModerationPage() {
       ) : null}
 
       {actions.length === 0 ? (
-        <EmptyState icon="shield-check" title="Your account is in good standing" description="There are no moderation actions on your account." />
+        <EmptyState icon="shield-check" title={t('moderation.emptyTitle')} description={t('moderation.emptyDescription')} />
       ) : (
         <ul className={styles.list}>
           {actions.map((action) => (
@@ -113,16 +123,22 @@ export default function AccountModerationPage() {
               <Card>
                 <div className={styles.rowBody}>
                   <p className={styles.rowTitle}>
-                    <Badge tone={action.status === 'active' ? 'warning' : 'neutral'}>{STATUS_LABEL[action.status]}</Badge>
+                    <Badge tone={action.status === 'active' ? 'warning' : 'neutral'}>{t(STATUS_LABEL[action.status])}</Badge>
                   </p>
-                  <p>{EXPLANATIONS[action.actionType]}</p>
-                  {action.userMessage ? <p>Message from our team: {action.userMessage}</p> : null}
-                  <p className={styles.rowMeta}>Since {new Date(action.activatedAt).toLocaleString()}</p>
-                  {action.appeal ? <p className={styles.rowMeta}>Appeal: {action.appeal.status}</p> : null}
+                  <p>{t(EXPLANATIONS[action.actionType])}</p>
+                  {action.userMessage ? <p>{t('moderation.messageFromTeam', { message: action.userMessage })}</p> : null}
+                  <p className={styles.rowMeta}>{t('moderation.since', { when: formatDateTime(action.activatedAt, locale) })}</p>
+                  {action.appeal ? (
+                    <p className={styles.rowMeta}>
+                      {t('moderation.appealLabel', {
+                        status: APPEAL_STATUS_LABEL[action.appeal.status] ? t(APPEAL_STATUS_LABEL[action.appeal.status]!) : action.appeal.status,
+                      })}
+                    </p>
+                  ) : null}
                   {action.appealable ? (
                     <div className={styles.actions}>
                       <Button variant="secondary" onClick={() => setAppealing(action)}>
-                        Appeal this decision
+                        {t('moderation.appealButton')}
                       </Button>
                     </div>
                   ) : null}
@@ -137,9 +153,9 @@ export default function AccountModerationPage() {
         <Card>
           <section aria-labelledby="appeal-heading" className={styles.section}>
             <h2 id="appeal-heading" className={styles.sectionTitle}>
-              Appeal
+              {t('moderation.appealTitle')}
             </h2>
-            <FormField label="Tell us why this decision should be reviewed" htmlFor="appeal-statement" required>
+            <FormField label={t('moderation.appealPrompt')} htmlFor="appeal-statement" required>
               <Textarea
                 id="appeal-statement"
                 value={statement}
@@ -149,16 +165,16 @@ export default function AccountModerationPage() {
               />
             </FormField>
             {formError ? (
-              <Alert tone="error" title="Not sent">
+              <Alert tone="error" title={t('moderation.notSent')}>
                 {formError}
               </Alert>
             ) : null}
             <div className={styles.actions}>
               <Button onClick={() => void fileAppeal()} disabled={busy || statement.trim().length === 0}>
-                Send appeal
+                {t('moderation.sendAppeal')}
               </Button>
               <Button variant="secondary" onClick={() => setAppealing(null)} disabled={busy}>
-                Cancel
+                {t('moderation.cancel')}
               </Button>
             </div>
           </section>

@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge, Card } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatDateTime, formatMoney } from '@/lib/i18n/format';
 import type { RefundDto } from '@/lib/types/refunds';
 import { apiFetch, BOOKING_POLL_MS } from '../booking-client';
 import styles from '../bookings.module.css';
@@ -22,6 +25,7 @@ import styles from '../bookings.module.css';
  * soon as every refund is terminal, so a settled booking is not polled forever.
  */
 export function RefundSection({ bookingId, scheduledTimezone }: { bookingId: string; scheduledTimezone: string }) {
+  const { locale, t } = useLocale();
   const [refunds, setRefunds] = useState<RefundDto[]>([]);
   const [loaded, setLoaded] = useState(false);
   const liveRef = useRef(true);
@@ -60,32 +64,29 @@ export function RefundSection({ bookingId, scheduledTimezone }: { bookingId: str
 
   return (
     <Card>
-      <h2 className={styles.sectionTitle}>Refunds</h2>
+      <h2 className={styles.sectionTitle}>{t('bookingCancel.refunds.title')}</h2>
       <ul className={styles.historyList}>
         {refunds.map((refund) => (
           <li key={refund.id} className={styles.historyRow}>
             <span>
-              {formatMoney(refund.totalAmountMinorUnits, refund.totalCurrencyCode)}
+              {formatMoney(refund.totalAmountMinorUnits, refund.totalCurrencyCode, locale)}
               {' · '}
-              <Badge>{REFUND_STATUS_LABELS[refund.status] ?? refund.status}</Badge>
+              <Badge>{REFUND_STATUS_LABELS[refund.status] ? t(REFUND_STATUS_LABELS[refund.status]!) : refund.status}</Badge>
             </span>
             <span className={styles.historyActor}>
               {refund.lines.map((line) => line.reason).join('; ')}
-              {refund.completedAt ? ` · ${formatInstant(refund.completedAt, scheduledTimezone)}` : ''}
+              {refund.completedAt ? ` · ${formatInstant(refund.completedAt, scheduledTimezone, locale)}` : ''}
             </span>
           </li>
         ))}
       </ul>
 
       {refunds.some((refund) => refund.status === 'requested' || refund.status === 'processing') && (
-        <p className={styles.hint}>
-          A refund is being processed by the payment provider. It will appear here as soon as the provider confirms it.
-        </p>
+        <p className={styles.hint}>{t('bookingCancel.refunds.processing')}</p>
       )}
       {refunds.some((refund) => refund.status === 'failed') && (
         <p className={styles.hint} role="alert">
-          A refund attempt did not complete and no money was returned by that attempt. Nothing was taken from you.
-          Contact support and we will look into it.
+          {t('bookingCancel.refunds.failed')}
         </p>
       )}
     </Card>
@@ -93,24 +94,17 @@ export function RefundSection({ bookingId, scheduledTimezone }: { bookingId: str
 }
 
 /** Customer-facing copy. "Refund in progress" is deliberately not "Refunded". */
-const REFUND_STATUS_LABELS: Record<string, string> = {
-  requested: 'Refund in progress',
-  processing: 'Refund in progress',
-  completed: 'Refunded',
-  failed: 'Refund not completed',
+const REFUND_STATUS_LABELS: Record<string, MessageKey> = {
+  requested: 'bookingCancel.refunds.status.requested',
+  processing: 'bookingCancel.refunds.status.processing',
+  completed: 'bookingCancel.refunds.status.completed',
+  failed: 'bookingCancel.refunds.status.failed',
 };
 
-function formatMoney(amountMinorUnits: number, currencyCode: string): string {
+/** Spec 042 X-11: the shared formatter, in the reader's locale and the booking's own time zone. */
+function formatInstant(iso: string, timeZone: string, locale: string): string {
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(amountMinorUnits / 100);
-  } catch {
-    return `${currencyCode} ${(amountMinorUnits / 100).toFixed(2)}`;
-  }
-}
-
-function formatInstant(iso: string, timeZone: string): string {
-  try {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(iso));
+    return formatDateTime(iso, locale, { dateStyle: 'medium', timeStyle: 'short', timeZone });
   } catch {
     return iso;
   }

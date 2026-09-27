@@ -6,77 +6,75 @@
  * one user to send another arbitrary content, and keeps another party's personal data out of the row.
  *
  * Criticality is a property of the CATEGORY (AC-2), so nothing here carries a per-type override.
+ *
+ * Spec 042 §3.8 (X-6, D-5): the WORDS live in the locale dictionaries (`notifications.<type>.title|body`),
+ * so one row renders in each reader's locale. A money param is typed `{ amountMinorUnits, currencyCode }`
+ * and formatted per locale; a historical row's plain-string param renders exactly as stored.
  */
-import type { NotificationCategory, NotificationParams, NotificationType } from '@/lib/types/notifications';
+import { DEFAULT_LOCALE, type Locale } from '@/lib/i18n/config';
+import { formatMoney } from '@/lib/i18n/format';
+import { en } from '@/lib/i18n/dictionaries/en';
+import { translate } from '@/lib/i18n/translate';
+import {
+  isMoneyParam,
+  type NotificationCategory,
+  type NotificationParamValue,
+  type NotificationParams,
+  type NotificationType,
+} from '@/lib/types/notifications';
 
-export interface CatalogueEntry {
+interface CatalogueDefinition {
   category: NotificationCategory;
   /** Every `{name}` placeholder the templates use. Rendering fails if one is missing. */
   params: readonly string[];
+}
+
+export interface CatalogueEntry extends CatalogueDefinition {
+  /** The canonical ENGLISH templates (spec 042 §3.8: from the `en` dictionary, the source of truth). */
   title: string;
   body: string;
 }
 
-export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, CatalogueEntry>> = {
+const CATALOGUE_DEFINITIONS: Readonly<Record<NotificationType, CatalogueDefinition>> = {
   provider_available: {
     category: 'booking',
     params: [],
-    title: 'A provider you follow is available',
-    body: 'A provider you asked about is now accepting bookings. Open their profile to book.',
   },
   booking_cancelled: {
     category: 'booking',
     params: ['refundAmount', 'feeAmount'],
-    title: 'Booking cancelled',
-    body: 'A booking you are part of was cancelled. Refund: {refundAmount}. Cancellation fee: {feeAmount}.',
   },
   no_show_reported: {
     category: 'booking',
     params: [],
-    title: 'No-show reported',
-    body: 'A no-show was reported for one of your bookings. Trust & Safety will review it.',
   },
   no_show_resolved: {
     category: 'booking',
     params: ['outcome'],
-    title: 'No-show report resolved',
-    body: 'A no-show report on one of your bookings was resolved. Outcome: {outcome}.',
   },
   message_received: {
     category: 'messages',
     params: [],
-    title: 'New message',
-    body: 'You have a new message about one of your bookings.',
   },
   refund_completed: {
     category: 'payments',
     params: [],
-    title: 'Refund completed',
-    body: 'Your refund has been completed and is on its way back to your payment method.',
   },
   refund_failed: {
     category: 'payments',
     params: [],
-    title: 'Refund could not be completed',
-    body: 'We could not complete your refund. Our team has been alerted and will follow up.',
   },
   payout_paid: {
     category: 'payments',
     params: [],
-    title: 'Payout sent',
-    body: 'A payout has been sent to your payout method.',
   },
   payout_failed: {
     category: 'payments',
     params: [],
-    title: 'Payout failed',
-    body: 'A payout to your payout method failed. Check your payout details in Earnings.',
   },
   request_cancelled: {
     category: 'provider_activity',
     params: [],
-    title: 'Request cancelled',
-    body: 'A customer cancelled a request you were notified about. No action is needed.',
   },
   /**
    * Spec 029 §9. Carries the review id and NOTHING of the review: no rating, no text, no author.
@@ -86,8 +84,6 @@ export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, Catalogue
   review_received: {
     category: 'provider_activity',
     params: [],
-    title: 'You received a review',
-    body: 'A customer left a review for one of your completed bookings. You can read it and reply once.',
   },
   /**
    * Spec 030 §9. Confirms to the REPORTER that their report reached a human. Carries the report id
@@ -99,8 +95,6 @@ export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, Catalogue
   safety_report_received: {
     category: 'security',
     params: [],
-    title: 'We received your safety report',
-    body: 'Your report has been sent to our Trust & Safety team. We review every report; we cannot share the outcome.',
   },
   /**
    * Spec 038 §3.11. CONTENT-FREE: tells the affected user an action exists and where to read it —
@@ -110,14 +104,10 @@ export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, Catalogue
   moderation_action_applied: {
     category: 'security',
     params: [],
-    title: 'An action was taken on your account',
-    body: 'Our Trust & Safety team has taken an action on your account. Open Account → Moderation to read it and, where available, appeal.',
   },
   moderation_appeal_decided: {
     category: 'security',
     params: [],
-    title: 'Your appeal has been decided',
-    body: 'A decision has been made on your appeal. Open Account → Moderation to see the outcome.',
   },
   /**
    * Spec 031 §8 "Notifications". Tells the counterparty a dispute exists and where to read it, and
@@ -127,8 +117,6 @@ export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, Catalogue
   dispute_opened: {
     category: 'booking',
     params: [],
-    title: 'A dispute was opened on your booking',
-    body: 'A dispute was opened on one of your bookings. Open the booking to see it and respond.',
   },
   /**
    * Carries that a decision exists, never the decision. A body reading "resolved in the
@@ -138,72 +126,57 @@ export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, Catalogue
   dispute_resolved: {
     category: 'booking',
     params: [],
-    title: 'Your dispute has been decided',
-    body: 'A decision was recorded on a dispute you are part of. Open the booking to read it in full.',
   },
   dispute_closed: {
     category: 'booking',
     params: [],
-    title: 'Your dispute is closed',
-    body: 'A dispute you are part of is now closed. Open the booking to read the final outcome.',
   },
   review_response_posted: {
     category: 'booking',
     params: [],
-    title: 'Your provider replied to your review',
-    body: 'The provider replied to a review you left. Open the booking to read their response.',
   },
   // Spec 032 §8. Content-free by design: the ticket is where the content lives, and a
   // notification must never become the channel it travels through.
   support_ticket_created: {
     category: 'operational',
     params: [],
-    title: 'We received your support request',
-    body: 'Your support ticket has been created. A person will reply in the ticket.',
   },
   support_reply_posted: {
     category: 'operational',
     params: [],
-    title: 'Support replied to your ticket',
-    body: 'There is a new reply on one of your support tickets. Open it to read the response.',
   },
   support_info_requested: {
     category: 'operational',
     params: [],
-    title: 'Support needs more information',
-    body: 'A support admin has asked you for more detail. Open your ticket to reply.',
   },
   support_ticket_resolved: {
     category: 'operational',
     params: ['reopenBy'],
-    title: 'Your support ticket was resolved',
-    body: 'Support has resolved your ticket. If it is not sorted, you can reopen it before {reopenBy}.',
   },
   no_show_response_requested: {
     category: 'operational',
     params: ['respondByAt'],
-    title: 'Your response is needed',
-    body: 'A no-show was reported on one of your bookings. Respond before {respondByAt}.',
   },
   service_notice: {
     category: 'operational',
     params: [],
-    title: 'Important service notice',
-    body: 'There is an important notice about your account or our service. Open the app for details.',
   },
   security_alert: {
     category: 'security',
     params: [],
-    title: 'Security alert',
-    body: 'There was important security activity on your account. Review Privacy & Security.',
   },
   promotion: {
     category: 'promotions',
     params: ['headline'],
-    title: 'Something new for you',
-    body: '{headline}',
   },
 };
+
+export const NOTIFICATION_CATALOGUE: Readonly<Record<NotificationType, CatalogueEntry>> = Object.fromEntries(
+  (Object.keys(CATALOGUE_DEFINITIONS) as NotificationType[]).map((type) => [
+    type,
+    { ...CATALOGUE_DEFINITIONS[type], title: en.notifications[type].title, body: en.notifications[type].body },
+  ]),
+) as Record<NotificationType, CatalogueEntry>;
 
 export class NotificationTemplateError extends Error {
   constructor(message: string) {
@@ -216,17 +189,20 @@ export function isNotificationType(value: unknown): value is NotificationType {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(NOTIFICATION_CATALOGUE, value);
 }
 
-function substitute(template: string, params: NotificationParams): string {
-  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, name: string) => {
-    const value = params[name];
-    return value === null || value === undefined ? '—' : String(value);
-  });
+function renderParam(value: NotificationParamValue | undefined, locale: Locale): string {
+  if (value === null || value === undefined) return '—';
+  if (isMoneyParam(value)) return formatMoney(value.amountMinorUnits, value.currencyCode, locale);
+  return String(value);
 }
 
-/** Renders a type's title and body. Throws on an unknown type or a missing declared param. */
+/**
+ * Renders a type's title and body for `locale` (default `en`, the canonical stored record). Throws on an
+ * unknown type or a missing declared param.
+ */
 export function renderNotification(
   type: NotificationType,
   params: NotificationParams = {},
+  locale: Locale = DEFAULT_LOCALE,
 ): { category: NotificationCategory; title: string; body: string } {
   if (!isNotificationType(type)) throw new NotificationTemplateError(`Unknown notification type "${String(type)}"`);
   const entry = NOTIFICATION_CATALOGUE[type];
@@ -235,5 +211,12 @@ export function renderNotification(
       throw new NotificationTemplateError(`Notification type "${type}" requires param "${name}"`);
     }
   }
-  return { category: entry.category, title: substitute(entry.title, params), body: substitute(entry.body, params) };
+  const values = Object.fromEntries(Object.entries(params).map(([name, value]) => [name, renderParam(value, locale)]));
+  // A placeholder with no value (never a declared one — checked above) renders as a dash.
+  const fill = (text: string) => text.replace(/\{([a-zA-Z0-9_]+)\}/g, '—');
+  return {
+    category: entry.category,
+    title: fill(translate(locale, `notifications.${type}.title`, values)),
+    body: fill(translate(locale, `notifications.${type}.body`, values)),
+  };
 }

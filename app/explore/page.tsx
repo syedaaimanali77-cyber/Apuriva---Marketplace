@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button, Card, EmptyState, ErrorState, Icon, SearchBar, Skeleton } from '@/components';
+import { Button, Card, DirectionalIcon, EmptyState, ErrorState, Icon, SearchBar, Skeleton } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import type { CategoryDto } from '@/lib/types/catalog';
 import { imageForCategoryName } from '../category-images';
 import styles from './explore-browse.module.css';
@@ -25,6 +26,7 @@ type PageStatus = 'loading' | 'error' | 'ready';
  * live (spec 013) — no search, filter or ranking logic is duplicated here.
  */
 export default function ExplorePage() {
+  const { t, errorText } = useLocale();
   const router = useRouter();
   const [status, setStatus] = useState<PageStatus>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -39,16 +41,16 @@ export default function ExplorePage() {
       const json = await res.json();
       if (!res.ok) {
         setStatus('error');
-        setError(json.message ?? "Couldn't load the catalog.");
+        setError(errorText(json.code, json.message, t('explore.loadFailed')));
         return;
       }
       setCategories(json.data as CategoryDto[]);
       setStatus('ready');
     } catch {
       setStatus('error');
-      setError("Couldn't load the catalog.");
+      setError(t('explore.loadFailed'));
     }
-  }, []);
+  }, [errorText, t]);
 
   useEffect(() => {
     load();
@@ -58,27 +60,27 @@ export default function ExplorePage() {
     <header className={styles.head}>
       <span className={styles.eyebrow}>
         <Icon name="compass" size="xs" />
-        Explore
+        {t('explore.eyebrow')}
       </span>
-      <h1 className={styles.title}>Explore services</h1>
-      <p className={styles.lede}>Search the Apuriva catalog, or start from a category to see the services inside it.</p>
+      <h1 className={styles.title}>{t('explore.title')}</h1>
+      <p className={styles.lede}>{t('explore.lede')}</p>
     </header>
   );
 
   const searchPanel = (
     <section className={styles.searchPanel} aria-labelledby="explore-search-label">
       <span className={styles.searchLabel} id="explore-search-label">
-        What service do you need?
+        {t('explore.searchLabel')}
       </span>
       <SearchBar
         value={query}
         onChange={setQuery}
         onSubmit={(text) => router.push(text.trim() ? `/search?q=${encodeURIComponent(text.trim())}` : '/search')}
-        placeholder="Try “deep cleaning” or “emergency electrician”"
+        placeholder={t('explore.searchPlaceholder')}
       />
       <p className={styles.searchHint}>
         <Icon name="info" size="xs" color="var(--text-subtle)" />
-        Searching takes you to results you can filter by location, budget and price.
+        {t('explore.searchHint')}
       </p>
     </section>
   );
@@ -122,12 +124,12 @@ export default function ExplorePage() {
         <div className={styles.stateCard}>
           <EmptyState
             icon="compass"
-            title="No categories yet"
-            description="Check back soon — the catalog is still being set up."
+            title={t('explore.emptyTitle')}
+            description={t('explore.emptyDescription')}
             action={
               <Link href="/search">
                 <Button variant="secondary" iconLeft="search">
-                  Search all services
+                  {t('explore.searchAll')}
                 </Button>
               </Link>
             }
@@ -144,9 +146,9 @@ export default function ExplorePage() {
 
       <section className={styles.results}>
         <div className={styles.resultsBar}>
-          <h2 className={styles.resultsTitle}>Browse by category</h2>
+          <h2 className={styles.resultsTitle}>{t('explore.browse')}</h2>
           <span className={styles.resultsCount} data-numeric>
-            {categories.length} {categories.length === 1 ? 'category' : 'categories'}
+            {t(categories.length === 1 ? 'explore.categoryOne' : 'explore.categoryMany', { count: categories.length })}
           </span>
         </div>
 
@@ -157,7 +159,7 @@ export default function ExplorePage() {
                 <div className={styles.categoryMedia}>
                   <Image
                     src={imageForCategoryName(category.name)}
-                    alt={`${category.name} services`}
+                    alt={t('explore.categoryAlt', { name: category.name })}
                     fill
                     sizes="(max-width: 640px) 100vw, 320px"
                     style={{ objectFit: 'cover' }}
@@ -169,13 +171,15 @@ export default function ExplorePage() {
                       a "none listed" line on every card would be noise, not information. */}
                   {category.subcategories.length > 0 ? (
                     <p className={styles.metaLine} data-numeric>
-                      {category.subcategories.length} {category.subcategories.length === 1 ? 'speciality' : 'specialities'}
+                      {t(category.subcategories.length === 1 ? 'explore.specialityOne' : 'explore.specialityMany', {
+                        count: category.subcategories.length,
+                      })}
                     </p>
                   ) : null}
                   <span className={styles.categoryFoot}>
                     <span className={styles.browseCue}>
-                      Browse
-                      <Icon name="arrow-right" size="xs" />
+                      {t('explore.browseCue')}
+                      <DirectionalIcon name="arrow-right" size="xs" />
                     </span>
                   </span>
                 </div>

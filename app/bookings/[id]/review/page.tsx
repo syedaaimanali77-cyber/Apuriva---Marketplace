@@ -26,6 +26,9 @@ import type { FileAssetDto } from '@/lib/types/files';
 import type { BookingReviewStateDto, ReviewDto } from '@/lib/types/reviews';
 import { MAX_REVIEW_MEDIA, MAX_TEXT_LENGTH, MIN_TEXT_LENGTH } from '@/lib/reviews/limits';
 import { apiFetch, mutateHeaders } from '../../booking-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatDate as formatLocaleDate } from '@/lib/i18n/format';
 import styles from '../../bookings.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready' | 'submitted';
@@ -38,18 +41,17 @@ function newIdempotencyKey(): string {
 }
 
 /** The server's reason, rendered as something a customer can act on. */
-const INELIGIBLE_COPY: Record<string, string> = {
-  not_completed: 'You can leave a review once this booking has been marked complete.',
-  window_closed: 'The review period for this booking has closed.',
-  already_reviewed: 'You have already reviewed this booking.',
-  not_customer: 'Only the customer on this booking can leave a review.',
+const INELIGIBLE_COPY: Record<string, MessageKey> = {
+  not_completed: 'review.ineligible.not_completed',
+  window_closed: 'review.ineligible.window_closed',
+  already_reviewed: 'review.ineligible.already_reviewed',
+  not_customer: 'review.ineligible.not_customer',
 };
 
-function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(new Date(iso));
-}
-
 export default function BookingReviewPage() {
+  const { locale, t, errorText } = useLocale();
+  // Spec 042 X-11: the shared formatter, for the reader's locale.
+  const formatDate = (iso: string) => formatLocaleDate(iso, locale, { dateStyle: 'long' });
   const params = useParams<{ id: string }>();
   const bookingId = params.id;
   const router = useRouter();
@@ -70,13 +72,13 @@ export default function BookingReviewPage() {
   const load = useCallback(async () => {
     const response = await apiFetch<BookingReviewStateDto>(`/api/v1/bookings/${bookingId}/reviews`);
     if (!response.ok) {
-      setError(response.error?.message ?? "Something went wrong. Please try again.");
+      setError(errorText(response.error?.code, response.error?.message, t('review.failed')));
       setStatus('error');
       return;
     }
     setState(response.data!);
     setStatus('ready');
-  }, [bookingId]);
+  }, [bookingId, errorText, t]);
 
   useEffect(() => {
     void load();
@@ -84,12 +86,12 @@ export default function BookingReviewPage() {
 
   const submit = useCallback(async () => {
     if (rating === null) {
-      setFormError('Choose a rating first.');
+      setFormError(t('review.chooseRating'));
       return;
     }
     const trimmed = text.trim();
     if (trimmed.length > 0 && trimmed.length < MIN_TEXT_LENGTH) {
-      setFormError(`If you write something, please use at least ${MIN_TEXT_LENGTH} characters.`);
+      setFormError(t('review.tooShort', { min: MIN_TEXT_LENGTH }));
       return;
     }
 
@@ -107,12 +109,12 @@ export default function BookingReviewPage() {
     setBusy(false);
 
     if (!response.ok) {
-      setFormError(response.error?.message ?? "Something went wrong. Please try again.");
+      setFormError(errorText(response.error?.code, response.error?.message, t('review.failed')));
       return;
     }
     setSubmitted(response.data!);
     setStatus('submitted');
-  }, [bookingId, idempotencyKey, media, rating, text]);
+  }, [bookingId, errorText, idempotencyKey, media, rating, t, text]);
 
   if (status === 'loading') {
     return (
@@ -125,9 +127,9 @@ export default function BookingReviewPage() {
   if (status === 'error') {
     return (
       <main className={styles.page}>
-        <ErrorState title="Review unavailable" description={error ?? 'Please try again.'} />
+        <ErrorState title={t('review.unavailableTitle')} description={error ?? t('review.tryAgain')} />
         <Link className={styles.eyebrowLink} href={`/bookings/${bookingId}`}>
-          Back to booking
+          {t('review.back')}
         </Link>
       </main>
     );
@@ -136,15 +138,12 @@ export default function BookingReviewPage() {
   if (status === 'submitted' && submitted) {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Thank you for your review</h1>
+        <h1 className={styles.title}>{t('review.thanks')}</h1>
         <Card>
-          <p className={styles.hint}>
-            Your review is published on the provider&rsquo;s profile. They can reply to it once; you will be notified
-            if they do.
-          </p>
+          <p className={styles.hint}>{t('review.published')}</p>
         </Card>
         <Link className={styles.eyebrowLink} href={`/bookings/${bookingId}`}>
-          Back to booking
+          {t('review.back')}
         </Link>
       </main>
     );
@@ -154,15 +153,15 @@ export default function BookingReviewPage() {
   if (state && !state.eligible) {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Leave a review</h1>
+        <h1 className={styles.title}>{t('review.title')}</h1>
         <Card>
-          <p className={styles.hint}>{INELIGIBLE_COPY[state.reason ?? ''] ?? 'This booking cannot be reviewed.'}</p>
+          <p className={styles.hint}>{t(INELIGIBLE_COPY[state.reason ?? ''] ?? 'review.ineligible.other')}</p>
           {state.reason === 'not_completed' && state.windowClosesAt === null ? null : state.windowClosesAt ? (
-            <p className={styles.hint}>The review period closed on {formatDate(state.windowClosesAt)}.</p>
+            <p className={styles.hint}>{t('review.closedOn', { date: formatDate(state.windowClosesAt) })}</p>
           ) : null}
         </Card>
         <Link className={styles.eyebrowLink} href={`/bookings/${bookingId}`}>
-          Back to booking
+          {t('review.back')}
         </Link>
       </main>
     );
@@ -170,22 +169,22 @@ export default function BookingReviewPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Leave a review</h1>
+      <h1 className={styles.title}>{t('review.title')}</h1>
 
       {state?.windowClosesAt ? (
-        <p className={styles.subtitle}>You can review this booking until {formatDate(state.windowClosesAt)}.</p>
+        <p className={styles.subtitle}>{t('review.until', { date: formatDate(state.windowClosesAt) })}</p>
       ) : null}
 
       <Card>
         <div className={styles.section}>
-          <RatingInput value={rating} onChange={setRating} label="How was the service?" disabled={busy} />
+          <RatingInput value={rating} onChange={setRating} label={t('review.howWasIt')} disabled={busy} />
         </div>
 
         <div className={styles.section}>
           {/* A real <label for> rather than a `label` prop: `ui/`'s Textarea does not take one,
               and `FormField` is another spec's in-flight work this spec does not depend on. */}
           <label className={styles.detailLabel} htmlFor="review-text">
-            Tell others about it (optional)
+            {t('review.tellOthers')}
           </label>
           <Textarea
             id="review-text"
@@ -194,10 +193,7 @@ export default function BookingReviewPage() {
             onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => setText(event.target.value)}
             disabled={busy}
           />
-          <p className={styles.hint}>
-            Optional. If you write something, please use at least {MIN_TEXT_LENGTH} characters. Leave out phone
-            numbers and email addresses &mdash; reviews are public.
-          </p>
+          <p className={styles.hint}>{t('review.textHint', { min: MIN_TEXT_LENGTH })}</p>
         </div>
 
         <div className={styles.section}>
@@ -207,7 +203,7 @@ export default function BookingReviewPage() {
             accept="image/*"
             maxFiles={MAX_REVIEW_MEDIA}
             visibility="public"
-            label="Add photos (optional)"
+            label={t('review.addPhotos')}
             onChange={setMedia}
           />
         </div>
@@ -216,10 +212,10 @@ export default function BookingReviewPage() {
 
         <div className={styles.actions}>
           <Button onClick={submit} disabled={busy || rating === null}>
-            {busy ? 'Publishing…' : 'Publish review'}
+            {busy ? t('review.publishing') : t('review.publish')}
           </Button>
           <Button variant="secondary" onClick={() => router.push(`/bookings/${bookingId}`)} disabled={busy}>
-            Cancel
+            {t('review.cancel')}
           </Button>
         </div>
       </Card>

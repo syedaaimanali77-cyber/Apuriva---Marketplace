@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Card } from '@/components';
 import { RequestMessageThread, THREAD_REFRESH_INTERVAL_MS } from '@/app/_components/RequestMessageThread';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import type { MessageThreadSummaryDto } from '@/lib/types/negotiation';
 import styles from './negotiation.module.css';
 
@@ -15,6 +16,7 @@ export interface CustomerMessageThreadProps {
 
 /** Spec 019 §5 — the customer's side of one pre-selection thread. */
 export function CustomerMessageThread({ requestId, providerProfileId, providerName, canSend }: CustomerMessageThreadProps) {
+  const { t } = useLocale();
   const base = `/api/v1/requests/${encodeURIComponent(requestId)}/message-threads/${encodeURIComponent(providerProfileId)}/messages`;
   return (
     <RequestMessageThread
@@ -23,7 +25,7 @@ export function CustomerMessageThread({ requestId, providerProfileId, providerNa
       viewerRole="customer"
       counterpartyLabel={providerName}
       canSend={canSend}
-      closedMessage="This conversation closed when you selected a provider."
+      closedMessage={t('threads.closedOnSelect')}
     />
   );
 }
@@ -34,6 +36,7 @@ export function CustomerMessageThread({ requestId, providerProfileId, providerNa
  * until at least one thread exists.
  */
 export function RequestThreadsPanel({ requestId }: { requestId: string }) {
+  const { t } = useLocale();
   const [threads, setThreads] = useState<MessageThreadSummaryDto[]>([]);
   const [openFor, setOpenFor] = useState<string | null>(null);
 
@@ -58,10 +61,10 @@ export function RequestThreadsPanel({ requestId }: { requestId: string }) {
   return (
     <section className={styles.panel} aria-labelledby="threads-heading">
       <h2 id="threads-heading" className={styles.panelTitle}>
-        Questions and messages
+        {t('threads.title')}
       </h2>
       {threads.map((thread) => {
-        const name = thread.providerBusinessName ?? 'Provider';
+        const name = thread.providerBusinessName ?? t('threads.provider');
         const open = openFor === thread.providerProfileId;
         return (
           <Card key={thread.providerProfileId} elevation="flat" className={styles.threadCard}>
@@ -69,16 +72,16 @@ export function RequestThreadsPanel({ requestId }: { requestId: string }) {
               <div className={styles.threadMeta}>
                 <span className={styles.threadName}>{name}</span>
                 <span className={styles.hint}>
-                  {thread.messageCount === 1 ? '1 message' : `${thread.messageCount} messages`}
+                  {thread.messageCount === 1 ? t('threads.messageOne') : t('threads.messageMany', { count: thread.messageCount })}
                 </span>
                 {!thread.canSend ? (
                   <Badge tone="neutral" size="sm">
-                    Closed
+                    {t('threads.closed')}
                   </Badge>
                 ) : null}
               </div>
               <Button variant="secondary" size="sm" onClick={() => setOpenFor(open ? null : thread.providerProfileId)}>
-                {open ? 'Hide conversation' : 'Open conversation'}
+                {open ? t('threads.hide') : t('threads.open')}
               </Button>
             </div>
             {open ? (

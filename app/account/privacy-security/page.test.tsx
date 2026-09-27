@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PrivacySecurityPage from './page';
+import { en } from '@/lib/i18n/dictionaries/en';
 
 interface MockResponse {
   ok: boolean;
@@ -75,7 +76,8 @@ describe('PrivacySecurityPage (spec 008 §5 UI states)', () => {
     ]);
     render(<PrivacySecurityPage />);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('boom');
+    // Spec 042 §3.7: a known stable code renders its dictionary text, not the server's English message.
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.errors.INTERNAL_ERROR);
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 

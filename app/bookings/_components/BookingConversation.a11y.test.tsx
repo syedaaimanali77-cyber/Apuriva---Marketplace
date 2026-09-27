@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BookingConversation } from './BookingConversation';
 import type { ConversationDto, MessageDto } from '@/lib/types/messaging';
+import { formatDateTime } from '@/lib/i18n/format';
 
 // The first render waits on a summary fetch and a history fetch; under full-suite CPU contention that can
 // exceed Testing Library's 1s default (the same allowance app/account/privacy-security/page.test.tsx makes).
@@ -102,7 +103,8 @@ describe('BookingConversation accessibility (spec 025 §5)', () => {
     const items = within(list).getAllByRole('listitem');
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveTextContent('Ali Plumbing');
-    expect(items[0]).toHaveTextContent(new Date('2026-09-17T09:01:00.000Z').toLocaleString());
+    // Spec 042 §3.6 (X-11): times go through the shared locale-aware formatter, here the default `en`.
+    expect(items[0]).toHaveTextContent(formatDateTime('2026-09-17T09:01:00.000Z', 'en', { dateStyle: 'medium', timeStyle: 'short' }));
     expect(items[1]).toHaveTextContent('You');
   });
 

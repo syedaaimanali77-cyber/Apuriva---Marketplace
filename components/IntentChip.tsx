@@ -1,6 +1,7 @@
 'use client';
 
 import { Icon } from '@/ui/components/core/Icon.jsx';
+import { useLocale } from '@/app/_components/LocaleProvider';
 
 export interface IntentChipProps {
   label: string;
@@ -17,6 +18,7 @@ export interface IntentChipProps {
  * "Remove" label and no keyboard activation; this chip needs a real, specifically-labelled button.
  */
 export function IntentChip({ label, onRemove }: IntentChipProps) {
+  const { t } = useLocale();
   return (
     <span
       style={{
@@ -39,7 +41,7 @@ export function IntentChip({ label, onRemove }: IntentChipProps) {
       <button
         type="button"
         onClick={onRemove}
-        aria-label={`Remove "${label}" filter`}
+        aria-label={t('comp.intentChip.remove', { label })}
         style={{
           display: 'grid',
           placeItems: 'center',

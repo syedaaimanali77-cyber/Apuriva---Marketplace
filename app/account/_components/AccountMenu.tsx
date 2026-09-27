@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, IconButton } from '@/components';
 import type { ActiveMode } from '@/lib/types/users';
+import { LocaleSwitcher } from '@/app/_components/LocaleSwitcher';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import { ModeIndicator } from './ModeIndicator';
 import { useAccountUser } from './useAccountUser';
 import styles from './account-menu.module.css';
@@ -21,6 +23,7 @@ import styles from './account-menu.module.css';
  */
 export function AccountMenu() {
   const { status, user, pending, error, announcement, switchMode, becomeProvider } = useAccountUser();
+  const { t } = useLocale();
   const [open, setOpen] = useState(false);
 
   // IconButton isn't built with forwardRef, so the trigger button is reached via this wrapping
@@ -73,13 +76,16 @@ export function AccountMenu() {
   }
 
   // Signed out, or `/users/me` unreachable for now: the header shows no account menu either way.
-  if (status === 'anonymous' || status === 'unavailable') return null;
+  // Spec 042 §5.2: a guest gets the cookie-writing language switcher here instead (hidden while only
+  // one locale is available, so this stays empty with `urdu-locale` off).
+  if (status === 'anonymous') return <LocaleSwitcher mode="guest" />;
+  if (status === 'unavailable') return null;
 
   if (status === 'loading' || !user) {
     return (
       <span
         role="status"
-        aria-label="Loading account"
+        aria-label={t('chrome.accountMenu.loading')}
         style={{ display: 'inline-block', width: 40, height: 40, borderRadius: 'var(--radius-circle)', background: 'var(--gray-100)' }}
       />
     );
@@ -90,7 +96,7 @@ export function AccountMenu() {
       <span ref={triggerWrapRef} style={{ display: 'inline-flex' }}>
         <IconButton
           icon="user"
-          label="Account menu"
+          label={t('chrome.accountMenu.trigger')}
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
@@ -102,7 +108,7 @@ export function AccountMenu() {
       </span>
 
       {open ? (
-        <div ref={panelRef} role="menu" aria-label="Account" className={styles.panel}>
+        <div ref={panelRef} role="menu" aria-label={t('chrome.accountMenu.menu')} className={styles.panel}>
           <div className={styles.panelHeader}>
             <ModeIndicator mode={user.activeMode} />
           </div>
@@ -117,7 +123,7 @@ export function AccountMenu() {
             >
               <Icon name="user" size="sm" />
               <span className={styles.itemLabel}>
-                {user.activeMode === 'customer' ? 'Currently in customer mode' : 'Switch to customer mode'}
+                {user.activeMode === 'customer' ? t('chrome.accountMenu.currentCustomer') : t('chrome.accountMenu.switchCustomer')}
               </span>
               {user.activeMode === 'customer' ? <Icon name="check" size="sm" color="var(--teal-600)" /> : null}
             </button>
@@ -132,14 +138,14 @@ export function AccountMenu() {
               >
                 <Icon name="briefcase" size="sm" />
                 <span className={styles.itemLabel}>
-                  {user.activeMode === 'provider' ? 'Currently in provider mode' : 'Switch to provider mode'}
+                  {user.activeMode === 'provider' ? t('chrome.accountMenu.currentProvider') : t('chrome.accountMenu.switchProvider')}
                 </span>
                 {user.activeMode === 'provider' ? <Icon name="check" size="sm" color="var(--teal-600)" /> : null}
               </button>
             ) : (
               <button type="button" role="menuitem" className={styles.item} disabled={pending} onClick={() => becomeProvider()}>
                 <Icon name="plus" size="sm" />
-                <span className={styles.itemLabel}>Become a Provider</span>
+                <span className={styles.itemLabel}>{t('chrome.accountMenu.becomeProvider')}</span>
               </button>
             )}
           </div>

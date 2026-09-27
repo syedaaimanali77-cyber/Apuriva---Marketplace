@@ -3,6 +3,7 @@ import { apiSuccess } from '@/lib/api/response';
 import { rateLimitedError } from '@/lib/api/errors';
 import { checkRateLimit } from '@/lib/api/rate-limit';
 import { requireCsrf, requireSession } from '@/lib/auth/require-session';
+import { resolveLocaleForRequest } from '@/lib/i18n/server';
 import { markNotificationRead } from '@/lib/notifications';
 
 /**
@@ -19,5 +20,6 @@ export const POST = withApiRoute(async (request, correlationId) => {
 
   const segments = new URL(request.url).pathname.split('/').filter(Boolean);
   const notificationId = decodeURIComponent(segments[segments.length - 2] ?? '');
-  return apiSuccess(await markNotificationRead(session.userId, notificationId), correlationId);
+  const { locale } = await resolveLocaleForRequest(request, session.userId); // spec 042 §3.8: the reader's locale
+  return apiSuccess(await markNotificationRead(session.userId, notificationId, locale), correlationId);
 });

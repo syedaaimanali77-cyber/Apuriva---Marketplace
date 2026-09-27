@@ -16,6 +16,7 @@ import { useCallback, useState } from 'react';
 import { Button, ConfirmDialog } from '@/components';
 import { apiFetch, mutateHeaders } from '@/app/requests/api-client';
 import type { BlockDto } from '@/lib/types/safety';
+import { useLocale } from './LocaleProvider';
 
 export interface BlockUserButtonProps {
   targetUserId: string;
@@ -24,6 +25,7 @@ export interface BlockUserButtonProps {
 }
 
 export function BlockUserButton({ targetUserId, onBlocked }: BlockUserButtonProps) {
+  const { t, errorText } = useLocale();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,30 +42,26 @@ export function BlockUserButton({ targetUserId, onBlocked }: BlockUserButtonProp
     setBusy(false);
 
     if (!response.ok) {
-      setError(response.error?.message ?? 'We could not block this person. Please try again.');
+      setError(errorText(response.error?.code, response.error?.message, t('shared.block.failed')));
       return;
     }
     setBlocked(true);
     setOpen(false);
     if (response.data) onBlocked?.(response.data);
-  }, [onBlocked, targetUserId]);
+  }, [errorText, onBlocked, t, targetUserId]);
 
-  if (blocked) return <p role="status">You have blocked this person. They cannot message you again.</p>;
+  if (blocked) return <p role="status">{t('shared.block.done')}</p>;
 
   return (
     <>
       <Button variant="secondary" onClick={() => setOpen(true)}>
-        Block this person
+        {t('shared.block.button')}
       </Button>
       <ConfirmDialog
           open={open}
-          title="Block this person?"
-          description={
-            'They will not be able to message you, and you will not be matched with them on future requests. ' +
-            'Any booking you already have together still stands, and your message history stays readable. ' +
-            'They are not told that you blocked them. You can undo this at any time.'
-          }
-          confirmLabel={busy ? 'Blocking…' : 'Block'}
+          title={t('shared.block.title')}
+          description={t('shared.block.description')}
+          confirmLabel={busy ? t('shared.block.blocking') : t('shared.block.confirm')}
           pending={busy}
           onConfirm={() => void confirm()}
           onCancel={() => setOpen(false)}

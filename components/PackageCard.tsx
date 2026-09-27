@@ -1,23 +1,18 @@
 'use client';
 
 import { Card } from './Card';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import { formatMoney } from '@/lib/i18n/format';
 import type { ServicePackageDto } from '@/lib/types/service-page';
-
-function formatMoney(amountMinorUnits: number, currencyCode: string): string {
-  try {
-    // Pinned locale — see components/PriceDisplay.tsx's identical helper for why not `undefined`.
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(amountMinorUnits / 100);
-  } catch {
-    return `${(amountMinorUnits / 100).toFixed(2)} ${currencyCode}`;
-  }
-}
 
 /**
  * Spec 011 §5 — a single `ServicePackage` on a service page. Built from existing tokens (same
  * app-facing-primitive pattern as `components/ConfirmDialog.tsx`, not a `ui/` design-system
- * component).
+ * component). Spec 042 X-11: the price through the shared locale-aware `formatMoney`; the package's
+ * name, description and items are provider content and render as authored (§7).
  */
 export function PackageCard({ servicePackage }: { servicePackage: ServicePackageDto }) {
+  const { locale } = useLocale();
   return (
     <Card>
       <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
@@ -33,7 +28,7 @@ export function PackageCard({ servicePackage }: { servicePackage: ServicePackage
             color: 'var(--text-price)',
           }}
         >
-          {formatMoney(servicePackage.amountMinorUnits, servicePackage.currencyCode)}
+          {formatMoney(servicePackage.amountMinorUnits, servicePackage.currencyCode, locale)}
         </span>
         {servicePackage.includedItems.length > 0 ? (
           <ul style={{ margin: 0, paddingInlineStart: 'var(--space-5)', color: 'var(--text-body)', fontSize: 'var(--text-sm)' }}>

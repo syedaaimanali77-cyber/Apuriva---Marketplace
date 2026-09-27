@@ -17,18 +17,29 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Badge, Button, Card, ErrorState, Skeleton, Textarea } from '@/components';
 import { apiFetch, mutateHeaders } from '@/app/requests/api-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatDate, formatDateTime } from '@/lib/i18n/format';
 import type { SupportMessageDto, SupportTicketDto } from '@/lib/types/support';
 import styles from '../../support.module.css';
 
-const STATUS_LABELS: Record<string, string> = {
-  open: 'Open',
-  assigned: 'With a support admin',
-  awaiting_user: 'Waiting for your reply',
-  resolved: 'Resolved',
-  closed: 'Closed',
+const STATUS_LABELS: Record<string, MessageKey> = {
+  open: 'support.status.open',
+  assigned: 'support.status.assigned',
+  awaiting_user: 'support.status.awaiting_user',
+  resolved: 'support.status.resolved',
+  closed: 'support.status.closed',
+};
+
+const LINK_TYPE_LABELS: Record<string, MessageKey> = {
+  booking: 'support.ticket.linkType.booking',
+  payment: 'support.ticket.linkType.payment',
+  dispute: 'support.ticket.linkType.dispute',
 };
 
 export default function SupportTicketPage() {
+  const { locale, t } = useLocale();
+  const statusText = (status: string) => (STATUS_LABELS[status] ? t(STATUS_LABELS[status]!) : status);
   const params = useParams<{ id: string }>();
   const ticketId = params.id;
 
@@ -45,10 +56,10 @@ export default function SupportTicketPage() {
       apiFetch<SupportMessageDto[]>(`/api/v1/support/tickets/${ticketId}/messages`),
     ]);
     if (ticketResult.ok && ticketResult.data) setTicket(ticketResult.data);
-    else setError('We could not load this request.');
+    else setError(t('support.ticket.loadFailed'));
     if (threadResult.ok && threadResult.data) setMessages(threadResult.data);
     setLoading(false);
-  }, [ticketId]);
+  }, [t, ticketId]);
 
   useEffect(() => {
     void load();
@@ -81,10 +92,10 @@ export default function SupportTicketPage() {
       await load();
     } else {
       // The draft is deliberately kept so nothing the user typed is lost.
-      setError('We could not send that reply. Your message has been kept — please try again.');
+      setError(t('support.ticket.replyFailed'));
     }
     setBusy(false);
-  }, [draft, ticketId, load]);
+  }, [draft, ticketId, load, t]);
 
   const act = useCallback(
     async (action: 'reopen' | 'close') => {
@@ -97,18 +108,18 @@ export default function SupportTicketPage() {
       });
       if (result.ok) await load();
       else if (result.error?.code === 'SUPPORT_REOPEN_LIMIT_REACHED') {
-        setError('This request has already been reopened once. Please start a new one.');
+        setError(t('support.ticket.reopenLimit'));
       } else if (result.error?.code === 'SUPPORT_REOPEN_WINDOW_ELAPSED') {
-        setError('The period for reopening this request has passed. Please start a new one.');
+        setError(t('support.ticket.reopenElapsed'));
       } else if (result.error?.code === 'SUPPORT_TICKET_STATUS_CONFLICT') {
-        setError('This request changed while you were looking at it. We have refreshed it.');
+        setError(t('support.ticket.statusConflict'));
         await load();
       } else {
-        setError('That did not work. Please try again.');
+        setError(t('support.ticket.actionFailed'));
       }
       setBusy(false);
     },
-    [ticketId, load],
+    [ticketId, load, t],
   );
 
   if (loading) {
@@ -124,7 +135,7 @@ export default function SupportTicketPage() {
   if (!ticket) {
     return (
       <main className={styles.page}>
-        <ErrorState title="Request not found" description={error ?? 'We could not find this request.'} />
+        <ErrorState title={t('support.ticket.notFoundTitle')} description={error ?? t('support.ticket.notFound')} />
       </main>
     );
   }
@@ -136,38 +147,41 @@ export default function SupportTicketPage() {
       <h1 className={styles.title}>{ticket.subject}</h1>
       <div className={styles.meta}>
         {/* Status is conveyed by TEXT as well as by the badge's colour, per spec 043. */}
-        <Badge>{STATUS_LABELS[ticket.status] ?? ticket.status}</Badge>
-        <span>Opened {new Date(ticket.createdAt).toLocaleDateString()}</span>
-        {ticket.context && ticket.context.available ? <span>Linked to a {ticket.context.type}</span> : null}
+        <Badge>{statusText(ticket.status)}</Badge>
+        <span>{t('support.ticket.opened', { date: formatDate(ticket.createdAt, locale) })}</span>
+        {ticket.context && ticket.context.available ? (
+          <span>
+            {t('support.ticket.linked', {
+              type: LINK_TYPE_LABELS[ticket.context.type] ? t(LINK_TYPE_LABELS[ticket.context.type]!) : ticket.context.type,
+            })}
+          </span>
+        ) : null}
       </div>
 
-      {error ? <ErrorState title="Something went wrong" description={error} /> : null}
+      {error ? <ErrorState title={t('common.somethingWentWrong')} description={error} /> : null}
 
       {ticket.status === 'resolved' ? (
         <Card>
-          <h2 className={styles.sectionTitle}>Resolved</h2>
+          <h2 className={styles.sectionTitle}>{t('support.ticket.resolved')}</h2>
           {/* The REASON, not just the outcome — master §2.3. */}
           {ticket.resolutionReason ? <p className={styles.body}>{ticket.resolutionReason}</p> : null}
           {ticket.reopenBy ? (
-            <p className={styles.help}>
-              If this did not sort it out, you can reopen this request until{' '}
-              {new Date(ticket.reopenBy).toLocaleDateString()}.
-            </p>
+            <p className={styles.help}>{t('support.ticket.reopenUntil', { date: formatDate(ticket.reopenBy, locale) })}</p>
           ) : null}
           <div className={styles.actions}>
             {ticket.reopenCount < 1 ? (
               <Button onClick={() => act('reopen')} disabled={busy} variant="secondary">
-                Reopen
+                {t('support.ticket.reopen')}
               </Button>
             ) : null}
             <Button onClick={() => act('close')} disabled={busy}>
-              That is sorted, close it
+              {t('support.ticket.close')}
             </Button>
           </div>
         </Card>
       ) : null}
 
-      <h2 className={styles.sectionTitle}>Conversation</h2>
+      <h2 className={styles.sectionTitle}>{t('support.ticket.conversation')}</h2>
       <div className={styles.thread} aria-live="polite">
         {messages.map((message) => (
           <div
@@ -176,9 +190,9 @@ export default function SupportTicketPage() {
               message.author === 'support' ? `${styles.message} ${styles.messageFromSupport}` : styles.message
             }
           >
-            <div className={styles.messageAuthor}>{message.author === 'support' ? 'Support' : 'You'}</div>
+            <div className={styles.messageAuthor}>{message.author === 'support' ? t('support.ticket.support') : t('support.ticket.you')}</div>
             <div className={styles.messageBody}>{message.body}</div>
-            <div className={styles.messageTime}>{new Date(message.createdAt).toLocaleString()}</div>
+            <div className={styles.messageTime}>{formatDateTime(message.createdAt, locale)}</div>
           </div>
         ))}
       </div>
@@ -187,7 +201,7 @@ export default function SupportTicketPage() {
         <Card>
           <div className={styles.composer}>
             <label className={styles.label} htmlFor="support-reply">
-              {ticket.status === 'awaiting_user' ? 'Support asked you a question' : 'Add a reply'}
+              {ticket.status === 'awaiting_user' ? t('support.ticket.askedQuestion') : t('support.ticket.addReply')}
             </label>
             <Textarea
               id="support-reply"
@@ -198,17 +212,14 @@ export default function SupportTicketPage() {
             />
             <div className={styles.actions}>
               <Button onClick={send} disabled={busy || draft.trim().length === 0}>
-                {busy ? 'Sending…' : 'Send'}
+                {busy ? t('support.ticket.sending') : t('support.ticket.send')}
               </Button>
             </div>
           </div>
         </Card>
       ) : (
         // Disabled with an explanation, never silently.
-        <p className={styles.help}>
-          This request is {STATUS_LABELS[ticket.status]?.toLowerCase() ?? ticket.status}, so it is no
-          longer open for replies.
-        </p>
+        <p className={styles.help}>{t('support.ticket.closedForReplies', { status: statusText(ticket.status).toLowerCase() })}</p>
       )}
     </main>
   );

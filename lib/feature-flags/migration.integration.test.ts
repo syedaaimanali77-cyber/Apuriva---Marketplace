@@ -28,7 +28,10 @@ describe('migration 0036 — file-level guarantees (spec 041 §4)', () => {
     expect(UP).toMatch(/CREATE TABLE IF NOT EXISTS "feature_flag_environment_values"/);
     expect(UP).toMatch(/ON CONFLICT \("key"\) DO NOTHING/);
     expect(UP).toMatch(/ON CONFLICT \("feature_flag_id", "environment"\) DO NOTHING/);
-    for (const flag of FEATURE_FLAG_REGISTRY) expect(UP).toContain(`'${flag.key}', '${flag.description.replace(/'/g, "''")}'`);
+    // Spec 042 X-15: checked against 0036 only for 0036's own six flags; later flags ship in their own migration.
+    for (const flag of FEATURE_FLAG_REGISTRY.filter((f) => f.owningSpec !== '042')) {
+      expect(UP).toContain(`'${flag.key}', '${flag.description.replace(/'/g, "''")}'`);
+    }
   });
 
   it('the down file reverses exactly what 0036 added', () => {
@@ -61,7 +64,7 @@ describe.skipIf(!dbReachable)('migration 0036 — live schema and seed (spec 041
     });
   });
 
-  it('seeds exactly the registry: six flags matching §3.3, three environment values each with the documented default', async () => {
+  it('seeds exactly the registry: every registered flag (the six of 0036 plus urdu-locale of spec 042) matching §3.3, three environment values each with the documented default', async () => {
     const flags = await queryRows<{ key: string; description: string; controlled_by: string; is_kill_switch: boolean; client_readable: boolean }>(
       getDb(),
       sql`SELECT key, description, controlled_by, is_kill_switch, client_readable FROM feature_flags ORDER BY key`,

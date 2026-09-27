@@ -40,6 +40,13 @@ const ALLOWED_IMPORTS = new Set([
   '@/lib/cancellation/notifications',
   '@/lib/messaging/notifications',
   '@/lib/payouts/ports',
+  // Spec 042 §3.8 (X-6): per-locale rendering — the locale config, shared formatters, dictionaries and
+  // reader-locale resolution. Infrastructure, not a producing spec's domain.
+  '@/lib/i18n/config',
+  '@/lib/i18n/format',
+  '@/lib/i18n/dictionaries/en',
+  '@/lib/i18n/translate',
+  '@/lib/i18n/server',
 ]);
 
 describe('notifications source guard (spec 026 §6)', () => {

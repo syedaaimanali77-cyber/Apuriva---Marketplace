@@ -78,12 +78,12 @@ describe('isFeatureEnabled (spec 041 §3.4)', () => {
 
 describe('resolveClientFlags (spec 041 §3.6 F3)', () => {
   it('returns only client-readable flags, stored value first', async () => {
-    expect(await resolveClientFlags(executor([{ key: 'onboarding-intro-v1', enabled: false }]))).toEqual({ 'onboarding-intro-v1': false });
+    expect(await resolveClientFlags(executor([{ key: 'onboarding-intro-v1', enabled: false }]))).toEqual({ 'onboarding-intro-v1': false, 'urdu-locale': false });
   });
 
   it('falls back to the default for a missing row and never includes a developer flag even if a row claims one', async () => {
     const flags = await resolveClientFlags(executor([{ key: 'ai-assistant', enabled: false }]));
-    expect(flags).toEqual({ 'onboarding-intro-v1': true });
+    expect(flags).toEqual({ 'onboarding-intro-v1': true, 'urdu-locale': false });
     expect(warnings.some((w) => w.includes('feature_flags.value_missing'))).toBe(true);
   });
 });

@@ -65,6 +65,8 @@ export interface DataExportPayload {
     id: string;
     email: string | null;
     phoneNumber: string | null;
+    /** Spec 042 §4 (X-5, AC-7): the saved UI locale preference, `null` if never chosen. */
+    locale: string | null;
     createdAt: string;
     customerProfile: { id: string; createdAt: string } | null;
     providerProfile: { id: string; businessName: string | null; lifecycleStatus: string; createdAt: string } | null;
@@ -407,7 +409,7 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
   const db = getDb();
 
   const [user] = await db
-    .select({ id: users.id, email: users.email, phoneNumber: users.phoneNumber, createdAt: users.createdAt })
+    .select({ id: users.id, email: users.email, phoneNumber: users.phoneNumber, locale: users.locale, createdAt: users.createdAt })
     .from(users)
     .where(eq(users.id, userId));
   if (!user) throw NOT_FOUND_ERROR();
@@ -894,6 +896,7 @@ export async function generateExportPayload(userId: string): Promise<DataExportP
       id: user.id,
       email: user.email,
       phoneNumber: user.phoneNumber,
+      locale: user.locale,
       createdAt: user.createdAt.toISOString(),
       customerProfile: customerProfile ? { id: customerProfile.id, createdAt: customerProfile.createdAt.toISOString() } : null,
       providerProfile: providerProfile

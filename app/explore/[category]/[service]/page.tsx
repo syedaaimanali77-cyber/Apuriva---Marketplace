@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Button, Card, EmptyState, ErrorState, FAQList, Icon, PackageCard, PriceDisplay, Skeleton } from '@/components';
 import type { ServicePageDto } from '@/lib/types/service-page';
 import { AskApuriva } from '@/app/_components/AskApurivaPanel';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import styles from '../../explore.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
@@ -19,6 +20,7 @@ type PageStatus = 'loading' | 'error' | 'ready';
  * exactly like an official FAQ (AC-5). Per CLAUDE.md's branding rule, no logo/header of its own.
  */
 export default function ServicePage() {
+  const { t, errorText } = useLocale();
   const params = useParams<{ category: string; service: string }>();
   const serviceId = params.service;
 
@@ -34,16 +36,16 @@ export default function ServicePage() {
       const json = await res.json();
       if (!res.ok) {
         setStatus('error');
-        setError(json.message ?? "Couldn't load this service.");
+        setError(errorText(json.code, json.message, t('service.loadFailed')));
         return;
       }
       setPage(json.data as ServicePageDto);
       setStatus('ready');
     } catch {
       setStatus('error');
-      setError("Couldn't load this service.");
+      setError(t('service.loadFailed'));
     }
-  }, [serviceId]);
+  }, [errorText, serviceId, t]);
 
   useEffect(() => {
     load();
@@ -81,17 +83,17 @@ export default function ServicePage() {
       </div>
 
       <Button variant="primary" size="lg">
-        {page.priceDisplay.type === 'quote' ? 'Get offers' : 'Request service'}
+        {page.priceDisplay.type === 'quote' ? t('service.getOffers') : t('service.request')}
       </Button>
 
       {!hasPackagesOrFaqs ? (
         <EmptyState
           icon="compass"
-          title="Ask Apuriva"
-          description="This service doesn't have packages or FAQs yet — describe what you need and Apuriva's AI assistant can help."
+          title={t('service.askTitle')}
+          description={t('service.askDescription')}
           action={
             <Button variant="secondary" size="md">
-              Request service
+              {t('service.request')}
             </Button>
           }
         />
@@ -99,7 +101,7 @@ export default function ServicePage() {
         <>
           {page.packages.length > 0 ? (
             <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>Packages</h2>
+              <h2 className={styles.sectionTitle}>{t('service.packages')}</h2>
               <div className={styles.grid}>
                 {page.packages.map((pkg) => (
                   <PackageCard key={pkg.id} servicePackage={pkg} />
@@ -110,7 +112,7 @@ export default function ServicePage() {
 
           {page.faqs.length > 0 ? (
             <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>Frequently asked questions</h2>
+              <h2 className={styles.sectionTitle}>{t('service.faqs')}</h2>
               <FAQList faqs={page.faqs} />
             </div>
           ) : null}
@@ -119,11 +121,11 @@ export default function ServicePage() {
 
       {page.requirements.length > 0 ? (
         <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>Good to know</h2>
+          <h2 className={styles.sectionTitle}>{t('service.goodToKnow')}</h2>
           {page.requirements.map((req) => (
             <div key={req.id} className={styles.requirementNote}>
               <Icon name="circle-alert" size="sm" />
-              <span>{typeof req.detail.helpText === 'string' ? req.detail.helpText : `Recommended: ${req.kind}`}</span>
+              <span>{typeof req.detail.helpText === 'string' ? req.detail.helpText : t('service.recommended', { kind: req.kind })}</span>
             </div>
           ))}
         </div>
@@ -131,12 +133,12 @@ export default function ServicePage() {
 
       {page.fields.length > 0 ? (
         <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>What we'll ask you</h2>
+          <h2 className={styles.sectionTitle}>{t('service.whatWeAsk')}</h2>
           <ul className={styles.fieldPreviewList}>
             {page.fields.map((field) => (
               <li key={field.id}>
                 {field.label}
-                {field.required ? ' (required)' : ' (optional)'}
+                {field.required ? t('service.required') : t('service.optional')}
               </li>
             ))}
           </ul>

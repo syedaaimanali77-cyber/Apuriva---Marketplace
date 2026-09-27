@@ -11,13 +11,17 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { providerProfiles, services } from '@/lib/db/schema';
 import type { McpBoundParameter } from '@/lib/mcp';
-import { formatMinorUnits } from '@/lib/notifications/sinks';
+import { formatDateTime, formatMoney } from '@/lib/i18n/format';
 
 export const DISPLAY_LABELS = ['Service', 'Provider', 'Date/time', 'Price'] as const;
 
-/** The instant as a person reads it, in the IANA zone it is local to (spec 003 AC-2). */
+/**
+ * The instant as a person reads it, in the IANA zone it is local to (spec 003 AC-2). Spec 042 X-11: the
+ * shared formatters, in the canonical `en` — these rows are STORED and compared by spec 035's
+ * `bindingMatches`, so they must not vary with the reader's locale.
+ */
 export function formatInstant(instant: string, timeZone: string): string {
-  const formatted = new Intl.DateTimeFormat('en-US', { timeZone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(instant));
+  const formatted = formatDateTime(instant, 'en', { timeZone, dateStyle: 'medium', timeStyle: 'short' });
   return `${formatted} (${timeZone})`;
 }
 
@@ -45,6 +49,6 @@ export function displayRows(values: {
   if (values.service) rows.push({ label: 'Service', value: values.service });
   if (values.provider) rows.push({ label: 'Provider', value: values.provider });
   if (values.when) rows.push({ label: 'Date/time', value: formatInstant(values.when.instant, values.when.timeZone) });
-  rows.push({ label: 'Price', value: formatMinorUnits(values.price.amountMinorUnits, values.price.currencyCode) });
+  rows.push({ label: 'Price', value: formatMoney(values.price.amountMinorUnits, values.price.currencyCode, 'en') });
   return rows;
 }

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import NewRequestPage from './page';
+import { en } from '@/lib/i18n/dictionaries/en';
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({
@@ -26,6 +27,10 @@ function stubFetch(onCreate: () => unknown) {
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
       if (init?.method === 'POST') return Promise.resolve(onCreate());
+      // Spec 042 X-8: the budget currency comes from GET /api/v1/locales (the market default), not a literal.
+      if (url.includes('/api/v1/locales')) {
+        return Promise.resolve(jsonResponse(true, { data: { locales: [], resolvedLocale: 'en', platformCurrencyCode: 'PKR' } }));
+      }
       if (url.includes('/fields')) return Promise.resolve(jsonResponse(true, { data: FIELDS }));
       if (url.includes('/addresses')) return Promise.resolve(jsonResponse(true, { data: ADDRESSES }));
       return Promise.resolve(jsonResponse(true, { data: SERVICE }));
@@ -94,7 +99,7 @@ describe('NewRequestPage (spec 015 §5 UI states)', () => {
     const submit = screen.getByRole('button', { name: /Send request/i });
 
     await userEvent.click(submit);
-    await screen.findByText('boom');
+    await screen.findByText(en.errors.INTERNAL_ERROR); // spec 042 §3.7: the known code's dictionary text
     await userEvent.click(submit);
 
     await waitFor(() => expect(push).toHaveBeenCalledWith('/requests/r1'));

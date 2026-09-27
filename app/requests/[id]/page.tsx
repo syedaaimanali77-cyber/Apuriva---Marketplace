@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   ConfirmDialog,
+  DirectionalIcon,
   ErrorState,
   Icon,
   PriceDisplay,
@@ -15,7 +16,10 @@ import {
   Skeleton,
 } from '@/components';
 import { UrgencyEmergencyNotice } from '@/app/_components/UrgencyEmergencyNotice';
-import type { CancelPreviewDto, RequestDto } from '@/lib/types/requests';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatDate, formatDateTime } from '@/lib/i18n/format';
+import type { CancelPreviewDto, RequestDto, RequestStatus } from '@/lib/types/requests';
 import { isCancellable } from '@/lib/types/requests';
 import { apiFetch, mutateHeaders } from '../api-client';
 import styles from '../requests.module.css';
@@ -38,12 +42,28 @@ const PROGRESSION = [
   'Booking confirmed',
 ];
 
+/** Spec 042 X-12: the same steps, translated for display (matching stays on the server's English step). */
+const PROGRESSION_KEYS: MessageKey[] = [
+  'requestDetail.step.submitted',
+  'requestDetail.step.matching',
+  'requestDetail.step.offers_open',
+  'requestDetail.step.provider_selected',
+  'requestDetail.step.payment',
+  'requestDetail.step.booking_created',
+];
+
+/** The customer-facing step for a status (spec 015's `CUSTOMER_FACING_STEP`), in the reader's locale. */
+function stepKey(status: RequestStatus): MessageKey {
+  return `requestDetail.step.${status}`;
+}
+
 /**
  * Spec 015 §5, `/requests/{id}` — the live status view and cancellation. Master spec §38: the
  * consequence is fetched from `cancel-preview` and shown *before* the destructive action; this UI
  * never asserts a consequence the server did not return. Per CLAUDE.md's branding rule, no logo.
  */
 export default function RequestStatusPage() {
+  const { locale, t, errorText } = useLocale();
   const params = useParams<{ id: string }>();
   const requestId = params.id;
 
@@ -61,13 +81,13 @@ export default function RequestStatusPage() {
     setError(null);
     const result = await apiFetch<RequestDto>(`/api/v1/requests/${encodeURIComponent(requestId)}`);
     if (!result.ok) {
-      setError(result.error?.message ?? "Couldn't load this request.");
+      setError(errorText(result.error?.code, result.error?.message, t('requestDetail.loadFailed')));
       setStatus('error');
       return;
     }
     setRequest(result.data ?? null);
     setStatus('ready');
-  }, [requestId]);
+  }, [errorText, requestId, t]);
 
   useEffect(() => {
     load();
@@ -84,7 +104,7 @@ export default function RequestStatusPage() {
     // Master spec §38: always the dry run first — the dialog's consequence text comes from here.
     const result = await apiFetch<CancelPreviewDto>(`/api/v1/requests/${encodeURIComponent(requestId)}/cancel-preview`);
     if (!result.ok) {
-      setCancelError(result.error?.message ?? "Couldn't check what cancelling would mean.");
+      setCancelError(errorText(result.error?.code, result.error?.message, t('requestDetail.previewFailed')));
       return;
     }
     setPreview(result.data ?? null);
@@ -103,7 +123,7 @@ export default function RequestStatusPage() {
     setDialogOpen(false);
 
     if (!result.ok) {
-      setCancelError(result.error?.message ?? "Couldn't cancel this request.");
+      setCancelError(errorText(result.error?.code, result.error?.message, t('requestDetail.cancelFailed')));
       return;
     }
     setRequest(result.data ?? null);
@@ -141,17 +161,17 @@ export default function RequestStatusPage() {
       <header className={styles.head}>
         <span className={styles.eyebrow}>
           <Link href="/requests" className={styles.eyebrowLink}>
-            Requests
+            {t('requestDetail.requests')}
           </Link>
-          <Icon name="chevron-right" size="xs" />
+          <DirectionalIcon name="chevron-right" size="xs" />
           <span>{request.serviceName}</span>
         </span>
         <h1 className={styles.title}>{request.serviceName}</h1>
         <p className={styles.lede}>
-          Sent {new Date(request.createdAt).toLocaleDateString()} ·{' '}
+          {t('requestDetail.sent', { date: formatDate(request.createdAt, locale) })} ·{' '}
           {request.offerCount > 0
-            ? `${request.offerCount} ${request.offerCount === 1 ? 'offer' : 'offers'} so far`
-            : 'No offers yet'}
+            ? t(request.offerCount === 1 ? 'requestDetail.offersSoFarOne' : 'requestDetail.offersSoFarMany', { count: request.offerCount })
+            : t('requestDetail.noOffers')}
         </p>
       </header>
 
@@ -164,19 +184,19 @@ export default function RequestStatusPage() {
 
       <section className={styles.statusCard}>
         <div className={styles.statusHead}>
-          <h2 className={styles.sectionTitle}>Progress</h2>
+          <h2 className={styles.sectionTitle}>{t('requestDetail.progress')}</h2>
           <Badge tone={request.status === 'cancelled' ? 'neutral' : 'brand'} icon={null}>
-            {request.customerFacingStep}
+            {t(stepKey(request.status))}
           </Badge>
         </div>
 
         {terminal ? (
           <p className={styles.sectionHint}>
-            This request is {request.customerFacingStep.toLowerCase()}. Nothing further will happen on it.
+            {t('requestDetail.terminal', { step: t(stepKey(request.status)).toLowerCase() })}
           </p>
         ) : (
           <RequestStatusTimeline
-            steps={PROGRESSION.map((label) => ({ label }))}
+            steps={PROGRESSION_KEYS.map((key) => ({ label: t(key) }))}
             currentIndex={currentIndex}
             orientation="vertical"
           />
@@ -196,20 +216,20 @@ export default function RequestStatusPage() {
       {request.status !== 'draft' ? <RequestThreadsPanel requestId={request.id} /> : null}
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>What you asked for</h2>
+        <h2 className={styles.sectionTitle}>{t('requestDetail.whatYouAsked')}</h2>
         <p className={styles.detailValue}>{request.description}</p>
 
         <div className={styles.detailGrid}>
           {Object.entries(request.fieldValues).map(([key, value]) => (
             <div key={key} className={styles.detail}>
               <span className={styles.detailLabel}>{key}</span>
-              <p className={styles.detailValue}>{typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)}</p>
+              <p className={styles.detailValue}>{typeof value === 'boolean' ? (value ? t('requestDetail.yes') : t('requestDetail.no')) : String(value)}</p>
             </div>
           ))}
 
           <div className={styles.detail}>
-            <span className={styles.detailLabel}>Urgency</span>
-            <p className={styles.detailValue}>{request.urgency === 'urgent' ? 'Urgent' : 'Normal'}</p>
+            <span className={styles.detailLabel}>{t('requestDetail.urgency')}</span>
+            <p className={styles.detailValue}>{request.urgency === 'urgent' ? t('requestDetail.urgent') : t('requestDetail.normal')}</p>
             {/* Spec 030 AC-6 — shown where urgency is DISPLAYED too, not only where it is chosen:
                 someone rereading an urgent request is as likely to be waiting for help that is not
                 coming. */}
@@ -218,14 +238,14 @@ export default function RequestStatusPage() {
 
           {request.preferredAt ? (
             <div className={styles.detail}>
-              <span className={styles.detailLabel}>Preferred time</span>
-              <p className={styles.detailValue}>{new Date(request.preferredAt).toLocaleString()}</p>
+              <span className={styles.detailLabel}>{t('requestDetail.preferredTime')}</span>
+              <p className={styles.detailValue}>{formatDateTime(request.preferredAt, locale)}</p>
             </div>
           ) : null}
 
           {request.budget ? (
             <div className={styles.detail}>
-              <span className={styles.detailLabel}>Budget</span>
+              <span className={styles.detailLabel}>{t('requestDetail.budget')}</span>
               <div className={styles.detailValue}>
                 {'amountMinorUnits' in request.budget ? (
                   <PriceDisplay
@@ -253,19 +273,17 @@ export default function RequestStatusPage() {
       {isCancellable(request.status) ? (
         <div className={styles.formActions}>
           <Button variant="secondary" onClick={openCancelDialog}>
-            Cancel request
+            {t('requestDetail.cancelRequest')}
           </Button>
         </div>
       ) : null}
 
       <ConfirmDialog
         open={dialogOpen}
-        title="Cancel this request?"
-        description={
-          preview?.consequence ?? "No fee — you haven't been charged yet. Providers who were notified will be told."
-        }
-        confirmLabel="Cancel request"
-        cancelLabel="Keep it"
+        title={t('requestDetail.cancelTitle')}
+        description={preview?.consequence ?? t('requestDetail.cancelDefault')}
+        confirmLabel={t('requestDetail.cancelRequest')}
+        cancelLabel={t('requestDetail.keepIt')}
         pending={cancelling}
         onConfirm={confirmCancel}
         onCancel={() => setDialogOpen(false)}

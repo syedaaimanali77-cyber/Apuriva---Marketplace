@@ -17,6 +17,8 @@
  */
 import { Card, Rating } from '@/components';
 import { MediaPreview } from '@/app/_components/MediaPreview';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import { formatDate as formatLocaleDate } from '@/lib/i18n/format';
 import type { PublicReviewDto } from '@/lib/types/reviews';
 import styles from './review-card.module.css';
 
@@ -26,15 +28,13 @@ export interface ReviewCardProps {
   onReport?: (review: PublicReviewDto) => void;
 }
 
-function formatDate(iso: string): string {
-  // A pinned locale keeps server and client rendering identical, the reason `PriceDisplay` pins one.
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(iso));
-}
-
 export function ReviewCard({ review, onReport }: ReviewCardProps) {
+  const { locale, t } = useLocale();
+  // Spec 042 X-11: the shared formatter, for the reader's locale (still identical on server and client).
+  const formatDate = (iso: string) => formatLocaleDate(iso, locale, { dateStyle: 'medium' });
   return (
     <Card>
-      <article className={styles.review} aria-label={`Review rated ${review.rating} out of 5`}>
+      <article className={styles.review} aria-label={t('price.review.rated', { rating: review.rating })}>
         <header className={styles.header}>
           <Rating value={review.rating} size="sm" />
           <time className={styles.date} dateTime={review.createdAt}>
@@ -55,8 +55,8 @@ export function ReviewCard({ review, onReport }: ReviewCardProps) {
         ) : null}
 
         {review.response ? (
-          <section className={styles.response} aria-label="Provider response">
-            <h4 className={styles.responseHeading}>Response from the provider</h4>
+          <section className={styles.response} aria-label={t('price.review.providerResponse')}>
+            <h4 className={styles.responseHeading}>{t('price.review.responseHeading')}</h4>
             <p className={styles.text}>{review.response.text}</p>
             <time className={styles.date} dateTime={review.response.createdAt}>
               {formatDate(review.response.createdAt)}
@@ -66,7 +66,7 @@ export function ReviewCard({ review, onReport }: ReviewCardProps) {
 
         {onReport ? (
           <button type="button" className={styles.report} onClick={() => onReport(review)}>
-            Report this review
+            {t('price.review.report')}
           </button>
         ) : null}
       </article>

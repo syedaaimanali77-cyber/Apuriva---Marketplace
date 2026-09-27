@@ -11,7 +11,9 @@
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { isCriticalCategory, type NotificationCategory, type OutboundChannel } from '@/lib/types/notifications';
+import { resolveLocaleForUser } from '@/lib/i18n/server';
+import { isCriticalCategory, type NotificationCategory, type NotificationParams, type OutboundChannel } from '@/lib/types/notifications';
+import { isNotificationType, renderNotification } from './catalogue';
 import {
   NotificationChannelProviderUnavailable,
   resolveNotificationChannelAdapters,
@@ -49,8 +51,10 @@ interface ClaimedRow {
   status: string;
   attempts: number;
   category: NotificationCategory;
+  type: string;
   title: string;
   body: string;
+  params: NotificationParams | null;
   recipient_user_id: string;
   lifecycle_status: string;
 }
@@ -94,12 +98,28 @@ async function queueFallback(tx: Executor, row: ClaimedRow): Promise<OutboundCha
   return null;
 }
 
+/**
+ * Spec 042 §3.8 (X-6) — an outbound message is rendered in the RECIPIENT's locale. There is no request
+ * context here, so that is their saved `users.locale` (while usable), else `en`. The stored English text is
+ * used only if the type left the catalogue or the stored params can no longer render it.
+ */
+async function renderForRecipient(row: ClaimedRow): Promise<{ title: string; body: string }> {
+  if (!isNotificationType(row.type)) return { title: row.title, body: row.body };
+  try {
+    const locale = await resolveLocaleForUser(row.recipient_user_id);
+    const rendered = renderNotification(row.type, row.params ?? {}, locale);
+    return { title: rendered.title, body: rendered.body };
+  } catch {
+    return { title: row.title, body: row.body };
+  }
+}
+
 async function processOne(id: string, adapters: ChannelAdapterSet, result: DispatchSweepResult): Promise<void> {
   await getDb().transaction(async (tx) => {
     const [row] = await queryRows<ClaimedRow>(
       tx,
       sql`SELECT d.id, d.notification_id, d.channel, d.status, d.attempts,
-                 n.category, n.title, n.body, n.recipient_user_id, u.lifecycle_status
+                 n.category, n.type, n.title, n.body, n.params, n.recipient_user_id, u.lifecycle_status
             FROM notification_deliveries d
             JOIN notifications n ON n.id = d.notification_id
             JOIN users u ON u.id = n.recipient_user_id
@@ -136,14 +156,15 @@ async function processOne(id: string, adapters: ChannelAdapterSet, result: Dispa
       return;
     }
 
+    const message = await renderForRecipient(row);
     let outcome: ChannelResult;
     try {
       outcome = await adapter.deliver({
         notificationId: row.notification_id,
         channel: row.channel,
         recipientUserId: row.recipient_user_id,
-        title: row.title,
-        body: row.body,
+        title: message.title,
+        body: message.body,
       });
     } catch (err) {
       // A thrown adapter call (timeout, network) tells us nothing about whether it sent: `unknown`.

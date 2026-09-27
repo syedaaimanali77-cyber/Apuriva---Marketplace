@@ -7,6 +7,8 @@ import { Button, Card, ConfirmDialog, ErrorState, Skeleton } from '@/components'
 import type { CancellationConsequenceDto, CancellationDto } from '@/lib/types/cancellation';
 import { apiFetch, mutateHeaders } from '../../booking-client';
 import { describeTier } from '../../_components/CancellationPolicySection';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import { formatMoney as formatLocaleMoney } from '@/lib/i18n/format';
 import styles from '../../bookings.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready' | 'cancelled';
@@ -16,14 +18,6 @@ function newIdempotencyKey(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `cancel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function formatMoney(minorUnits: number, currencyCode: string): string {
-  try {
-    return new Intl.NumberFormat('en-GB', { style: 'currency', currency: currencyCode }).format(minorUnits / 100);
-  } catch {
-    return `${(minorUnits / 100).toFixed(2)} ${currencyCode}`;
-  }
 }
 
 /**
@@ -40,6 +34,9 @@ function formatMoney(minorUnits: number, currencyCode: string): string {
  * brand mark.
  */
 export default function CancelBookingPage() {
+  const { locale, t, errorText } = useLocale();
+  // Spec 042 X-11: the shared formatter — the booking's own currency and its real fraction digits.
+  const formatMoney = (minorUnits: number, currencyCode: string) => formatLocaleMoney(minorUnits, currencyCode, locale);
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const bookingId = params.id;
@@ -55,13 +52,13 @@ export default function CancelBookingPage() {
   const load = useCallback(async () => {
     const response = await apiFetch<CancellationConsequenceDto>(`/api/v1/bookings/${bookingId}/cancel-preview`);
     if (!response.ok || !response.data) {
-      setError(response.error?.message ?? 'This booking could not be loaded.');
+      setError(errorText(response.error?.code, response.error?.message, t('bookingCancel.loadFailed')));
       setStatus('error');
       return;
     }
     setPreview(response.data);
     setStatus('ready');
-  }, [bookingId]);
+  }, [bookingId, errorText, t]);
 
   useEffect(() => {
     void load();
@@ -79,12 +76,12 @@ export default function CancelBookingPage() {
     setConfirming(false);
 
     if (!response.ok || !response.data) {
-      setError(response.error?.message ?? 'This booking could not be cancelled.');
+      setError(errorText(response.error?.code, response.error?.message, t('bookingCancel.cancelFailed')));
       return;
     }
     setResult(response.data);
     setStatus('cancelled');
-  }, [bookingId, idempotencyKey]);
+  }, [bookingId, errorText, idempotencyKey, t]);
 
   if (status === 'loading') {
     return (
@@ -97,9 +94,9 @@ export default function CancelBookingPage() {
   if (status === 'error') {
     return (
       <main className={styles.page}>
-        <ErrorState title="Cancellation unavailable" description={error ?? 'Please try again.'} />
+        <ErrorState title={t('bookingCancel.unavailableTitle')} description={error ?? t('bookingCancel.tryAgain')} />
         <Link className={styles.eyebrowLink} href={`/bookings/${bookingId}`}>
-          Back to booking
+          {t('bookingCancel.back')}
         </Link>
       </main>
     );
@@ -108,25 +105,22 @@ export default function CancelBookingPage() {
   if (status === 'cancelled' && result) {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Booking cancelled</h1>
+        <h1 className={styles.title}>{t('bookingCancel.cancelledTitle')}</h1>
         <Card>
           <dl className={styles.detailGrid}>
-            <dt className={styles.detailLabel}>Cancellation fee</dt>
+            <dt className={styles.detailLabel}>{t('bookingCancel.fee')}</dt>
             <dd className={styles.detailValue}>{formatMoney(result.feeAmountMinorUnits, result.currencyCode)}</dd>
-            <dt className={styles.detailLabel}>Refund</dt>
+            <dt className={styles.detailLabel}>{t('bookingCancel.refund')}</dt>
             <dd className={styles.detailValue}>{formatMoney(result.refundAmountMinorUnits, result.currencyCode)}</dd>
           </dl>
           {result.refundAmountMinorUnits > 0 ? (
-            <p className={styles.hint}>
-              Your refund is being processed. You can follow its progress on the booking page — it is only shown as
-              refunded once your payment provider confirms it.
-            </p>
+            <p className={styles.hint}>{t('bookingCancel.refundPending')}</p>
           ) : (
-            <p className={styles.hint}>No refund is due under the policy that applied to this booking.</p>
+            <p className={styles.hint}>{t('bookingCancel.noRefund')}</p>
           )}
         </Card>
         <Link className={styles.eyebrowLink} href={`/bookings/${bookingId}`}>
-          Back to booking
+          {t('bookingCancel.back')}
         </Link>
       </main>
     );
@@ -136,15 +130,13 @@ export default function CancelBookingPage() {
     return (
       <main className={styles.page}>
         <ErrorState
-          title="This booking cannot be cancelled"
+          title={t('bookingCancel.notCancellableTitle')}
           description={
-            preview?.blockedReason === 'BOOKING_ALREADY_CANCELLED'
-              ? 'It has already been cancelled.'
-              : 'Cancellation is not available for a booking at this stage. Contact support if you need help.'
+            preview?.blockedReason === 'BOOKING_ALREADY_CANCELLED' ? t('bookingCancel.alreadyCancelled') : t('bookingCancel.notAvailable')
           }
         />
         <Link className={styles.eyebrowLink} href={`/bookings/${bookingId}`}>
-          Back to booking
+          {t('bookingCancel.back')}
         </Link>
       </main>
     );
@@ -156,42 +148,39 @@ export default function CancelBookingPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Cancel this booking</h1>
+      <h1 className={styles.title}>{t('bookingCancel.title')}</h1>
 
       <Card>
         <dl className={styles.detailGrid}>
-          <dt className={styles.detailLabel}>Applies</dt>
-          <dd className={styles.detailValue}>{preview.tier ? describeTier(preview.tier) : '—'}</dd>
-          <dt className={styles.detailLabel}>Amount charged</dt>
+          <dt className={styles.detailLabel}>{t('bookingCancel.applies')}</dt>
+          <dd className={styles.detailValue}>{preview.tier ? describeTier(t, preview.tier) : '—'}</dd>
+          <dt className={styles.detailLabel}>{t('bookingCancel.charged')}</dt>
           <dd className={styles.detailValue}>{formatMoney(preview.capturedAmountMinorUnits ?? 0, currency)}</dd>
-          <dt className={styles.detailLabel}>Cancellation fee</dt>
+          <dt className={styles.detailLabel}>{t('bookingCancel.fee')}</dt>
           <dd className={styles.detailValue}>{formatMoney(fee, currency)}</dd>
-          <dt className={styles.detailLabel}>You get back</dt>
+          <dt className={styles.detailLabel}>{t('bookingCancel.youGetBack')}</dt>
           <dd className={styles.detailValue}>{formatMoney(refund, currency)}</dd>
         </dl>
-        <p className={styles.hint}>
-          This is calculated from the cancellation policy that applied when you booked, and from the amount actually
-          charged. Cancelling cannot be undone.
-        </p>
+        <p className={styles.hint}>{t('bookingCancel.calculatedHint')}</p>
       </Card>
 
-      {error ? <ErrorState title="Cancellation failed" description={error} /> : null}
+      {error ? <ErrorState title={t('bookingCancel.failedTitle')} description={error} /> : null}
 
       <div className={styles.actions}>
         <Button onClick={() => setConfirming(true)} disabled={submitting}>
-          Cancel booking
+          {t('bookingCancel.cancel')}
         </Button>
         <Link className={styles.eyebrowLink} href={`/bookings/${bookingId}`}>
-          Keep booking
+          {t('bookingCancel.keep')}
         </Link>
       </div>
 
       <ConfirmDialog
         open={confirming}
-        title="Cancel this booking?"
-        description={`A fee of ${formatMoney(fee, currency)} applies and ${formatMoney(refund, currency)} will be refunded. This cannot be undone.`}
-        confirmLabel={submitting ? 'Cancelling…' : 'Yes, cancel'}
-        cancelLabel="Keep booking"
+        title={t('bookingCancel.confirmTitle')}
+        description={t('bookingCancel.confirmText', { fee: formatMoney(fee, currency), refund: formatMoney(refund, currency) })}
+        confirmLabel={submitting ? t('bookingCancel.cancelling') : t('bookingCancel.yesCancel')}
+        cancelLabel={t('bookingCancel.keep')}
         onConfirm={() => void submit()}
         onCancel={() => setConfirming(false)}
       />

@@ -61,7 +61,7 @@
 .weekTable th,
 .weekTable td {
   padding: var(--space-2) var(--space-3);
-  text-align: left;
+  text-align: start; /* spec 042 X-13: logical, so the table reads correctly right-to-left */
   vertical-align: middle;
   border-bottom: 1px solid var(--border-subtle);
 }

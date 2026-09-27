@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Badge, Card, EmptyState, ErrorState, Skeleton } from '@/components';
 import { apiFetch } from '@/app/requests/api-client';
 import type { AdminDisputeSummaryDto, DisputeStatus } from '@/lib/types/disputes';
+import { formatDate } from '@/lib/i18n/format';
 import styles from '../../admin.module.css';
 
 const STATUS_LABELS: Record<DisputeStatus, string> = {
@@ -82,7 +83,7 @@ export default function AdminDisputeQueuePage() {
                 <Badge>{STATUS_LABELS[dispute.status]}</Badge>
                 {dispute.hasProposedRefund ? <Badge>Refund proposed</Badge> : null}
                 {dispute.legalHold ? <Badge>Legal hold</Badge> : null}
-                <p>Opened {new Date(dispute.createdAt).toLocaleDateString('en-GB')}</p>
+                <p>Opened {formatDate(dispute.createdAt, 'en')}</p>
                 <p>{dispute.claimedByAdminUserId ? 'Claimed' : 'Unclaimed'}</p>
                 <Link href={`/admin/operations/disputes/${dispute.id}`}>Open this dispute</Link>
               </Card>

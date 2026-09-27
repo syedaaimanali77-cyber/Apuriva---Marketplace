@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Map, Skeleton } from '@/components';
 import { AddressForm, type AddressFormValue, type ResolvedPoint } from '@/components/AddressForm';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import type { AddressDto } from '@/lib/types/location';
 import styles from './addresses.module.css';
 
@@ -42,6 +43,7 @@ type PageStatus = 'loading' | 'error' | 'ready';
  * available), Error (retry), Success (list with default badge, add/edit/delete).
  */
 export default function AddressesPage() {
+  const { t, errorText } = useLocale();
   const [pageStatus, setPageStatus] = useState<PageStatus>('loading');
   const [pageError, setPageError] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<AddressDto[]>([]);
@@ -60,12 +62,12 @@ export default function AddressesPage() {
     const res = await apiFetch<AddressDto[]>('/api/v1/addresses');
     if (!res.ok) {
       setPageStatus('error');
-      setPageError(res.error?.message ?? "Couldn't load your addresses.");
+      setPageError(errorText(res.error?.code, res.error?.message, t('addresses.loadFailed')));
       return;
     }
     setAddresses(res.data ?? []);
     setPageStatus('ready');
-  }, []);
+  }, [errorText, t]);
 
   useEffect(() => {
     loadAddresses();
@@ -96,7 +98,7 @@ export default function AddressesPage() {
         });
     setFormPending(false);
     if (!res.ok) {
-      setListError(res.error?.message ?? "Couldn't save that address. Try again.");
+      setListError(errorText(res.error?.code, res.error?.message, t('addresses.saveFailed')));
       return;
     }
     setFormOpen(false);
@@ -113,10 +115,10 @@ export default function AddressesPage() {
     setDeleteTarget(null);
     if (!res.ok) {
       if (res.error?.code === 'ADDRESS_IN_USE') {
-        setListError('This address is used by a booking and can\'t be deleted.');
+        setListError(t('addresses.inUse'));
         return;
       }
-      setListError(res.error?.message ?? "Couldn't delete that address. Try again.");
+      setListError(errorText(res.error?.code, res.error?.message, t('addresses.deleteFailed')));
       return;
     }
     setAddresses((prev) => prev.filter((a) => a.id !== deleteTarget.id));
@@ -125,7 +127,7 @@ export default function AddressesPage() {
   if (pageStatus === 'loading') {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Your addresses</h1>
+        <h1 className={styles.title}>{t('addresses.title')}</h1>
         <Card>
           <Skeleton lines={4} />
         </Card>
@@ -136,7 +138,7 @@ export default function AddressesPage() {
   if (pageStatus === 'error') {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Your addresses</h1>
+        <h1 className={styles.title}>{t('addresses.title')}</h1>
         <ErrorState description={pageError ?? undefined} onRetry={loadAddresses} />
       </main>
     );
@@ -145,7 +147,7 @@ export default function AddressesPage() {
   return (
     <main className={styles.page}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Your addresses</h1>
+        <h1 className={styles.title}>{t('addresses.title')}</h1>
         {!formOpen ? (
           <Button
             variant="primary"
@@ -154,13 +156,13 @@ export default function AddressesPage() {
               setFormOpen(true);
             }}
           >
-            Add an address
+            {t('addresses.add')}
           </Button>
         ) : null}
       </div>
 
       {listError ? (
-        <Alert tone="error" title="Something went wrong">
+        <Alert tone="error" title={t('common.somethingWentWrong')}>
           {listError}
         </Alert>
       ) : null}
@@ -170,7 +172,7 @@ export default function AddressesPage() {
           <AddressForm
             key={editingAddress?.id ?? 'new'}
             initialValue={editingAddress ?? undefined}
-            submitLabel={editingAddress ? 'Save changes' : 'Add address'}
+            submitLabel={editingAddress ? t('addresses.saveChanges') : t('addresses.addAddress')}
             pending={formPending}
             onGeocode={handleGeocode}
             onSubmit={handleSubmit}
@@ -184,11 +186,11 @@ export default function AddressesPage() {
 
       {addresses.length === 0 && !formOpen ? (
         <EmptyState
-          title="No saved addresses yet"
-          description="Add an address so providers know where to go. You can always type it in manually — no location permission needed."
+          title={t('addresses.emptyTitle')}
+          description={t('addresses.emptyDescription')}
           action={
             <Button variant="primary" onClick={() => setFormOpen(true)}>
-              Add an address
+              {t('addresses.add')}
             </Button>
           }
         />
@@ -203,7 +205,7 @@ export default function AddressesPage() {
                     <span className={styles.addressLabel}>{address.label}</span>
                     {address.isDefault ? (
                       <Badge tone="brand" size="sm">
-                        Default
+                        {t('addresses.default')}
                       </Badge>
                     ) : null}
                   </div>
@@ -222,10 +224,10 @@ export default function AddressesPage() {
                         setFormOpen(true);
                       }}
                     >
-                      Edit
+                      {t('addresses.edit')}
                     </Button>
                     <Button variant="secondary" size="sm" iconLeft="trash-2" onClick={() => setDeleteTarget(address)}>
-                      Delete
+                      {t('addresses.delete')}
                     </Button>
                   </div>
                 </div>
@@ -237,9 +239,9 @@ export default function AddressesPage() {
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="Delete this address?"
-        description={deleteTarget ? `"${deleteTarget.label}" will be removed from your saved addresses.` : undefined}
-        confirmLabel="Delete address"
+        title={t('addresses.deleteTitle')}
+        description={deleteTarget ? t('addresses.deleteDescription', { label: deleteTarget.label }) : undefined}
+        confirmLabel={t('addresses.deleteConfirm')}
         tone="danger"
         pending={deletePending}
         onConfirm={handleDeleteConfirmed}

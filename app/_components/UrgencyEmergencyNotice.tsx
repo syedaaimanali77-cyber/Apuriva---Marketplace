@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Spec 030 §3 "Urgent / ASAP" (AC-6) — the marketplace-is-not-an-emergency-service disclosure.
  *
@@ -17,6 +19,7 @@
  * `aria-describedby`-only string, and never collapsed behind a disclosure. `role="note"` gives it a
  * landmark a screen reader announces rather than skips.
  */
+import { useLocale } from './LocaleProvider';
 import styles from './urgency-emergency-notice.module.css';
 
 export interface UrgencyEmergencyNoticeProps {
@@ -25,14 +28,11 @@ export interface UrgencyEmergencyNoticeProps {
 }
 
 export function UrgencyEmergencyNotice({ standalone = true }: UrgencyEmergencyNoticeProps) {
+  const { t } = useLocale();
   return (
-    <div className={standalone ? styles.notice : styles.inline} role="note" aria-label="Emergency guidance">
-      <p className={styles.heading}>Apuriva is a marketplace, not an emergency service.</p>
-      <p className={styles.body}>
-        Marking a request urgent helps us find a provider sooner. It does not summon help, and nobody is
-        monitoring requests for emergencies. If someone is in danger, hurt, or a crime is happening, contact your
-        local emergency services straight away.
-      </p>
+    <div className={standalone ? styles.notice : styles.inline} role="note" aria-label={t('shared.urgency.label')}>
+      <p className={styles.heading}>{t('shared.urgency.heading')}</p>
+      <p className={styles.body}>{t('shared.urgency.body')}</p>
     </div>
   );
 }

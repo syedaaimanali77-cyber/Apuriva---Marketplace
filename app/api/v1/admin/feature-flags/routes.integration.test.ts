@@ -43,7 +43,7 @@ describe.skipIf(!dbReachable)('feature-flag admin routes (spec 041 §3.6)', { ti
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: FeatureFlagDto[]; correlationId: string };
     expect(typeof body.correlationId).toBe('string');
-    expect(body.data).toHaveLength(6);
+    expect(body.data).toHaveLength(7); // spec 042 X-15: `urdu-locale` is the seventh
     for (const flag of body.data) {
       expect(Object.keys(flag).sort()).toEqual(
         ['clientReadable', 'controlledBy', 'description', 'effective', 'enabled', 'environment', 'isKillSwitch', 'key', 'overriddenBy', 'removalCriteria', 'updatedAt', 'version'].sort(),

@@ -4,7 +4,11 @@
  *
  * Nothing here writes to `localStorage`, `sessionStorage` or IndexedDB: a temporary conversation's
  * transcript lives only in component state (spec 034 §3.11, AC-14).
+ *
+ * Spec 042 X-3: errors keep their stable `code`; the pages render them through `useLocale().errorText`.
  */
+import { formatDateTime } from '@/lib/i18n/format';
+
 export interface AiApiError {
   code: string;
   message: string;
@@ -56,6 +60,7 @@ export function isAiUnavailable(error: AiApiError | undefined): boolean {
   return error?.code === 'AI_RATE_LIMITED' || error?.code === 'AI_QUOTA_EXCEEDED' || error?.code === 'AI_PROVIDER_UNAVAILABLE';
 }
 
-export function formatAiInstant(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+/** Spec 042 X-11: the shared locale-aware formatter, in the reader's locale. */
+export function formatAiInstant(iso: string, locale: string): string {
+  return formatDateTime(iso, locale, { dateStyle: 'medium', timeStyle: 'short' });
 }

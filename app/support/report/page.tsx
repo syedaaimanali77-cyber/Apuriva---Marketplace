@@ -22,18 +22,21 @@ import { FileUpload } from '@/app/_components/FileUpload';
 import { apiFetch, fieldErrorMap, mutateHeaders } from '@/app/requests/api-client';
 import { SAFETY_CATEGORIES, type SafetyCategory, type SafetyReportDto } from '@/lib/types/safety';
 import { MAX_DESCRIPTION_LENGTH } from '@/lib/safety/limits';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
 import styles from './safety-report.module.css';
 
-const CATEGORY_LABELS: Record<SafetyCategory, string> = {
-  harassment: 'Harassment or abusive behaviour',
-  threat: 'Threats or intimidation',
-  unsafe_behaviour: 'Unsafe behaviour during a job',
-  impersonation: 'Someone pretending to be another person',
-  property_damage: 'Damage to property',
-  other: 'Something else',
+const CATEGORY_LABELS: Record<SafetyCategory, MessageKey> = {
+  harassment: 'support.report.category.harassment',
+  threat: 'support.report.category.threat',
+  unsafe_behaviour: 'support.report.category.unsafe_behaviour',
+  impersonation: 'support.report.category.impersonation',
+  property_damage: 'support.report.category.property_damage',
+  other: 'support.report.category.other',
 };
 
 export default function SafetyReportPage() {
+  const { t, errorText } = useLocale();
   const [targetUserId, setTargetUserId] = useState('');
   const [category, setCategory] = useState<SafetyCategory>('harassment');
   const [description, setDescription] = useState('');
@@ -56,27 +59,22 @@ export default function SafetyReportPage() {
 
     if (!response.ok) {
       // Nothing is cleared: the draft and any chosen evidence survive the failure.
-      setError(response.error?.message ?? 'We could not send your report. Please try again.');
+      setError(errorText(response.error?.code, response.error?.message, t('support.report.sendFailed')));
       setFieldErrors(fieldErrorMap(response.error));
       return;
     }
     setCreated(response.data ?? null);
-  }, [category, description, targetUserId]);
+  }, [category, description, errorText, t, targetUserId]);
 
   if (created) {
     return (
       <main className={styles.page}>
         <Card>
-          <h1 className={styles.title}>Your report has been sent</h1>
+          <h1 className={styles.title}>{t('support.report.sentTitle')}</h1>
           {/* No timeline, no outcome, no false promise of resolution. */}
-          <p className={styles.body}>
-            Our Trust &amp; Safety team reviews every report. We cannot share what happens next, and we will
-            not tell the other person that you reported them.
-          </p>
-          <p className={styles.body}>
-            If you have anything else that would help — a screenshot, a photo, a document — you can add it below.
-          </p>
-          <FileUpload contextType="safety_evidence" contextId={created.id} label="Add evidence" />
+          <p className={styles.body}>{t('support.report.sentBody')}</p>
+          <p className={styles.body}>{t('support.report.evidenceBody')}</p>
+          <FileUpload contextType="safety_evidence" contextId={created.id} label={t('support.report.addEvidence')} />
         </Card>
       </main>
     );
@@ -84,18 +82,14 @@ export default function SafetyReportPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Report a safety concern</h1>
-      <p className={styles.body}>
-        Use this form to tell our Trust &amp; Safety team about someone&apos;s behaviour. If someone is in
-        immediate danger, contact your local emergency services first — Apuriva is a marketplace and cannot
-        respond to emergencies.
-      </p>
+      <h1 className={styles.title}>{t('support.report.title')}</h1>
+      <p className={styles.body}>{t('support.report.intro')}</p>
 
-      {error ? <ErrorState title="We could not send your report" description={error} /> : null}
+      {error ? <ErrorState title={t('support.report.failedTitle')} description={error} /> : null}
 
       <Card>
         <label className={styles.label} htmlFor="targetUserId">
-          Who is this about?
+          {t('support.report.who')}
         </label>
         <input
           id="targetUserId"
@@ -107,12 +101,12 @@ export default function SafetyReportPage() {
         {fieldErrors.targetUserId ? <p className={styles.fieldError}>{fieldErrors.targetUserId}</p> : null}
 
         <label className={styles.label} htmlFor="category">
-          What happened?
+          {t('support.report.whatHappened')}
         </label>
         <Select
             id="category"
             value={category}
-            options={SAFETY_CATEGORIES.map((value) => ({ value, label: CATEGORY_LABELS[value] }))}
+            options={SAFETY_CATEGORIES.map((value) => ({ value, label: t(CATEGORY_LABELS[value]) }))}
             onChange={(event: React.ChangeEvent<HTMLSelectElement>) =>
               setCategory(event.target.value as SafetyCategory)
             }
@@ -121,9 +115,9 @@ export default function SafetyReportPage() {
         {fieldErrors.category ? <p className={styles.fieldError}>{fieldErrors.category}</p> : null}
 
         <label className={styles.label} htmlFor="description">
-          Tell us in your own words
+          {t('support.report.ownWords')}
         </label>
-        <p className={styles.help}>Include when it happened and anything a reviewer would need to understand it.</p>
+        <p className={styles.help}>{t('support.report.ownWordsHint')}</p>
         <Textarea
             id="description"
             value={description}
@@ -134,7 +128,7 @@ export default function SafetyReportPage() {
         {fieldErrors.description ? <p className={styles.fieldError}>{fieldErrors.description}</p> : null}
 
         <Button onClick={submit} disabled={busy}>
-          {busy ? 'Sending…' : 'Send report'}
+          {busy ? t('support.report.sending') : t('support.report.send')}
         </Button>
       </Card>
     </main>

@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ExplorePage from './page';
 import type { CategoryDto } from '@/lib/types/catalog';
+import { en } from '@/lib/i18n/dictionaries/en';
 
 // The page's search console pushes into `/search` (spec 013) on submit — same stub the home
 // page's test uses for its hero search bar.
@@ -54,6 +55,7 @@ describe('ExplorePage (spec 010 §3/AC-5/§5)', () => {
 
     render(<ExplorePage />);
 
-    expect(await screen.findByText('boom')).toBeInTheDocument();
+    // Spec 042 §3.7: a known stable code renders its dictionary text, not the server's English message.
+    expect(await screen.findByText(en.errors.INTERNAL_ERROR)).toBeInTheDocument();
   });
 });

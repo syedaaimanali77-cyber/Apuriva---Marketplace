@@ -7,6 +7,7 @@ import { TopBar } from '@/components';
 import { branding } from '@/lib/config/branding';
 import apurivaLogo from '@/ui/assets/apuriva-logo-full.jpeg';
 import { AccountMenu } from '@/app/account/_components/AccountMenu';
+import { useLocale } from '@/app/_components/LocaleProvider';
 
 // Login/register carry their own primary brand placement via AuthShell (spec 005 §5) — per the
 // single-brand-placement rule in CLAUDE.md, the global header must not duplicate that logo there.
@@ -31,13 +32,14 @@ export const HEADERLESS_ROUTES = ['/login', '/register'];
  */
 export function AppHeader() {
   const pathname = usePathname();
+  const { t } = useLocale();
   if (HEADERLESS_ROUTES.includes(pathname)) {
     return null;
   }
   return (
     <TopBar
       start={
-        <Link href="/" aria-label={`${branding.appName} home`} style={{ display: 'inline-flex' }}>
+        <Link href="/" aria-label={t('chrome.header.homeLink', { appName: branding.appName })} style={{ display: 'inline-flex' }}>
           <div style={{ position: 'relative', width: 50, height: 40, overflow: 'hidden' }}>
             <Image
               src={apurivaLogo}
@@ -49,7 +51,8 @@ export function AppHeader() {
           </div>
         </Link>
       }
-      // Spec 006 §5: mode switch is reachable via account menu, available globally.
+      // Spec 006 §5: mode switch is reachable via account menu, available globally. For a guest the
+      // same slot carries the spec 042 §5.2 language switcher (see AccountMenu).
       end={<AccountMenu />}
     />
   );

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { Card, Skeleton } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { Translator } from '@/lib/i18n/translator';
 import type { CancellationPolicyDto, CancellationTier } from '@/lib/types/cancellation';
 import { apiFetch } from '../booking-client';
 import styles from '../bookings.module.css';
@@ -18,21 +20,22 @@ import styles from '../bookings.module.css';
  * No design-system token, primitive or `ui/` file is added or changed, and no brand mark: the nav
  * shell already carries the one intentional placement.
  */
-export function describeTier(tier: CancellationTier): string {
+export function describeTier(t: Translator, tier: CancellationTier): string {
   const { minHoursBefore, maxHoursBefore } = tier;
-  if (minHoursBefore === null) return 'At or after the scheduled time';
-  if (maxHoursBefore === null) return `${minHoursBefore} hours or more before`;
-  if (minHoursBefore === 0) return `Less than ${maxHoursBefore} hours before`;
-  return `${minHoursBefore}–${maxHoursBefore} hours before`;
+  if (minHoursBefore === null) return t('bookingCancel.tier.atOrAfter');
+  if (maxHoursBefore === null) return t('bookingCancel.tier.orMore', { hours: minHoursBefore });
+  if (minHoursBefore === 0) return t('bookingCancel.tier.lessThan', { hours: maxHoursBefore });
+  return t('bookingCancel.tier.between', { min: minHoursBefore, max: maxHoursBefore });
 }
 
-export function describeFee(feePercent: number): string {
-  if (feePercent === 0) return 'Free';
-  if (feePercent === 100) return 'No refund';
-  return `${feePercent}% fee`;
+export function describeFee(t: Translator, feePercent: number): string {
+  if (feePercent === 0) return t('bookingCancel.feeRule.free');
+  if (feePercent === 100) return t('bookingCancel.feeRule.noRefund');
+  return t('bookingCancel.feeRule.percent', { percent: feePercent });
 }
 
 export function CancellationPolicySection({ bookingId }: { bookingId: string }) {
+  const { t } = useLocale();
   const [policy, setPolicy] = useState<CancellationPolicyDto | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -67,20 +70,17 @@ export function CancellationPolicySection({ bookingId }: { bookingId: string }) 
 
   return (
     <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>Cancellation policy</h2>
+      <h2 className={styles.sectionTitle}>{t('bookingCancel.policyTitle')}</h2>
       <Card>
         <ul className={styles.historyList}>
           {policy.tiers.map((tier) => (
             <li key={`${tier.minHoursBefore}-${tier.maxHoursBefore}`} className={styles.historyRow}>
-              <span>{describeTier(tier)}</span>
-              <span>{describeFee(tier.feePercent)}</span>
+              <span>{describeTier(t, tier)}</span>
+              <span>{describeFee(t, tier.feePercent)}</span>
             </li>
           ))}
         </ul>
-        <p className={styles.hint}>
-          Fees are calculated from the amount charged, using the time of your cancellation. These are the terms that
-          applied when this booking was made — later policy changes do not affect it.
-        </p>
+        <p className={styles.hint}>{t('bookingCancel.policyHint')}</p>
       </Card>
     </section>
   );

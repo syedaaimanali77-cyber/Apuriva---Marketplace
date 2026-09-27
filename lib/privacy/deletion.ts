@@ -116,6 +116,8 @@ export async function sweepDeletions(now: Date = new Date()): Promise<{ processe
         lifecycleStatus: 'deleted',
         email: null,
         phoneNumber: null,
+        // Spec 042 §4 (X-5, D-12): the saved locale preference goes with the rest of the account's data.
+        locale: null,
         passwordHash: null,
         phoneVerifiedAt: null,
         emailVerifiedAt: null,

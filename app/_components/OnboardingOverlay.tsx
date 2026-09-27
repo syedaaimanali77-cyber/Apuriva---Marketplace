@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components';
 import { fetchClientFlag } from '@/lib/feature-flags/client';
 import { hasSeenOnboarding, markOnboardingSeen } from '@/lib/onboarding/seen-state';
+import { useLocale } from './LocaleProvider';
 import styles from './onboarding-overlay.module.css';
 
 /**
@@ -18,6 +19,7 @@ import styles from './onboarding-overlay.module.css';
  * built directly from existing design tokens rather than a new design-system component.
  */
 export function OnboardingOverlay() {
+  const { t } = useLocale();
   const [visible, setVisible] = useState(false);
   // Button isn't built with forwardRef (same limitation as IconButton, see
   // app/account/_components/AccountMenu.tsx), so initial focus is reached via this wrapping span.
@@ -58,22 +60,19 @@ export function OnboardingOverlay() {
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.card} role="region" aria-label="Welcome">
+      <div className={styles.card} role="region" aria-label={t('shared.onboarding.region')}>
         <div className={styles.body}>
-          <p className={styles.title}>Browse freely — no account needed</p>
-          <p className={styles.copy}>
-            Explore categories, search, and check out providers and reviews without signing up.
-            You'll only be asked to create an account when you're ready to book, message, or pay.
-          </p>
+          <p className={styles.title}>{t('shared.onboarding.title')}</p>
+          <p className={styles.copy}>{t('shared.onboarding.copy')}</p>
         </div>
         <div className={styles.actions}>
           <span ref={dismissButtonWrapRef} style={{ display: 'inline-flex' }}>
-            <Button variant="ghost" size="sm" onClick={dismiss} aria-label="Skip introduction">
-              Skip
+            <Button variant="ghost" size="sm" onClick={dismiss} aria-label={t('shared.onboarding.skipLabel')}>
+              {t('shared.onboarding.skip')}
             </Button>
           </span>
           <Button variant="primary" size="sm" onClick={dismiss}>
-            Got it
+            {t('shared.onboarding.gotIt')}
           </Button>
         </div>
       </div>

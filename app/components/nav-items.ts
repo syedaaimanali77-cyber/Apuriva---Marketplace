@@ -4,27 +4,32 @@
  * assistant is reachable contextually elsewhere, never a mandatory permanent tab, and specs
  * 033-036 own building that contextual entry point itself.
  */
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+
 export interface NavItem {
   id: string;
+  /** English label — shown as-is where no `labelKey` exists (the English-only admin console). */
   label: string;
+  /** Spec 042 X-12: the translated label for the customer/provider sets. */
+  labelKey?: MessageKey;
   icon: string;
   href: string;
 }
 
 export const CUSTOMER_NAV_ITEMS: NavItem[] = [
-  { id: 'home', label: 'Home', icon: 'house', href: '/' },
-  { id: 'explore', label: 'Explore', icon: 'compass', href: '/explore' },
-  { id: 'requests', label: 'Requests', icon: 'file-text', href: '/requests' },
-  { id: 'bookings', label: 'Bookings', icon: 'calendar', href: '/bookings' },
-  { id: 'account', label: 'Account', icon: 'user', href: '/account' },
+  { id: 'home', label: 'Home', labelKey: 'chrome.nav.home', icon: 'house', href: '/' },
+  { id: 'explore', label: 'Explore', labelKey: 'chrome.nav.explore', icon: 'compass', href: '/explore' },
+  { id: 'requests', label: 'Requests', labelKey: 'chrome.nav.requests', icon: 'file-text', href: '/requests' },
+  { id: 'bookings', label: 'Bookings', labelKey: 'chrome.nav.bookings', icon: 'calendar', href: '/bookings' },
+  { id: 'account', label: 'Account', labelKey: 'chrome.nav.account', icon: 'user', href: '/account' },
 ];
 
 export const PROVIDER_NAV_ITEMS: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard', href: '/provider/dashboard' },
-  { id: 'requests', label: 'Requests', icon: 'file-text', href: '/provider/requests' },
-  { id: 'schedule', label: 'Schedule', icon: 'calendar', href: '/provider/schedule' },
-  { id: 'earnings', label: 'Earnings', icon: 'wallet', href: '/provider/earnings' },
-  { id: 'account', label: 'Account', icon: 'user', href: '/account' },
+  { id: 'dashboard', label: 'Dashboard', labelKey: 'chrome.nav.dashboard', icon: 'layout-dashboard', href: '/provider/dashboard' },
+  { id: 'requests', label: 'Requests', labelKey: 'chrome.nav.requests', icon: 'file-text', href: '/provider/requests' },
+  { id: 'schedule', label: 'Schedule', labelKey: 'chrome.nav.schedule', icon: 'calendar', href: '/provider/schedule' },
+  { id: 'earnings', label: 'Earnings', labelKey: 'chrome.nav.earnings', icon: 'wallet', href: '/provider/earnings' },
+  { id: 'account', label: 'Account', labelKey: 'chrome.nav.account', icon: 'user', href: '/account' },
 ];
 
 /** "Marketplace" links straight to the one page that already exists under it

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import HomePage from './page';
+import { en } from '@/lib/i18n/dictionaries/en';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -58,7 +59,8 @@ describe('HomePage — network failures (Failed to fetch)', () => {
       ),
     );
     render(<HomePage />);
-    expect(await screen.findByText('Feed exploded')).toBeInTheDocument();
+    // Spec 042 §3.7: a known stable code renders its dictionary text — still distinct from the network-failure copy.
+    expect(await screen.findByText(en.errors.INTERNAL_ERROR)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText('We could not reach the server.')).not.toBeInTheDocument());
   });
 });

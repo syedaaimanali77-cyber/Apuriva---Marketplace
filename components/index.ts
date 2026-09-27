@@ -28,6 +28,12 @@
  * `SideNav` (also spec 014) stay built directly in `app/components/` and are not re-exported: the
  * ui/ versions render `<button onClick>` items, while the app shell needs real `next/link`
  * navigation links — so those styles follow the ui/ components but the markup stays link-based.
+ * `Rating` (spec 029) is a thin re-export of `ui/components/marketplace/Rating`, which already
+ * exists and which spec 029 is simply the first screen to need. `RatingInput` and `ReviewCard`
+ * (also spec 029) are the `PriceDisplay`/`SearchBar` case again: both are named by spec 029, no
+ * `ui/` implementation exists — `Rating` is display-only and there is no review card at all — so
+ * they are built here from the DS's own `star` icon, `Card`, `Rating` and the existing
+ * `--rating-star` tokens. Neither forks `Rating` and neither introduces a token.
  */
 export * from './ActiveBookingBanner';
 export * from './Alert';
@@ -37,6 +43,8 @@ export * from './Button';
 export * from './Card';
 export * from './Checkbox';
 export * from './ConfirmDialog';
+// Spec 042 §5.2 (X-2): an `Icon` that mirrors under `dir="rtl"`, so `ui/` is never edited.
+export * from './DirectionalIcon';
 export * from './EmptyState';
 export * from './ErrorState';
 export * from './FAQList';
@@ -55,11 +63,15 @@ export * from './OtpInput';
 export * from './PackageCard';
 export * from './PriceDisplay';
 export * from './Radio';
+export * from './Rating';
+export * from './RatingInput';
 export * from './RequestStatusTimeline';
 export * from './ResultCard';
+export * from './ReviewCard';
 export * from './SearchBar';
 export * from './Select';
 export * from './Skeleton';
+export * from './StatBlock';
 export * from './Switch';
 export * from './Table';
 export * from './Tag';

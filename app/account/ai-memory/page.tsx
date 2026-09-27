@@ -9,9 +9,9 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { Skeleton } from '@/components/Skeleton';
 import { Switch } from '@/components/Switch';
-import { AI_MEMORY_KEY_LABELS } from '@/lib/ai-assistant/labels';
 import type { AiMemoryItemDto, AiPreferencesDto } from '@/lib/types/ai-assistant';
 import { aiFetch, aiMutation, formatAiInstant } from '@/app/_components/ask-apuriva-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import styles from '@/app/_components/ai-account.module.css';
 
 type Status = 'loading' | 'error' | 'ready';
@@ -22,6 +22,9 @@ type Status = 'loading' | 'error' | 'ready';
  * explicitly confirmed; nothing on this page can add one. Resetting never touches conversations.
  */
 export default function AiMemoryPage() {
+  const { locale, t } = useLocale();
+  // Spec 042: the memory KEY names are platform text; the stored value summary is shown as provided.
+  const keyLabel = (key: AiMemoryItemDto['key']) => t(`aiAccount.memoryKeys.${key}`);
   const [status, setStatus] = useState<Status>('loading');
   const [items, setItems] = useState<AiMemoryItemDto[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -67,11 +70,11 @@ export default function AiMemoryPage() {
     const res = await aiFetch(`/api/v1/ai/memory/${encodeURIComponent(item.id)}`, aiMutation('DELETE'));
     setDeletingId(null);
     if (!res.ok) {
-      setError("We couldn't forget that preference. It's still remembered — try again.");
+      setError(t('aiAccount.memory.forgetFailed'));
       return;
     }
     setItems((current) => current.filter((m) => m.id !== item.id));
-    setAnnouncement(`${AI_MEMORY_KEY_LABELS[item.key]} forgotten.`);
+    setAnnouncement(t('aiAccount.memory.forgotten', { label: keyLabel(item.key) }));
   }
 
   async function reset() {
@@ -81,11 +84,11 @@ export default function AiMemoryPage() {
     setResetting(false);
     setConfirmReset(false);
     if (!res.ok) {
-      setError("We couldn't reset your memory. Nothing was forgotten — try again.");
+      setError(t('aiAccount.memory.resetFailed'));
       return;
     }
     setItems([]);
-    setAnnouncement('Memory reset. Ask Apuriva no longer remembers any preferences.');
+    setAnnouncement(t('aiAccount.memory.resetDone'));
   }
 
   async function toggleSuggestions(next: boolean) {
@@ -96,11 +99,11 @@ export default function AiMemoryPage() {
     const res = await aiFetch<AiPreferencesDto>('/api/v1/users/me/ai-preferences', aiMutation('PATCH', { proactiveSuggestionsEnabled: next }));
     if (!res.ok || !res.data) {
       setPrefs(previous);
-      setPrefsError("We couldn't save that change, so the setting was restored.");
+      setPrefsError(t('aiAccount.memory.saveFailed'));
       return;
     }
     setPrefs(res.data);
-    setAnnouncement(next ? 'Proactive suggestions turned on.' : 'Proactive suggestions turned off.');
+    setAnnouncement(next ? t('aiAccount.memory.suggestionsOn') : t('aiAccount.memory.suggestionsOff'));
   }
 
   return (
@@ -112,17 +115,15 @@ export default function AiMemoryPage() {
       <section className={styles.section} aria-labelledby="ai-memory-heading" aria-busy={status === 'loading'}>
         <div className={styles.header}>
           <h1 id="ai-memory-heading" className={styles.title}>
-            Ask Apuriva memory
+            {t('aiAccount.memory.title')}
           </h1>
           {status === 'ready' && items.length > 0 ? (
             <Button variant="secondary" size="sm" onClick={() => setConfirmReset(true)}>
-              Reset memory
+              {t('aiAccount.memory.reset')}
             </Button>
           ) : null}
         </div>
-        <p className={styles.hint}>
-          Ask Apuriva only remembers preferences you confirm. Conversations are kept separately and are never copied here.
-        </p>
+        <p className={styles.hint}>{t('aiAccount.memory.hint')}</p>
 
         {error ? <Alert tone="error">{error}</Alert> : null}
 
@@ -132,13 +133,13 @@ export default function AiMemoryPage() {
             <Skeleton height={64} radius="var(--radius-lg)" />
           </div>
         ) : status === 'error' ? (
-          <ErrorState title="We couldn't load your memory" description="Check your connection and try again." onRetry={() => void load()} />
-        ) : items.length === 0 ? (
-          <EmptyState
-            icon="sparkles"
-            title="Nothing remembered yet"
-            description="Ask Apuriva only remembers preferences you confirm — like a preferred area, category or language."
+          <ErrorState
+            title={t('aiAccount.memory.loadFailedTitle')}
+            description={t('aiAccount.memory.loadFailedDescription')}
+            onRetry={() => void load()}
           />
+        ) : items.length === 0 ? (
+          <EmptyState icon="sparkles" title={t('aiAccount.memory.emptyTitle')} description={t('aiAccount.memory.emptyDescription')} />
         ) : (
           <ul className={styles.list}>
             {items.map((item) => (
@@ -147,18 +148,18 @@ export default function AiMemoryPage() {
                   <div className={styles.row}>
                     <div className={styles.rowBody}>
                       <p className={styles.rowTitle}>
-                        {AI_MEMORY_KEY_LABELS[item.key]} — {item.valueSummary}
+                        {t('aiAccount.memory.item', { label: keyLabel(item.key), value: item.valueSummary })}
                       </p>
-                      <p className={styles.rowMeta}>Saved {formatAiInstant(item.updatedAt)}</p>
+                      <p className={styles.rowMeta}>{t('aiAccount.memory.saved', { when: formatAiInstant(item.updatedAt, locale) })}</p>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
                       loading={deletingId === item.id}
-                      aria-label={`Forget ${AI_MEMORY_KEY_LABELS[item.key]}`}
+                      aria-label={t('aiAccount.memory.forgetLabel', { label: keyLabel(item.key) })}
                       onClick={() => void remove(item)}
                     >
-                      Delete
+                      {t('aiAccount.memory.delete')}
                     </Button>
                   </div>
                 </Card>
@@ -170,19 +171,19 @@ export default function AiMemoryPage() {
 
       <section className={styles.section} aria-labelledby="ai-suggestions-heading" aria-busy={prefsStatus === 'loading'}>
         <h2 id="ai-suggestions-heading" className={styles.sectionTitle}>
-          Suggestions
+          {t('aiAccount.memory.suggestions')}
         </h2>
         {prefsError ? <Alert tone="error">{prefsError}</Alert> : null}
         {prefsStatus === 'loading' ? (
           <Skeleton height={56} radius="var(--radius-lg)" />
         ) : prefsStatus === 'error' || !prefs ? (
-          <ErrorState compact title="We couldn't load this setting" onRetry={() => void loadPrefs()} />
+          <ErrorState compact title={t('aiAccount.memory.settingFailed')} onRetry={() => void loadPrefs()} />
         ) : (
           <Card elevation="flat">
             <Switch
               id="ai-proactive-suggestions"
-              label="Proactive suggestions from Ask Apuriva"
-              description="Booking, payment and security notifications are unaffected."
+              label={t('aiAccount.memory.suggestionsLabel')}
+              description={t('aiAccount.memory.suggestionsHint')}
               checked={prefs.proactiveSuggestionsEnabled}
               onChange={(next) => void toggleSuggestions(next)}
             />
@@ -192,9 +193,9 @@ export default function AiMemoryPage() {
 
       <ConfirmDialog
         open={confirmReset}
-        title="Reset Ask Apuriva memory?"
-        description="Every remembered preference will be removed. Your conversations are unaffected."
-        confirmLabel="Reset memory"
+        title={t('aiAccount.memory.resetTitle')}
+        description={t('aiAccount.memory.resetDescription')}
+        confirmLabel={t('aiAccount.memory.reset')}
         pending={resetting}
         onConfirm={() => void reset()}
         onCancel={() => setConfirmReset(false)}

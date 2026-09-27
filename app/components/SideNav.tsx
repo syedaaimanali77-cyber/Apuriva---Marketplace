@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Icon } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import type { NavItem } from './nav-items';
 import styles from './nav-shell.module.css';
 
@@ -14,8 +15,9 @@ export interface SideNavProps {
 
 /** Spec 014 §5 desktop primary navigation — same item set as `BottomTabBar`, adapted layout. */
 export function SideNav({ items, activeId, tone = 'light' }: SideNavProps) {
+  const { t } = useLocale();
   return (
-    <nav aria-label="Primary" className={styles.sideNav} data-tone={tone}>
+    <nav aria-label={t('chrome.nav.primary')} className={styles.sideNav} data-tone={tone}>
       {items.map((item) => {
         const on = item.id === activeId;
         return (
@@ -27,7 +29,7 @@ export function SideNav({ items, activeId, tone = 'light' }: SideNavProps) {
             className={styles.sideItem}
           >
             <Icon name={item.icon} size="sm" strokeWidth={on ? 2.1 : 1.75} />
-            <span>{item.label}</span>
+            <span>{item.labelKey ? t(item.labelKey) : item.label}</span>
           </Link>
         );
       })}

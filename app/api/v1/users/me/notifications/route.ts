@@ -4,6 +4,7 @@ import { rateLimitedError } from '@/lib/api/errors';
 import { buildPage, parsePageParams } from '@/lib/api/pagination';
 import { checkRateLimit } from '@/lib/api/rate-limit';
 import { requireSession } from '@/lib/auth/require-session';
+import { resolveLocaleForRequest } from '@/lib/i18n/server';
 import { listNotifications } from '@/lib/notifications';
 
 /**
@@ -19,8 +20,10 @@ export const GET = withApiRoute(async (request, correlationId) => {
 
   const searchParams = new URL(request.url).searchParams;
   const page = parsePageParams(searchParams);
+  const { locale } = await resolveLocaleForRequest(request, session.userId); // spec 042 §3.8: the reader's locale
   const { items, total } = await listNotifications(session.userId, page, {
     unreadOnly: searchParams.get('unreadOnly') === 'true',
+    locale,
   });
   return apiPaged(items, buildPage(total, page.limit, page.offset), correlationId);
 });

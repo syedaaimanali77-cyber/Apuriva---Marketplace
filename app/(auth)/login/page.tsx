@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Button, FormField, Input, OtpInput } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import { AuthShell } from '../_components/AuthShell';
 import styles from '../auth.module.css';
 
@@ -52,6 +53,7 @@ async function postJsonWithCsrf(url: string, body: unknown): Promise<{ ok: boole
  * the original implementation.
  */
 export default function LoginPage() {
+  const { t, errorText } = useLocale();
   const router = useRouter();
   const [mode, setMode] = useState<'phone' | 'password'>('phone');
 
@@ -85,7 +87,9 @@ export default function LoginPage() {
     const result = await postJson('/api/v1/auth/otp/request', { phoneNumber });
     setSendingOtp(false);
     if (!result.ok) {
-      setPhoneError(fieldError(result.error?.errors, 'phoneNumber') ?? result.error?.message ?? 'Something went wrong.');
+      setPhoneError(
+        fieldError(result.error?.errors, 'phoneNumber') ?? errorText(result.error?.code, result.error?.message, t('auth.login.somethingWrong')),
+      );
       return;
     }
     setRequestId(result.data.requestId);
@@ -100,13 +104,15 @@ export default function LoginPage() {
     setVerifyingOtp(false);
     if (!result.ok) {
       if (result.error?.code === 'RATE_LIMITED') {
-        setOtpError("Too many incorrect attempts. Request a new code.");
+        setOtpError(t('auth.login.tooManyAttempts'));
         setAttemptsLeft(0);
       } else if (result.error?.code === 'OTP_EXPIRED') {
-        setOtpError('That code expired. Request a new one.');
+        setOtpError(t('auth.login.otpExpired'));
       } else {
         setAttemptsLeft((n) => (n === null ? null : Math.max(0, n - 1)));
-        setOtpError(`That code didn't work. ${attemptsLeft !== null ? `You have ${Math.max(0, (attemptsLeft ?? 1) - 1)} attempts left.` : ''}`);
+        setOtpError(
+          `${t('auth.login.otpWrong')} ${attemptsLeft !== null ? t('auth.login.attemptsLeft', { count: Math.max(0, (attemptsLeft ?? 1) - 1) }) : ''}`,
+        );
       }
       return;
     }
@@ -129,7 +135,7 @@ export default function LoginPage() {
         return;
       }
       // AC-3: never reveal whether the email exists — one generic message either way.
-      setGenericError("We couldn't sign you in. Check your email and password and try again.");
+      setGenericError(t('auth.login.failed'));
       return;
     }
     if (result.data.mfaRequired) {
@@ -145,7 +151,7 @@ export default function LoginPage() {
     const result = await postJsonWithCsrf('/api/v1/auth/mfa/verify', { code });
     setVerifyingMfa(false);
     if (!result.ok) {
-      setMfaError(result.error?.message ?? 'That code didn\'t work.');
+      setMfaError(errorText(result.error?.code, result.error?.message, t('auth.login.mfaWrong')));
       return;
     }
     router.push('/');
@@ -155,9 +161,9 @@ export default function LoginPage() {
     <AuthShell
       footer={
         <>
-          No account?{' '}
+          {t('auth.login.noAccount')}{' '}
           <a href="/register" className={styles.footerLink}>
-            Register
+            {t('auth.login.register')}
           </a>
         </>
       }
@@ -165,9 +171,9 @@ export default function LoginPage() {
       {mfaPending ? (
         <>
           <div>
-            <span className={styles.eyebrow}>Almost there</span>
-            <h1 className={styles.title}>Verify it&rsquo;s you</h1>
-            <p className={styles.subtitle}>Enter the code from your authenticator app to finish signing in.</p>
+            <span className={styles.eyebrow}>{t('auth.login.almostThere')}</span>
+            <h1 className={styles.title}>{t('auth.login.verifyTitle')}</h1>
+            <p className={styles.subtitle}>{t('auth.login.verifySubtitle')}</p>
           </div>
           <form
             className={styles.form}
@@ -176,7 +182,7 @@ export default function LoginPage() {
               handleMfaVerify(mfaCode);
             }}
           >
-            <FormField label="Authenticator code" htmlFor="mfa-code" error={mfaError ?? undefined}>
+            <FormField label={t('auth.login.authenticatorCode')} htmlFor="mfa-code" error={mfaError ?? undefined}>
               <OtpInput
                 id="mfa-code"
                 value={mfaCode}
@@ -187,19 +193,19 @@ export default function LoginPage() {
               />
             </FormField>
             <Button type="submit" variant="primary" size="lg" fullWidth loading={verifyingMfa} disabled={mfaCode.length !== 6}>
-              Verify
+              {t('auth.login.verify')}
             </Button>
           </form>
         </>
       ) : (
         <>
           <div>
-            <span className={styles.eyebrow}>Welcome back</span>
-            <h1 className={styles.title}>Log in</h1>
-            <p className={styles.subtitle}>Pick up right where you left off.</p>
+            <span className={styles.eyebrow}>{t('auth.login.welcomeBack')}</span>
+            <h1 className={styles.title}>{t('auth.login.title')}</h1>
+            <p className={styles.subtitle}>{t('auth.login.subtitle')}</p>
           </div>
 
-          <div role="tablist" aria-label="Login method" className={styles.segmented}>
+          <div role="tablist" aria-label={t('auth.login.method')} className={styles.segmented}>
             <Button
               role="tab"
               aria-selected={mode === 'phone'}
@@ -208,7 +214,7 @@ export default function LoginPage() {
               className={styles.segmentedButton}
               onClick={() => setMode('phone')}
             >
-              Phone
+              {t('auth.login.phone')}
             </Button>
             <Button
               role="tab"
@@ -218,7 +224,7 @@ export default function LoginPage() {
               className={styles.segmentedButton}
               onClick={() => setMode('password')}
             >
-              Email
+              {t('auth.email')}
             </Button>
           </div>
 
@@ -230,14 +236,14 @@ export default function LoginPage() {
                 requestId ? handleVerifyOtp(otpCode) : handleSendOtp();
               }}
             >
-              <FormField label="Phone number" htmlFor="phone" error={phoneError ?? undefined} required>
+              <FormField label={t('auth.login.phoneNumber')} htmlFor="phone" error={phoneError ?? undefined} required>
                 <Input
                   id="phone"
                   type="tel"
                   size="lg"
                   iconLeft="phone"
                   autoComplete="tel"
-                  placeholder="+92 300 1234567"
+                  placeholder={t('auth.login.phonePlaceholder')}
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   invalid={Boolean(phoneError)}
@@ -247,9 +253,9 @@ export default function LoginPage() {
 
               {requestId ? (
                 <FormField
-                  label="Verification code"
+                  label={t('auth.login.verificationCode')}
                   htmlFor="otp"
-                  help={otpError ? undefined : 'Enter the 6-digit code we sent you.'}
+                  help={otpError ? undefined : t('auth.login.codeHelp')}
                   error={otpError ?? undefined}
                 >
                   <OtpInput
@@ -271,7 +277,7 @@ export default function LoginPage() {
                 loading={requestId ? verifyingOtp : sendingOtp}
                 disabled={requestId ? otpCode.length !== 6 || attemptsLeft === 0 : phoneNumber.length === 0}
               >
-                {requestId ? 'Verify code' : 'Send code'}
+                {requestId ? t('auth.login.verifyCode') : t('auth.login.sendCode')}
               </Button>
             </form>
           ) : (
@@ -282,7 +288,7 @@ export default function LoginPage() {
                 handlePasswordLogin();
               }}
             >
-              <FormField label="Email" htmlFor="email" error={emailError ?? undefined} required>
+              <FormField label={t('auth.email')} htmlFor="email" error={emailError ?? undefined} required>
                 <Input
                   id="email"
                   type="email"
@@ -293,7 +299,7 @@ export default function LoginPage() {
                   invalid={Boolean(emailError)}
                 />
               </FormField>
-              <FormField label="Password" htmlFor="password" error={passwordError ?? undefined} required>
+              <FormField label={t('auth.password')} htmlFor="password" error={passwordError ?? undefined} required>
                 <Input
                   id="password"
                   type="password"
@@ -307,14 +313,14 @@ export default function LoginPage() {
               </FormField>
               {genericError ? <Alert tone="error">{genericError}</Alert> : null}
               <Button type="submit" variant="primary" size="lg" fullWidth loading={loggingIn}>
-                Log in
+                {t('auth.login.submit')}
               </Button>
             </form>
           )}
 
           <div className={styles.divider}>
             <hr className={styles.dividerLine} />
-            <span className={styles.dividerLabel}>or</span>
+            <span className={styles.dividerLabel}>{t('auth.or')}</span>
             <hr className={styles.dividerLine} />
           </div>
 
@@ -324,18 +330,18 @@ export default function LoginPage() {
               size="lg"
               fullWidth
               disabled
-              title="Real Google sign-in needs provider credentials — spec 005 §8 risk #1 ships a sandbox adapter only"
+              title={t('auth.googleUnavailable')}
             >
-              Continue with Google
+              {t('auth.google')}
             </Button>
             <Button
               variant="secondary"
               size="lg"
               fullWidth
               disabled
-              title="Real Apple sign-in needs provider credentials — spec 005 §8 risk #1 ships a sandbox adapter only"
+              title={t('auth.appleUnavailable')}
             >
-              Continue with Apple
+              {t('auth.apple')}
             </Button>
           </div>
         </>

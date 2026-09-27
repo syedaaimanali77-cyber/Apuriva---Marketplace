@@ -10,6 +10,9 @@ import {
   type NotificationPreferencesDto,
   type OutboundChannel,
 } from '@/lib/types/notifications';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatDateTime } from '@/lib/i18n/format';
 import styles from './notifications.module.css';
 
 interface ApiErrorBody {
@@ -49,27 +52,27 @@ function mutation(method: 'POST' | 'PATCH', body?: unknown): RequestInit {
 
 const PAGE_SIZE = 20;
 
-const CATEGORY_LABELS: Record<NotificationCategory, string> = {
-  booking: 'Bookings',
-  messages: 'Messages',
-  payments: 'Payments',
-  security: 'Security',
-  promotions: 'Promotions',
-  provider_activity: 'Provider activity',
-  operational: 'Account & service notices',
+const CATEGORY_LABELS: Record<NotificationCategory, MessageKey> = {
+  booking: 'notificationCentre.category.booking',
+  messages: 'notificationCentre.category.messages',
+  payments: 'notificationCentre.category.payments',
+  security: 'notificationCentre.category.security',
+  promotions: 'notificationCentre.category.promotions',
+  provider_activity: 'notificationCentre.category.provider_activity',
+  operational: 'notificationCentre.category.operational',
 };
 
-const LOCKED_REASONS: Partial<Record<NotificationCategory, string>> = {
-  security: "Security notifications can't be turned off.",
-  payments: "Payment notifications can't be turned off.",
-  operational: "Important account and service notices can't be turned off.",
+const LOCKED_REASONS: Partial<Record<NotificationCategory, MessageKey>> = {
+  security: 'notificationCentre.locked.security',
+  payments: 'notificationCentre.locked.payments',
+  operational: 'notificationCentre.locked.operational',
 };
 
-const CHANNEL_LABELS: Record<OutboundChannel, string> = { push: 'Push', email: 'Email', sms: 'SMS' };
-
-function formatInstant(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
+const CHANNEL_LABELS: Record<OutboundChannel, MessageKey> = {
+  push: 'notificationCentre.channel.push',
+  email: 'notificationCentre.channel.email',
+  sms: 'notificationCentre.channel.sms',
+};
 
 type Status = 'loading' | 'error' | 'ready';
 
@@ -83,6 +86,10 @@ type Status = 'loading' | 'error' | 'ready';
  * previous state and says so.
  */
 export default function NotificationsPage() {
+  // Spec 042: platform text here is translated; each notification's own title/body arrive already
+  // rendered for the reader's locale by the inbox (spec 042 §3.8).
+  const { locale, t } = useLocale();
+  const formatInstant = (iso: string) => formatDateTime(iso, locale, { dateStyle: 'medium', timeStyle: 'short' });
   const [status, setStatus] = useState<Status>('loading');
   const [items, setItems] = useState<NotificationDto[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
@@ -131,7 +138,7 @@ export default function NotificationsPage() {
     const res = await apiFetch<NotificationDto[]>(`/api/v1/users/me/notifications?limit=${PAGE_SIZE}&offset=${nextOffset}`);
     setLoadingMore(false);
     if (!res.ok) {
-      setInboxError("We couldn't load more notifications. Try again.");
+      setInboxError(t('notificationCentre.loadMoreFailed'));
       return;
     }
     setItems((current) => {
@@ -155,11 +162,11 @@ export default function NotificationsPage() {
     });
     if (!res.ok || !res.data) {
       setItems(previous);
-      setInboxError("We couldn't mark that notification as read, so it's still shown as unread. Try again.");
+      setInboxError(t('notificationCentre.markReadFailed'));
       return;
     }
     setItems((current) => current.map((n) => (n.id === notification.id ? res.data! : n)));
-    setAnnouncement('Notification marked as read.');
+    setAnnouncement(t('notificationCentre.markedRead'));
   }
 
   async function markAllRead() {
@@ -170,10 +177,10 @@ export default function NotificationsPage() {
     const res = await apiFetch<{ updated: number }>('/api/v1/users/me/notifications/read-all', mutation('POST'));
     if (!res.ok) {
       setItems(previous);
-      setInboxError("We couldn't mark your notifications as read, so they're still shown as unread. Try again.");
+      setInboxError(t('notificationCentre.markAllFailed'));
       return;
     }
-    setAnnouncement('All notifications marked as read.');
+    setAnnouncement(t('notificationCentre.allMarkedRead'));
   }
 
   async function saveChannel(category: NotificationCategory, channel: OutboundChannel, enabled: boolean) {
@@ -191,16 +198,21 @@ export default function NotificationsPage() {
       setPrefs(previous);
       const reason =
         res.error?.code === 'CONFLICT'
-          ? 'Your preferences were changed elsewhere. We reloaded them — please try again.'
+          ? t('notificationCentre.conflict')
           : res.error?.code === 'CATEGORY_NOT_OVERRIDABLE'
             ? res.error.message
-            : "We couldn't save that change, so the setting was restored.";
-      setPrefsError(`${CATEGORY_LABELS[category]} ${CHANNEL_LABELS[channel]} was not changed. ${reason}`);
+            : t('notificationCentre.saveFailed');
+      setPrefsError(t('notificationCentre.notChanged', { category: t(CATEGORY_LABELS[category]), channel: t(CHANNEL_LABELS[channel]), reason }));
       if (res.error?.code === 'CONFLICT') void loadPrefs();
       return;
     }
     setPrefs(res.data);
-    setAnnouncement(`${CATEGORY_LABELS[category]} ${CHANNEL_LABELS[channel]} notifications ${enabled ? 'on' : 'off'}.`);
+    setAnnouncement(
+      t(enabled ? 'notificationCentre.channelOn' : 'notificationCentre.channelOff', {
+        category: t(CATEGORY_LABELS[category]),
+        channel: t(CHANNEL_LABELS[channel]),
+      }),
+    );
   }
 
   async function saveConsent(consent: boolean) {
@@ -213,12 +225,12 @@ export default function NotificationsPage() {
     setSavingPrefs(false);
     if (!res.ok || !res.data) {
       setPrefs(previous);
-      setPrefsError("We couldn't update your marketing consent, so it was left unchanged. Try again.");
+      setPrefsError(t('notificationCentre.consentFailed'));
       return;
     }
     // Consent changes the preference row's version; reload so the next toggle sends the current one.
     await loadPrefs();
-    setAnnouncement(consent ? 'Marketing consent given.' : 'Marketing consent withdrawn.');
+    setAnnouncement(consent ? t('notificationCentre.consentGiven') : t('notificationCentre.consentWithdrawn'));
   }
 
   const unreadCount = items.filter((n) => !n.readAt).length;
@@ -228,11 +240,11 @@ export default function NotificationsPage() {
       <section className={styles.section} aria-labelledby="notifications-heading" aria-busy={status === 'loading'}>
         <div className={styles.header}>
           <h1 id="notifications-heading" className={styles.title}>
-            Notifications
+            {t('notificationCentre.title')}
           </h1>
           {status === 'ready' && items.length > 0 ? (
             <Button variant="secondary" size="sm" onClick={markAllRead} disabled={unreadCount === 0}>
-              Mark all read
+              {t('notificationCentre.markAll')}
             </Button>
           ) : null}
         </div>
@@ -247,12 +259,12 @@ export default function NotificationsPage() {
           </div>
         ) : status === 'error' ? (
           <ErrorState
-            title="We couldn't load your notifications"
-            description="Check your connection and try again."
+            title={t('notificationCentre.loadFailedTitle')}
+            description={t('notificationCentre.loadFailedDescription')}
             onRetry={() => void loadInbox()}
           />
         ) : items.length === 0 ? (
-          <EmptyState icon="bell" title="You're all caught up" description="New notifications about your bookings, messages and payments will appear here." />
+          <EmptyState icon="bell" title={t('notificationCentre.emptyTitle')} description={t('notificationCentre.emptyDescription')} />
         ) : (
           <>
             <ul className={styles.list}>
@@ -265,14 +277,14 @@ export default function NotificationsPage() {
                         <p className={`${styles.itemTitle} ${unread ? styles.itemTitleUnread : ''}`}>
                           {unread ? (
                             <Badge tone="brand" icon={null} size="sm">
-                              Unread
+                              {t('notificationCentre.unread')}
                             </Badge>
                           ) : null}
                           {notification.title}
                         </p>
                         <p className={styles.itemText}>{notification.body}</p>
                         <p className={styles.itemMeta}>
-                          {CATEGORY_LABELS[notification.category]} · {formatInstant(notification.createdAt)}
+                          {t(CATEGORY_LABELS[notification.category])} · {formatInstant(notification.createdAt)}
                         </p>
                       </div>
                       {unread ? (
@@ -281,9 +293,9 @@ export default function NotificationsPage() {
                           size="sm"
                           loading={pendingIds.has(notification.id)}
                           onClick={() => void markRead(notification)}
-                          aria-label={`Mark "${notification.title}" as read`}
+                          aria-label={t('notificationCentre.markReadLabel', { title: notification.title })}
                         >
-                          Mark read
+                          {t('notificationCentre.markRead')}
                         </Button>
                       ) : null}
                     </Card>
@@ -293,7 +305,7 @@ export default function NotificationsPage() {
             </ul>
             {nextOffset !== null ? (
               <Button variant="secondary" className={styles.more} loading={loadingMore} onClick={() => void loadMore()}>
-                Load more
+                {t('notificationCentre.loadMore')}
               </Button>
             ) : null}
           </>
@@ -302,16 +314,16 @@ export default function NotificationsPage() {
 
       <section className={styles.section} aria-labelledby="preferences-heading" aria-busy={prefsStatus === 'loading'}>
         <h2 id="preferences-heading" className={styles.sectionTitle}>
-          Notification preferences
+          {t('notificationCentre.preferencesTitle')}
         </h2>
-        <p className={styles.hint}>In-app notifications are always kept here. Choose which other channels you want for each kind.</p>
+        <p className={styles.hint}>{t('notificationCentre.preferencesHint')}</p>
 
         {prefsError ? <Alert tone="error">{prefsError}</Alert> : null}
 
         {prefsStatus === 'loading' ? (
           <Skeleton height={320} radius="var(--radius-lg)" />
         ) : prefsStatus === 'error' || !prefs ? (
-          <ErrorState title="We couldn't load your preferences" onRetry={() => void loadPrefs()} compact />
+          <ErrorState title={t('notificationCentre.prefsFailedTitle')} onRetry={() => void loadPrefs()} compact />
         ) : (
           <>
             <Card elevation="flat">
@@ -321,27 +333,28 @@ export default function NotificationsPage() {
                 return (
                   <div key={category} className={styles.category} role="group" aria-labelledby={headingId}>
                     <h3 id={headingId} className={styles.categoryTitle}>
-                      {CATEGORY_LABELS[category]}
+                      {t(CATEGORY_LABELS[category])}
                     </h3>
                     {locked ? (
                       <p className={styles.locked}>
                         <Icon name="lock" size="sm" />
-                        {LOCKED_REASONS[category]} You&apos;ll always get them in-app and by email.
+                        {LOCKED_REASONS[category] ? t(LOCKED_REASONS[category]!) : null} {t('notificationCentre.lockedTail')}
                       </p>
                     ) : (
                       <>
                         {category === 'promotions' ? (
-                          <p className={styles.hint}>
-                            Promotions are only sent if you also give marketing consent below — both are required.
-                          </p>
+                          <p className={styles.hint}>{t('notificationCentre.promotionsHint')}</p>
                         ) : null}
                         <div className={styles.toggles}>
                           {OUTBOUND_CHANNELS.map((channel) => (
                             <Switch
                               key={channel}
                               id={`${category}-${channel}`}
-                              label={`${CHANNEL_LABELS[channel]}`}
-                              description={`${CATEGORY_LABELS[category]} by ${CHANNEL_LABELS[channel].toLowerCase()}`}
+                              label={t(CHANNEL_LABELS[channel])}
+                              description={t('notificationCentre.categoryBy', {
+                                category: t(CATEGORY_LABELS[category]),
+                                channel: t(CHANNEL_LABELS[channel]).toLowerCase(),
+                              })}
                               checked={prefs.categories[category][channel]}
                               disabled={savingPrefs}
                               onChange={(next) => void saveChannel(category, channel, next)}
@@ -356,17 +369,15 @@ export default function NotificationsPage() {
             </Card>
 
             <Card elevation="subtle" emphasis="accent" className={styles.consent}>
-              <h3 className={styles.categoryTitle}>Marketing consent</h3>
-              <p className={styles.hint}>
-                Allow us to send you promotional offers and news. This is separate from the Promotions channels above:
-                promotions are sent only when you give consent AND switch on at least one Promotions channel. You can
-                withdraw consent at any time.
-              </p>
+              <h3 className={styles.categoryTitle}>{t('notificationCentre.consentTitle')}</h3>
+              <p className={styles.hint}>{t('notificationCentre.consentHint')}</p>
               <Switch
                 id="marketing-consent"
-                label="I agree to receive promotional notifications"
+                label={t('notificationCentre.consentLabel')}
                 description={
-                  prefs.marketingConsentAt ? `Consent given ${formatInstant(prefs.marketingConsentAt)}` : 'No consent given'
+                  prefs.marketingConsentAt
+                    ? t('notificationCentre.consentGivenAt', { when: formatInstant(prefs.marketingConsentAt) })
+                    : t('notificationCentre.noConsent')
                 }
                 checked={prefs.marketingConsentAt !== null}
                 disabled={savingPrefs}

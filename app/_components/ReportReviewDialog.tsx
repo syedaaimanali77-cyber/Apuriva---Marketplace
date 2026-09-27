@@ -17,14 +17,16 @@ import { ConfirmDialog, Select, Textarea } from '@/components';
 import { apiFetch, mutateHeaders } from '@/app/requests/api-client';
 import { REVIEW_REPORT_REASONS, type ReviewReportDto, type ReviewReportReason } from '@/lib/types/reviews';
 import { MAX_TEXT_LENGTH, MIN_TEXT_LENGTH } from '@/lib/reviews/limits';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { useLocale } from './LocaleProvider';
 
-const REASON_LABELS: Record<ReviewReportReason, string> = {
-  spam: 'Spam or advertising',
-  offensive: 'Offensive or abusive language',
-  false_information: 'Untrue account of what happened',
-  personal_information: 'Contains someone’s personal information',
-  off_topic: 'Not about this service',
-  other: 'Something else',
+const REASON_LABELS: Record<ReviewReportReason, MessageKey> = {
+  spam: 'media.report.reasons.spam',
+  offensive: 'media.report.reasons.offensive',
+  false_information: 'media.report.reasons.false_information',
+  personal_information: 'media.report.reasons.personal_information',
+  off_topic: 'media.report.reasons.off_topic',
+  other: 'media.report.reasons.other',
 };
 
 export interface ReportReviewDialogProps {
@@ -41,6 +43,7 @@ function newIdempotencyKey(): string {
 }
 
 export function ReportReviewDialog({ reviewId, open, onClose, onReported }: ReportReviewDialogProps) {
+  const { t, errorText } = useLocale();
   const [reason, setReason] = useState<ReviewReportReason>('spam');
   const [details, setDetails] = useState('');
   const [busy, setBusy] = useState(false);
@@ -49,7 +52,7 @@ export function ReportReviewDialog({ reviewId, open, onClose, onReported }: Repo
   const submit = async () => {
     const trimmed = details.trim();
     if (reason === 'other' && trimmed.length < MIN_TEXT_LENGTH) {
-      setError(`Please describe the problem in at least ${MIN_TEXT_LENGTH} characters.`);
+      setError(t('media.report.tooShort', { min: MIN_TEXT_LENGTH }));
       return;
     }
 
@@ -63,7 +66,7 @@ export function ReportReviewDialog({ reviewId, open, onClose, onReported }: Repo
     setBusy(false);
 
     if (!response.ok) {
-      setError(response.error?.message ?? "Something went wrong. Please try again.");
+      setError(errorText(response.error?.code, response.error?.message, t('media.report.failed')));
       return;
     }
     onReported?.(response.data!);
@@ -75,9 +78,9 @@ export function ReportReviewDialog({ reviewId, open, onClose, onReported }: Repo
   return (
     <ConfirmDialog
       open={open}
-      title="Report this review"
-      confirmLabel={busy ? 'Sending…' : 'Send report'}
-      cancelLabel="Cancel"
+      title={t('media.report.title')}
+      confirmLabel={busy ? t('media.report.sending') : t('media.report.send')}
+      cancelLabel={t('common.cancel')}
       tone="primary"
       pending={busy}
       onConfirm={submit}
@@ -86,21 +89,18 @@ export function ReportReviewDialog({ reviewId, open, onClose, onReported }: Repo
       // is rather than widened, since this spec adds no overlay primitive.
       description={
         <>
-      <p>
-        Trust &amp; Safety will read this review and decide. It stays visible in the meantime — reporting does not
-        remove anything on its own.
-      </p>
+      <p>{t('media.report.intro')}</p>
 
-      <label htmlFor="report-reason">Why are you reporting it?</label>
+      <label htmlFor="report-reason">{t('media.report.why')}</label>
       <Select
         id="report-reason"
         value={reason}
-        options={REVIEW_REPORT_REASONS.map((value) => ({ value, label: REASON_LABELS[value] }))}
+        options={REVIEW_REPORT_REASONS.map((value) => ({ value, label: t(REASON_LABELS[value]) }))}
         onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setReason(event.target.value as ReviewReportReason)}
         disabled={busy}
       />
 
-      <label htmlFor="report-details">{reason === 'other' ? 'Tell us what is wrong' : 'Anything to add? (optional)'}</label>
+      <label htmlFor="report-details">{reason === 'other' ? t('media.report.tellUs') : t('media.report.anythingToAdd')}</label>
       <Textarea
         id="report-details"
         value={details}

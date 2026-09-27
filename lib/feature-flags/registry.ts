@@ -1,6 +1,7 @@
 /**
  * Spec 041 §3.3 (AC-5) — THE flag registry: a closed, typed list and the source of truth for keys,
- * classification and defaults. Migration 0036 seeds exactly these rows; `registry.test.ts` and
+ * classification and defaults. Migration 0036 seeds the first six rows and each later flag's own
+ * migration seeds its row (0037: `urdu-locale`, spec 042); `registry.test.ts` and
  * `migration.integration.test.ts` assert the two agree.
  *
  * Every default is the one its owning spec documents. `readOverride` reads the spec's pre-041
@@ -93,6 +94,19 @@ export const FEATURE_FLAG_REGISTRY = [
     defaults: everywhere(false),
     overrideVar: 'AI_FRAUD_SIGNALS_ENABLED',
     readOverride: () => process.env.AI_FRAUD_SIGNALS_ENABLED,
+  },
+  {
+    // Spec 042 §4 (X-7, D-7): seeded OFF by migration 0037. Turned on per environment, with no deploy,
+    // only once the translation coverage checklist (spec 042 §9) is complete. No env override.
+    key: 'urdu-locale',
+    owningSpec: '042',
+    description: 'Offers the Urdu UI locale; turn on only after the translation coverage checklist is complete (spec 042).',
+    controlledBy: 'business',
+    isKillSwitch: false,
+    clientReadable: true,
+    defaults: everywhere(false),
+    overrideVar: null,
+    readOverride: () => undefined,
   },
 ] as const satisfies readonly FeatureFlagDefinition[];
 

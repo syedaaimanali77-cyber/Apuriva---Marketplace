@@ -10,12 +10,19 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }));
 
+// Spec 042 §3.4 (X-1): the layout is an async server component that resolves `lang`/`dir` from the
+// request. There is no request scope here, so the resolution is stubbed; its behaviour is covered by
+// app/layout.locale.test.tsx.
+vi.mock('@/lib/i18n/server', () => ({
+  getRequestLocale: async () => ({ locale: 'en', direction: 'ltr' }),
+}));
+
 describe('RootLayout', () => {
-  it('renders the root HTML shell without throwing', () => {
+  it('renders the root HTML shell without throwing', async () => {
     const markup = renderToStaticMarkup(
-      <RootLayout>
-        <div>child content</div>
-      </RootLayout>,
+      await RootLayout({
+        children: <div>child content</div>,
+      }),
     );
 
     expect(markup).toContain('<html');

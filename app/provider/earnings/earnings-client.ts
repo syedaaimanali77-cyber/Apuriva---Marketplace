@@ -5,6 +5,7 @@
  * server (AC-3). The step-up helper uses spec 005's existing `POST /api/v1/auth/step-up`, the same
  * flow `app/account/privacy-security` uses.
  */
+import { formatDate as formatLocaleDate, formatMoney as formatLocaleMoney } from '@/lib/i18n/format';
 
 export interface ApiErrorBody {
   code: string;
@@ -44,17 +45,14 @@ export async function requestStepUpToken(): Promise<string | null> {
   return result.ok ? (result.data?.stepUpToken ?? null) : null;
 }
 
+/** Spec 042 X-11: the shared formatters. Provider screens stay English (§5.1), so always `'en'`. */
 export function formatMoney(amountMinorUnits: number, currencyCode: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(amountMinorUnits / 100);
-  } catch {
-    return `${currencyCode} ${(amountMinorUnits / 100).toFixed(2)}`;
-  }
+  return formatLocaleMoney(amountMinorUnits, currencyCode, 'en');
 }
 
 export function formatDate(value: string | null): string {
   if (!value) return '—';
-  return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return formatLocaleDate(value, 'en', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 export const PAYOUT_STATUS_LABELS: Record<string, string> = {

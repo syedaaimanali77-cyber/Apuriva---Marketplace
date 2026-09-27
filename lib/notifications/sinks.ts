@@ -7,7 +7,8 @@
  *   - spec 025 `registerMessagingNotificationSink`    (lib/messaging/notifications.ts)
  *
  * Only those PORT modules are imported — never a producing spec's domain module (`boundaries.test.ts`).
- * Each mapping supplies a deterministic `eventKey` (AC-7) and only ids/amounts/statuses as params.
+ * Each mapping supplies a deterministic `eventKey` (AC-7) and only ids/amounts/statuses as params. Amounts
+ * are typed `{ amountMinorUnits, currencyCode }` (spec 042 §3.8), formatted per reader at render time.
  *
  * Events with no USER recipient (spec 022's approval events and spec 024's finance-audience events) are
  * admin work-queue signals, not a user's notification; this spec has no admin inbox, so they stay logged.
@@ -26,14 +27,6 @@ import { queryRows } from './sql';
 
 function logUnrouted(source: string, kind: string): void {
   console.log(JSON.stringify({ event: 'notification.not_user_addressed', source, kind }));
-}
-
-export function formatMinorUnits(amountMinorUnits: number, currencyCode: string): string {
-  try {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(amountMinorUnits / 100);
-  } catch {
-    return `${currencyCode} ${(amountMinorUnits / 100).toFixed(2)}`;
-  }
 }
 
 export function refundEventToNotification(event: RefundNotificationEvent): NotificationEventInput | null {
@@ -60,8 +53,9 @@ export function cancellationEventToNotification(event: CancellationNotificationE
         eventKey: `booking_cancelled:${event.bookingId}`,
         params: {
           bookingId: event.bookingId,
-          refundAmount: formatMinorUnits(event.refundAmountMinorUnits, event.currencyCode),
-          feeAmount: formatMinorUnits(event.feeAmountMinorUnits, event.currencyCode),
+          // Spec 042 §3.8 (X-6): TYPED money, never pre-formatted English — each reader's locale formats it.
+          refundAmount: { amountMinorUnits: event.refundAmountMinorUnits, currencyCode: event.currencyCode },
+          feeAmount: { amountMinorUnits: event.feeAmountMinorUnits, currencyCode: event.currencyCode },
         },
       };
     case 'no_show_reported':

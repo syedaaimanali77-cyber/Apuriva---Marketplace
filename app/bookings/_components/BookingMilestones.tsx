@@ -18,16 +18,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Select, Textarea } from '@/components';
 import type { BookingMilestoneDto, BookingMilestoneType, BookingStatus } from '@/lib/types/bookings';
 import { apiFetch, formatScheduled, mutateHeaders } from '@/app/bookings/booking-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
 import styles from '@/app/bookings/bookings.module.css';
 
 /** Mirrors `EXECUTING_BOOKING_STATUSES` — the server remains authoritative. */
 const POSTABLE_STATUSES: readonly BookingStatus[] = ['arrived', 'in_progress'];
 
-const MILESTONE_LABELS: Record<BookingMilestoneType, string> = {
-  started: 'Started',
-  working: 'Working on it',
-  almost_done: 'Almost done',
-  custom: 'Custom update',
+const MILESTONE_LABELS: Record<BookingMilestoneType, MessageKey> = {
+  started: 'bookingParts.milestones.labels.started',
+  working: 'bookingParts.milestones.labels.working',
+  almost_done: 'bookingParts.milestones.labels.almost_done',
+  custom: 'bookingParts.milestones.labels.custom',
 };
 
 export interface BookingMilestonesProps {
@@ -38,6 +40,7 @@ export interface BookingMilestonesProps {
 }
 
 export function BookingMilestones({ bookingId, status, scheduledTimezone, viewerRole }: BookingMilestonesProps) {
+  const { locale, t, errorText } = useLocale();
   const [milestones, setMilestones] = useState<BookingMilestoneDto[]>([]);
   const [milestoneType, setMilestoneType] = useState<BookingMilestoneType>('working');
   const [note, setNote] = useState('');
@@ -74,29 +77,29 @@ export function BookingMilestones({ bookingId, status, scheduledTimezone, viewer
     setPending(false);
 
     if (!result.ok) {
-      setError(result.error?.message ?? 'That update did not go through.');
+      setError(errorText(result.error?.code, result.error?.message, t('bookingParts.milestones.failed')));
       return;
     }
     setNote('');
     await load();
-  }, [bookingId, milestoneType, note, load]);
+  }, [bookingId, errorText, milestoneType, note, load, t]);
 
   // The customer's empty state is deliberately nothing at all (§5).
   if (milestones.length === 0 && !canPost) return null;
 
   return (
     <Card>
-      <h2 className={styles.sectionTitle}>Progress updates</h2>
+      <h2 className={styles.sectionTitle}>{t('bookingParts.milestones.title')}</h2>
 
       {milestones.length > 0 && (
         <ul className={styles.historyList}>
           {milestones.map((milestone) => (
             <li key={milestone.id} className={styles.historyRow}>
               <span>
-                {MILESTONE_LABELS[milestone.milestoneType]}
+                {t(MILESTONE_LABELS[milestone.milestoneType])}
                 {milestone.note ? ` — ${milestone.note}` : ''}
               </span>
-              <span className={styles.historyActor}>{formatScheduled(milestone.createdAt, scheduledTimezone)}</span>
+              <span className={styles.historyActor}>{formatScheduled(milestone.createdAt, scheduledTimezone, locale)}</span>
             </li>
           ))}
         </ul>
@@ -105,32 +108,30 @@ export function BookingMilestones({ bookingId, status, scheduledTimezone, viewer
       {canPost && (
         <div className={styles.actions}>
           <Select
-            aria-label="Progress update"
+            aria-label={t('bookingParts.milestones.select')}
             value={milestoneType}
             options={(Object.keys(MILESTONE_LABELS) as BookingMilestoneType[]).map((type) => ({
               value: type,
-              label: MILESTONE_LABELS[type],
+              label: t(MILESTONE_LABELS[type]),
             }))}
             onChange={(event) => setMilestoneType(event.target.value as BookingMilestoneType)}
           />
           <Textarea
-            aria-label={milestoneType === 'custom' ? 'What should the customer know?' : 'Add a note (optional)'}
-            placeholder={milestoneType === 'custom' ? 'What should the customer know?' : 'Add a note (optional)'}
+            aria-label={milestoneType === 'custom' ? t('bookingParts.milestones.customPrompt') : t('bookingParts.milestones.notePrompt')}
+            placeholder={milestoneType === 'custom' ? t('bookingParts.milestones.customPrompt') : t('bookingParts.milestones.notePrompt')}
             value={note}
             maxLength={500}
             onChange={(event) => setNote(event.target.value)}
           />
           <Button variant="secondary" loading={pending} onClick={() => void post()}>
-            Post update
+            {t('bookingParts.milestones.post')}
           </Button>
         </div>
       )}
 
       {canPost && (
         // AC-3, stated plainly on the screen it applies to.
-        <p className={styles.hint}>
-          Progress updates are optional. You can finish this job without posting any.
-        </p>
+        <p className={styles.hint}>{t('bookingParts.milestones.optionalHint')}</p>
       )}
 
       {error && <Alert tone="error">{error}</Alert>}

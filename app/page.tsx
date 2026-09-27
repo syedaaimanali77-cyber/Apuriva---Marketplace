@@ -6,7 +6,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ActiveBookingBanner, Button, EmptyState, ErrorState, ResultCard, SearchBar, Skeleton, Switch } from '@/components';
 import { AskApuriva } from '@/app/_components/AskApurivaPanel';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import { branding } from '@/lib/config/branding';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatNumber } from '@/lib/i18n/format';
 import type { CategoryDto } from '@/lib/types/catalog';
 import type { HomeFeedDto, PersonalizationSettingsDto } from '@/lib/types/home';
 import { imageForCategoryName } from './category-images';
@@ -20,10 +23,10 @@ const getJson = apiFetch;
 
 type Status = 'loading' | 'error' | 'ready';
 
-const SECTION_TITLES: Record<HomeFeedDto['sections'][number]['type'], string> = {
-  curated_popular: 'Popular right now',
-  recent_relevant: 'Recommended for you',
-  saved_providers: 'Saved providers',
+const SECTION_TITLES: Record<HomeFeedDto['sections'][number]['type'], MessageKey> = {
+  curated_popular: 'home.sections.curated_popular',
+  recent_relevant: 'home.sections.recent_relevant',
+  saved_providers: 'home.sections.saved_providers',
 };
 
 /**
@@ -39,6 +42,7 @@ const SECTION_TITLES: Record<HomeFeedDto['sections'][number]['type'], string> = 
  * `GET /api/v1/categories` (spec 010, already public) is the only additional read this page makes.
  */
 export default function HomePage() {
+  const { locale, t, errorText } = useLocale();
   const router = useRouter();
   const [status, setStatus] = useState<Status>('loading');
   const [feed, setFeed] = useState<HomeFeedDto | null>(null);
@@ -54,7 +58,7 @@ export default function HomePage() {
         setFeed(result.data ?? null);
         setStatus('ready');
       } else {
-        setError(result.error?.message ?? "We couldn't load your home feed.");
+        setError(errorText(result.error?.code, result.error?.message, t('home.loadFailed')));
         setStatus('error');
       }
     });
@@ -101,22 +105,22 @@ export default function HomePage() {
     <main className={styles.page}>
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
-          <span className={styles.heroEyebrow}>Trusted local services</span>
-          <h1 className={styles.heroTitle}>Find the right help. Get it done.</h1>
-          <p className={styles.heroSubtitle}>{branding.tagline} Connect with real, verified local service providers.</p>
+          <span className={styles.heroEyebrow}>{t('home.eyebrow')}</span>
+          <h1 className={styles.heroTitle}>{t('home.title')}</h1>
+          <p className={styles.heroSubtitle}>{t('home.subtitle', { tagline: branding.tagline })}</p>
           <div className={styles.heroSearch}>
             <SearchBar
               value={heroQuery}
               onChange={setHeroQuery}
               onSubmit={(q) => router.push(q.trim() ? `/search?q=${encodeURIComponent(q.trim())}` : '/search')}
-              placeholder="What service do you need?"
+              placeholder={t('home.searchPlaceholder')}
             />
           </div>
         </div>
         <div className={styles.heroImageWrap}>
           <Image
             src="/images/marketing/hero-electrician.jpg"
-            alt="A professional electrician at work, representing Apuriva's verified local service providers"
+            alt={t('home.heroAlt')}
             fill
             sizes="(max-width: 768px) 100vw, 480px"
             style={{ objectFit: 'cover' }}
@@ -131,7 +135,7 @@ export default function HomePage() {
           service={feed.activeBooking.summary}
           action={
             <Link href={`/bookings/${feed.activeBooking.bookingId}`} style={{ color: 'inherit' }}>
-              View
+              {t('home.view')}
             </Link>
           }
         />
@@ -140,9 +144,9 @@ export default function HomePage() {
       {categories.length > 0 ? (
         <section className={styles.section}>
           <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Browse by category</h2>
+            <h2 className={styles.sectionTitle}>{t('home.browse')}</h2>
             <Link href="/explore" className={styles.sectionLink}>
-              View all categories
+              {t('home.viewAll')}
             </Link>
           </div>
           <div className={styles.categoryGrid}>
@@ -151,7 +155,7 @@ export default function HomePage() {
                 <div className={styles.categoryImageWrap}>
                   <Image
                     src={imageForCategoryName(category.name)}
-                    alt={`${category.name} services`}
+                    alt={t('home.categoryAlt', { name: category.name })}
                     fill
                     sizes="180px"
                     style={{ objectFit: 'cover' }}
@@ -168,8 +172,8 @@ export default function HomePage() {
         <div className={styles.personalizationControl}>
           <Switch
             id="personalization-toggle"
-            label="Personalize my home feed"
-            description="Uses your recent searches to recommend services. Turn off to see popular picks instead."
+            label={t('home.personalize')}
+            description={t('home.personalizeHelp')}
             checked={settings.personalizationEnabled}
             onChange={togglePersonalization}
           />
@@ -187,11 +191,11 @@ export default function HomePage() {
       ) : !hasAnyItems ? (
         <EmptyState
           icon="compass"
-          title="Nothing to show yet"
-          description="Explore services to get started."
+          title={t('home.emptyTitle')}
+          description={t('home.emptyDescription')}
           action={
             <Link href="/explore">
-              <Button variant="secondary">Explore services</Button>
+              <Button variant="secondary">{t('home.explore')}</Button>
             </Link>
           }
         />
@@ -199,7 +203,7 @@ export default function HomePage() {
         sections.map((section) => (
           <section key={section.type} className={styles.section}>
             <div className={styles.sectionHeader}>
-              <h2 className={styles.sectionTitle}>{SECTION_TITLES[section.type]}</h2>
+              <h2 className={styles.sectionTitle}>{t(SECTION_TITLES[section.type])}</h2>
             </div>
             {section.type === 'recent_relevant' && section.reason ? <p className={styles.reason}>{section.reason}</p> : null}
             <div className={styles.grid}>
@@ -207,7 +211,9 @@ export default function HomePage() {
                 ? section.items.map((provider) => (
                     <div key={provider.providerId} className={styles.providerTile}>
                       {provider.businessName}
-                      {provider.rating !== undefined ? ` · ${provider.rating.toFixed(1)}` : ''}
+                      {provider.rating !== undefined
+                        ? ` · ${formatNumber(provider.rating, locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`
+                        : ''}
                     </div>
                   ))
                 : section.items.map((item) => <ResultCard key={`${item.providerId}-${item.serviceId}`} result={item} />)}

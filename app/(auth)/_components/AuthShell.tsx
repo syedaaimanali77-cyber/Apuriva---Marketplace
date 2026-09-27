@@ -2,13 +2,15 @@
 
 import type { ReactNode } from 'react';
 import { Badge, Card, Icon, Logo } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import { branding } from '@/lib/config/branding';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
 import styles from '../auth.module.css';
 
-const VALUE_PROPS: { icon: string; text: string }[] = [
-  { icon: 'shield-check', text: 'Verified providers you can trust' },
-  { icon: 'zap', text: 'Fast, transparent offers — no back-and-forth' },
-  { icon: 'star', text: 'Rated and reviewed by real customers' },
+const VALUE_PROPS: { icon: string; text: MessageKey }[] = [
+  { icon: 'shield-check', text: 'auth.shell.valueVerified' },
+  { icon: 'zap', text: 'auth.shell.valueFast' },
+  { icon: 'star', text: 'auth.shell.valueRated' },
 ];
 
 export interface AuthShellProps {
@@ -32,6 +34,7 @@ export interface AuthShellProps {
  * `src` is the DS's own fallback for exactly that case.
  */
 export function AuthShell({ brandHeadline, children, footer }: AuthShellProps) {
+  const { t } = useLocale();
   return (
     // data-app-shell="none": no nav renders on these routes, so the layout reserves no space for it.
     <div className={styles.shell} data-app-shell="none">
@@ -42,22 +45,19 @@ export function AuthShell({ brandHeadline, children, footer }: AuthShellProps) {
             <Logo tone="light" size={24} />
           </div>
           <h2 className={styles.brandHeadline}>{brandHeadline ?? branding.tagline}</h2>
-          <p className={styles.brandSubline}>
-            Pakistan&rsquo;s trusted marketplace for getting real work done — from home repairs to
-            professional services, matched and booked in minutes.
-          </p>
+          <p className={styles.brandSubline}>{t('auth.shell.subline')}</p>
           <ul className={styles.valueList}>
             {VALUE_PROPS.map((item) => (
               <li key={item.text} className={styles.valueItem}>
                 <span className={styles.valueIcon}>
                   <Icon name={item.icon} size="sm" />
                 </span>
-                {item.text}
+                {t(item.text)}
               </li>
             ))}
           </ul>
           <Badge tone="brand" icon="badge-check" className={styles.trustChip}>
-            Trusted across Pakistan
+            {t('auth.shell.trusted')}
           </Badge>
         </div>
       </aside>

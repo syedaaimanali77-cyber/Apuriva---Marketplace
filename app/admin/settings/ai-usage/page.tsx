@@ -9,6 +9,7 @@ import type { TableColumn } from '@/components';
 // the design-system rule holds either way, and the barrel re-export can follow with that work.
 import { StatBlock } from '@/components/StatBlock';
 import type { AiUsageSummaryDto, AiUsageTotals } from '@/lib/types/ai';
+import { formatMoney, formatNumber } from '@/lib/i18n/format';
 import styles from '../../admin.module.css';
 
 interface ApiErrorBody {
@@ -31,12 +32,10 @@ function toRows(totals: Record<string, AiUsageTotals>): BreakdownRow[] {
     .sort((a, b) => b.requests - a.requests || a.label.localeCompare(b.label));
 }
 
-/** Minor units are integers by construction (master spec §132.5) — formatted for display only. */
+/** Minor units are integers by construction (master spec §132.5). Spec 042 X-11: the shared formatter,
+ * with the currency's real fraction digits; admin screens stay English (§5.1). */
 function formatCost(minorUnits: number, currencyCode: string): string {
-  return `${currencyCode} ${(minorUnits / 100).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return formatMoney(minorUnits, currencyCode, 'en');
 }
 
 function cacheHitRate(summary: AiUsageSummaryDto): string {
@@ -127,8 +126,8 @@ export default function AdminAiUsagePage() {
 
   const columns: TableColumn<BreakdownRow>[] = [
     { key: 'label', header: 'Name', render: (row) => row.label },
-    { key: 'requests', header: 'Requests', numeric: true, align: 'end', render: (row) => row.requests.toLocaleString() },
-    { key: 'tokens', header: 'Tokens', numeric: true, align: 'end', render: (row) => row.tokens.toLocaleString() },
+    { key: 'requests', header: 'Requests', numeric: true, align: 'end', render: (row) => formatNumber(row.requests, 'en') },
+    { key: 'tokens', header: 'Tokens', numeric: true, align: 'end', render: (row) => formatNumber(row.tokens, 'en') },
   ];
 
   return (
@@ -142,12 +141,12 @@ export default function AdminAiUsagePage() {
         <p className={styles.sectionDescription}>
           Aggregate only — this view carries no user identifiers and no prompt or response content.
           {summary.rejectedRequests > 0 || summary.failedRequests > 0
-            ? ` ${summary.rejectedRequests.toLocaleString()} rejected, ${summary.failedRequests.toLocaleString()} failed.`
+            ? ` ${formatNumber(summary.rejectedRequests, 'en')} rejected, ${formatNumber(summary.failedRequests, 'en')} failed.`
             : ''}
         </p>
         <div style={{ display: 'grid', gap: 'var(--space-3)', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-          <StatBlock icon="activity" label="Total requests" value={summary.totalRequests.toLocaleString()} />
-          <StatBlock icon="sparkles" label="Tokens" value={summary.totalTokens.toLocaleString()} />
+          <StatBlock icon="activity" label="Total requests" value={formatNumber(summary.totalRequests, 'en')} />
+          <StatBlock icon="sparkles" label="Tokens" value={formatNumber(summary.totalTokens, 'en')} />
           <StatBlock
             icon="wallet"
             label="Estimated cost"

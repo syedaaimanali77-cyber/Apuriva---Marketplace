@@ -10,6 +10,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
+import { platformCurrencyCode } from '@/lib/config/currency';
 import { queryRows } from '@/lib/offers/db';
 import { statementMaxRangeDays, statementMaxRows } from './config';
 import { statementCurrencyRequiredError, statementRangeInvalidError, statementRangeTooLargeError } from './errors';
@@ -73,7 +74,7 @@ export async function buildStatement(
   let currency = parseCurrency(params.currency);
   if (!currency) {
     if (currencies.length > 1) throw statementCurrencyRequiredError();
-    currency = currencies[0] ?? 'PKR';
+    currency = currencies[0] ?? platformCurrencyCode(); // spec 042 §3.9 (X-9)
   }
 
   const range = await resolveDateRange(providerProfileId, params.from, params.to);

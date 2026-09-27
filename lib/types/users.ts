@@ -21,6 +21,11 @@ export interface UserDto {
    * status is provisioned out-of-band (spec 006 §7), never set via this API.
    */
   isAdmin: boolean;
+  /**
+   * Spec 042 §3.11 (X-4, AC-7) — additive: the SAVED UI locale (`users.locale`), `null` when the user has
+   * never chosen one. It is the preference as stored, not the resolved locale (see `PATCH /users/me/locale`).
+   */
+  locale: string | null;
 }
 
 export interface ProviderProfileDto {

@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   Checkbox,
+  DirectionalIcon,
   ErrorState,
   FormField,
   Icon,
@@ -17,6 +18,10 @@ import {
   Textarea,
 } from '@/components';
 import { UrgencyEmergencyNotice } from '@/app/_components/UrgencyEmergencyNotice';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import { useLocales } from '@/app/_components/useLocales';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { currencyFractionDigits } from '@/lib/i18n/format';
 import type { AddressDto } from '@/lib/types/location';
 import type { ServiceFieldDto } from '@/lib/types/service-page';
 import type { CreateRequestRequest, RequestDto, RequestUrgency } from '@/lib/types/requests';
@@ -26,27 +31,26 @@ import styles from '../../requests.module.css';
 type PageStatus = 'loading' | 'error' | 'ready';
 type BudgetMode = 'unsure' | 'amount' | 'range';
 
-/** Spec 013's interpreter already defaults to this market's currency; multi-currency selection is
- * spec 042's (internationalization), not this form's to invent. */
-const CURRENCY_CODE = 'PKR';
-
 /** Master spec §27: the customer may give a target amount, a range, or "I'm not sure". */
-const BUDGET_MODES: { value: BudgetMode; label: string }[] = [
-  { value: 'unsure', label: "I'm not sure" },
-  { value: 'amount', label: 'Target amount' },
-  { value: 'range', label: 'Budget range' },
+const BUDGET_MODES: { value: BudgetMode; label: MessageKey }[] = [
+  { value: 'unsure', label: 'requestNew.budgetModes.unsure' },
+  { value: 'amount', label: 'requestNew.budgetModes.amount' },
+  { value: 'range', label: 'requestNew.budgetModes.range' },
 ];
 
-const URGENCY_OPTIONS: { value: RequestUrgency; label: string }[] = [
-  { value: 'normal', label: 'Normal — within the next few days' },
-  { value: 'urgent', label: 'Urgent — as soon as possible' },
+const URGENCY_OPTIONS: { value: RequestUrgency; label: MessageKey }[] = [
+  { value: 'normal', label: 'requestNew.urgency.normal' },
+  { value: 'urgent', label: 'requestNew.urgency.urgent' },
 ];
 
-/** Minor units -> major units for the form's inputs, which collect whole currency units. */
-function toMinorUnits(value: string): number | undefined {
+/**
+ * Major units (the form's inputs) -> minor units, at the currency's real fraction digits (spec 042 §3.9:
+ * PKR 2, JPY 0, KWD 3 — the old `× 100` assumed two for every currency).
+ */
+function toMinorUnits(value: string, currencyCode: string): number | undefined {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
-  return Math.round(parsed * 100);
+  return Math.round(parsed * 10 ** currencyFractionDigits(currencyCode));
 }
 
 /**
@@ -56,6 +60,10 @@ function toMinorUnits(value: string): number | undefined {
  * (a `ServiceField.key`) onto that control. Per CLAUDE.md's branding rule, no logo of its own.
  */
 export default function NewRequestPage() {
+  const { t, errorText } = useLocale();
+  // Spec 042 §3.9 (X-8): the budget's currency is the configured market default from `GET /locales`,
+  // never a literal. Until it is known there is deliberately no fallback (AC-3).
+  const { platformCurrencyCode: currencyCode } = useLocales();
   const params = useParams<{ serviceId: string }>();
   const router = useRouter();
   const serviceId = params.serviceId;
@@ -78,6 +86,7 @@ export default function NewRequestPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<ApiErrorBody | undefined>();
+  const [currencyError, setCurrencyError] = useState(false);
 
   /**
    * §3: `Idempotency-Key` is required, and deliberately generated once per form instance rather
@@ -100,7 +109,7 @@ export default function NewRequestPage() {
     ]);
 
     if (!service.ok) {
-      setLoadError(service.error?.message ?? "Couldn't load this service.");
+      setLoadError(errorText(service.error?.code, service.error?.message, t('requestNew.loadFailed')));
       setStatus('error');
       return;
     }
@@ -111,7 +120,7 @@ export default function NewRequestPage() {
     setAddresses(saved);
     setAddressId((current) => current || saved.find((a) => a.isDefault)?.id || saved[0]?.id || '');
     setStatus('ready');
-  }, [serviceId]);
+  }, [errorText, serviceId, t]);
 
   useEffect(() => {
     load();
@@ -123,30 +132,36 @@ export default function NewRequestPage() {
     setFieldValues((current) => ({ ...current, [key]: value }));
   }
 
-  function buildBudget(): CreateRequestRequest['budget'] {
+  function buildBudget(currency: string): CreateRequestRequest['budget'] {
     if (budgetMode === 'amount') {
-      const amountMinorUnits = toMinorUnits(budgetAmount);
-      return amountMinorUnits === undefined ? null : { amountMinorUnits, currencyCode: CURRENCY_CODE };
+      const amountMinorUnits = toMinorUnits(budgetAmount, currency);
+      return amountMinorUnits === undefined ? null : { amountMinorUnits, currencyCode: currency };
     }
     if (budgetMode === 'range') {
-      const minAmountMinorUnits = toMinorUnits(budgetMin);
-      const maxAmountMinorUnits = toMinorUnits(budgetMax);
+      const minAmountMinorUnits = toMinorUnits(budgetMin, currency);
+      const maxAmountMinorUnits = toMinorUnits(budgetMax, currency);
       if (minAmountMinorUnits === undefined || maxAmountMinorUnits === undefined) return null;
-      return { minAmountMinorUnits, maxAmountMinorUnits, currencyCode: CURRENCY_CODE };
+      return { minAmountMinorUnits, maxAmountMinorUnits, currencyCode: currency };
     }
     return null;
   }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    setSubmitting(true);
     setSubmitError(undefined);
+    setCurrencyError(false);
+    if (budgetMode !== 'unsure' && !currencyCode) {
+      // A budget amount without its currency would be meaningless — refuse rather than guess one.
+      setCurrencyError(true);
+      return;
+    }
+    setSubmitting(true);
 
     const body: CreateRequestRequest = {
       serviceId,
       description,
       fieldValues,
-      budget: buildBudget(),
+      budget: currencyCode ? buildBudget(currencyCode) : null,
       addressId,
       urgency,
       ...(preferredAt
@@ -201,34 +216,44 @@ export default function NewRequestPage() {
       <header className={styles.head}>
         <span className={styles.eyebrow}>
           <Link href="/requests" className={styles.eyebrowLink}>
-            Requests
+            {t('requestNew.requests')}
           </Link>
-          <Icon name="chevron-right" size="xs" />
-          <span>New</span>
+          <DirectionalIcon name="chevron-right" size="xs" />
+          <span>{t('requestNew.new')}</span>
         </span>
-        <h1 className={styles.title}>Request {serviceName.toLowerCase()}</h1>
-        <p className={styles.lede}>
-          Tell providers what you need. Only the marked details are required — everything else helps them quote
-          accurately.
-        </p>
+        <h1 className={styles.title}>{t('requestNew.title', { service: serviceName.toLowerCase() })}</h1>
+        <p className={styles.lede}>{t('requestNew.lede')}</p>
       </header>
 
       {submitError && (submitError.errors ?? []).length === 0 ? (
         <p className={styles.errorNote} role="alert">
           <Icon name="circle-alert" size="sm" />
-          {submitError.message}
+          {errorText(submitError.code, submitError.message)}
+        </p>
+      ) : null}
+      {/* Spec 042 §3.7: field messages stay the server's; a translated generic line sits above them. */}
+      {submitError && (submitError.errors ?? []).length > 0 ? (
+        <p className={styles.errorNote}>
+          <Icon name="circle-alert" size="sm" />
+          {t('common.checkHighlightedFields')}
+        </p>
+      ) : null}
+      {currencyError ? (
+        <p className={styles.errorNote} role="alert">
+          <Icon name="circle-alert" size="sm" />
+          {t('requestNew.currencyUnavailable')}
         </p>
       ) : null}
 
       <form className={styles.form} onSubmit={submit} noValidate>
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>What you need</h2>
-          <FormField label="Describe the job" htmlFor="description" required error={fieldErrors.description}>
+          <h2 className={styles.sectionTitle}>{t('requestNew.whatYouNeed')}</h2>
+          <FormField label={t('requestNew.describe')} htmlFor="description" required error={fieldErrors.description}>
             <Textarea
               id="description"
               value={description}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
-              placeholder="What needs doing, and anything a provider should know before quoting."
+              placeholder={t('requestNew.describePlaceholder')}
               rows={4}
               maxLength={4000}
               invalid={Boolean(fieldErrors.description)}
@@ -249,7 +274,7 @@ export default function NewRequestPage() {
                   id={`field-${field.key}`}
                   value={String(fieldValues[field.key] ?? '')}
                   onChange={(e) => setFieldValue(field.key, e.target.value)}
-                  placeholder="Choose one"
+                  placeholder={t('requestNew.chooseOne')}
                   options={(field.options ?? []).map((option) => ({ value: option, label: option }))}
                   invalid={Boolean(fieldErrors[field.key])}
                 />
@@ -276,16 +301,14 @@ export default function NewRequestPage() {
         </section>
 
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Budget</h2>
-          <p className={styles.sectionHint}>
-            Optional. Providers can still offer outside it, and the offer price is always explicit.
-          </p>
-          <div className={styles.budgetChoice} role="radiogroup" aria-label="Budget">
+          <h2 className={styles.sectionTitle}>{t('requestNew.budget')}</h2>
+          <p className={styles.sectionHint}>{t('requestNew.budgetHint')}</p>
+          <div className={styles.budgetChoice} role="radiogroup" aria-label={t('requestNew.budget')}>
             {BUDGET_MODES.map((mode) => (
               <Radio
                 key={mode.value}
                 name="budget-mode"
-                label={mode.label}
+                label={t(mode.label)}
                 value={mode.value}
                 checked={budgetMode === mode.value}
                 onChange={() => setBudgetMode(mode.value)}
@@ -294,7 +317,9 @@ export default function NewRequestPage() {
           </div>
 
           {budgetMode === 'amount' ? (
-            <FormField label={`Target amount (${CURRENCY_CODE})`} htmlFor="budget-amount" error={fieldErrors['budget.amountMinorUnits']}>
+            <FormField
+              label={currencyCode ? t('requestNew.targetAmount', { currency: currencyCode }) : t('requestNew.targetAmountPlain')}
+              htmlFor="budget-amount" error={fieldErrors['budget.amountMinorUnits']}>
               <Input
                 id="budget-amount"
                 type="number"
@@ -308,7 +333,9 @@ export default function NewRequestPage() {
 
           {budgetMode === 'range' ? (
             <div className={styles.inlineFields}>
-              <FormField label={`Minimum (${CURRENCY_CODE})`} htmlFor="budget-min" error={fieldErrors['budget.minAmountMinorUnits']}>
+              <FormField
+                label={currencyCode ? t('requestNew.minimum', { currency: currencyCode }) : t('requestNew.minimumPlain')}
+                htmlFor="budget-min" error={fieldErrors['budget.minAmountMinorUnits']}>
                 <Input
                   id="budget-min"
                   type="number"
@@ -318,7 +345,9 @@ export default function NewRequestPage() {
                   invalid={Boolean(fieldErrors['budget.minAmountMinorUnits'])}
                 />
               </FormField>
-              <FormField label={`Maximum (${CURRENCY_CODE})`} htmlFor="budget-max" error={fieldErrors['budget.maxAmountMinorUnits']}>
+              <FormField
+                label={currencyCode ? t('requestNew.maximum', { currency: currencyCode }) : t('requestNew.maximumPlain')}
+                htmlFor="budget-max" error={fieldErrors['budget.maxAmountMinorUnits']}>
                 <Input
                   id="budget-max"
                   type="number"
@@ -333,9 +362,9 @@ export default function NewRequestPage() {
         </section>
 
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>When and where</h2>
+          <h2 className={styles.sectionTitle}>{t('requestNew.whenWhere')}</h2>
           <div className={styles.inlineFields}>
-            <FormField label="Preferred date and time" htmlFor="preferred-at" optional error={fieldErrors.preferredAt}>
+            <FormField label={t('requestNew.preferredAt')} htmlFor="preferred-at" optional error={fieldErrors.preferredAt}>
               <Input
                 id="preferred-at"
                 type="datetime-local"
@@ -345,12 +374,12 @@ export default function NewRequestPage() {
               />
             </FormField>
 
-            <FormField label="Urgency" htmlFor="urgency">
+            <FormField label={t('requestNew.urgencyLabel')} htmlFor="urgency">
               <Select
                 id="urgency"
                 value={urgency}
                 onChange={(e) => setUrgency(e.target.value as RequestUrgency)}
-                options={URGENCY_OPTIONS}
+                options={URGENCY_OPTIONS.map((option) => ({ value: option.value, label: t(option.label) }))}
               />
               {/* Spec 030 AC-6 — adjacent to the control and always visible while urgent is
                   selectable, never behind a tooltip or fine print. */}
@@ -359,23 +388,23 @@ export default function NewRequestPage() {
           </div>
 
           {addresses.length === 0 ? (
-            <FormField label="Address" required error={fieldErrors.addressId} help="You need a saved address before you can send a request.">
+            <FormField label={t('requestNew.address')} required error={fieldErrors.addressId} help={t('requestNew.addressHelp')}>
               <Link href="/account/addresses">
                 <Button variant="secondary" iconLeft="map-pin">
-                  Add an address
+                  {t('requestNew.addAddress')}
                 </Button>
               </Link>
             </FormField>
           ) : (
-            <FormField label="Address" htmlFor="address" required error={fieldErrors.addressId}>
+            <FormField label={t('requestNew.address')} htmlFor="address" required error={fieldErrors.addressId}>
               <Select
                 id="address"
                 value={addressId}
                 onChange={(e) => setAddressId(e.target.value)}
-                placeholder="Choose an address"
+                placeholder={t('requestNew.chooseAddress')}
                 options={addresses.map((address) => ({
                   value: address.id,
-                  label: `${address.label} — ${address.approxAreaLabel}`,
+                  label: t('requestNew.addressOption', { label: address.label, area: address.approxAreaLabel }),
                 }))}
                 invalid={Boolean(fieldErrors.addressId)}
               />
@@ -386,11 +415,11 @@ export default function NewRequestPage() {
         <div className={styles.formActions}>
           <Link href="/requests">
             <Button variant="ghost" type="button">
-              Cancel
+              {t('requestNew.cancel')}
             </Button>
           </Link>
           <Button type="submit" variant="primary" loading={submitting} disabled={addresses.length === 0}>
-            Send request
+            {t('requestNew.send')}
           </Button>
         </div>
       </form>

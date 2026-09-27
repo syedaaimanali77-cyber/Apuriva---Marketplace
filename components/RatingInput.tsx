@@ -17,6 +17,7 @@
  * would look identical and be unusable without a mouse.
  */
 import { Icon } from '@/ui/components/core/Icon.jsx';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import styles from './rating-input.module.css';
 
 export interface RatingInputProps {
@@ -33,13 +34,14 @@ const STARS = [1, 2, 3, 4, 5] as const;
 export function RatingInput({
   value,
   onChange,
-  label = 'Your rating',
+  label,
   disabled = false,
   name = 'rating',
 }: RatingInputProps) {
+  const { t } = useLocale();
   return (
     <fieldset className={styles.group} disabled={disabled}>
-      <legend className={styles.legend}>{label}</legend>
+      <legend className={styles.legend}>{label ?? t('comp.rating.label')}</legend>
       <div className={styles.stars}>
         {STARS.map((star) => {
           const filled = value !== null && star <= value;
@@ -55,7 +57,7 @@ export function RatingInput({
               />
               {/* The label text is the accessible name; it is visually hidden, not removed, so a
                   screen reader announces "3 out of 5" while sighted users see the star. */}
-              <span className={styles.srOnly}>{`${star} out of 5`}</span>
+              <span className={styles.srOnly}>{t('comp.rating.star', { star })}</span>
               <Icon
                 name="star"
                 size={28}

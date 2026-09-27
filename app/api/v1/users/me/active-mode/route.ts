@@ -5,6 +5,7 @@ import { requireSession, requireCsrf } from '@/lib/auth/require-session';
 import { isAdminUser } from '@/lib/auth/session';
 import { getProfileFlags, setSessionActiveMode } from '@/lib/auth/profiles';
 import { profileNotFoundForModeError } from '@/lib/auth/profile-errors';
+import { readSavedUserLocale } from '@/lib/i18n/server';
 import { isActiveMode, type SwitchModeRequest, type UserDto } from '@/lib/types/users';
 
 /**
@@ -29,13 +30,15 @@ export const PATCH = withApiRoute(async (request, correlationId) => {
 
   await setSessionActiveMode(session.id, mode);
 
-  const isAdmin = await isAdminUser(session.userId);
+  const [isAdmin, locale] = await Promise.all([isAdminUser(session.userId), readSavedUserLocale(session.userId)]);
   const dto: UserDto = {
     id: session.userId,
     hasCustomerProfile: flags.hasCustomerProfile,
     hasProviderProfile: flags.hasProviderProfile,
     activeMode: mode,
     isAdmin,
+    // Spec 042 X-4: the same additive `UserDto.locale` as GET /users/me.
+    locale,
   };
   return apiSuccess(dto, correlationId);
 });

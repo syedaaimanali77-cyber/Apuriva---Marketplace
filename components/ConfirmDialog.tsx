@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { Button } from '@/ui/components/core/Button.jsx';
 import { Icon } from '@/ui/components/core/Icon.jsx';
+import { useLocale } from '@/app/_components/LocaleProvider';
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -34,13 +35,14 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel,
+  cancelLabel,
   tone = 'danger',
   pending = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useLocale();
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -150,10 +152,10 @@ export function ConfirmDialog({
           }}
         >
           <Button variant="ghost" onClick={onCancel} disabled={pending}>
-            {cancelLabel}
+            {cancelLabel ?? t('common.cancel')}
           </Button>
           <Button variant={tone === 'danger' ? 'danger' : 'primary'} onClick={onConfirm} loading={pending}>
-            {confirmLabel}
+            {confirmLabel ?? t('comp.confirm')}
           </Button>
         </div>
       </div>

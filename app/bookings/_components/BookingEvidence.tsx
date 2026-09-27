@@ -24,6 +24,7 @@ import { MediaPreview } from '@/app/_components/MediaPreview';
 import type { FileAssetDto } from '@/lib/types/files';
 import type { BookingStatus } from '@/lib/types/bookings';
 import { apiFetch } from '@/app/bookings/booking-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import styles from '@/app/bookings/bookings.module.css';
 
 /** Mirrors `EXECUTING_BOOKING_STATUSES` — the server remains authoritative. */
@@ -49,6 +50,7 @@ export function BookingEvidence({
   evidenceRequired = false,
   onAssetsChange,
 }: BookingEvidenceProps) {
+  const { t } = useLocale();
   const [assets, setAssets] = useState<FileAssetDto[]>([]);
 
   const load = useCallback(async () => {
@@ -77,24 +79,22 @@ export function BookingEvidence({
 
   return (
     <Card>
-      <h2 className={styles.sectionTitle}>Completion evidence</h2>
+      <h2 className={styles.sectionTitle}>{t('bookingParts.evidence.title')}</h2>
 
       {canCapture && (
         <>
           <p className={styles.hint}>
-            {evidenceRequired
-              ? 'This service needs at least one photo, video or document attached before you can mark it complete.'
-              : 'Optional. Attach a photo, video or document if it helps show what was done.'}
+            {evidenceRequired ? t('bookingParts.evidence.required') : t('bookingParts.evidence.optional')}
           </p>
           <p className={styles.hint} role="status" aria-live="polite">
             {readyCount === 0
-              ? 'Nothing attached yet.'
-              : `${readyCount} file${readyCount === 1 ? '' : 's'} attached.`}
+              ? t('bookingParts.evidence.none')
+              : t(readyCount === 1 ? 'bookingParts.evidence.countOne' : 'bookingParts.evidence.countMany', { count: readyCount })}
           </p>
           <FileUpload
             contextType="booking_evidence"
             contextId={bookingId}
-            label="Evidence"
+            label={t('bookingParts.evidence.label')}
             maxFiles={MAX_EVIDENCE_FILES}
             accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf"
             onChange={() => void load()}
@@ -110,7 +110,7 @@ export function BookingEvidence({
                 <MediaPreview asset={asset} />
               ) : (
                 // Spec 027 owns what a not-yet-ready asset means; never a broken image.
-                <Badge>{asset.status === 'rejected' ? 'File rejected' : 'Still checking this file'}</Badge>
+                <Badge>{asset.status === 'rejected' ? t('bookingParts.evidence.rejected') : t('bookingParts.evidence.checking')}</Badge>
               )}
             </li>
           ))}

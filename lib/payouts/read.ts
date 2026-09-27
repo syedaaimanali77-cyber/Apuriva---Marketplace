@@ -27,12 +27,11 @@ import {
   type PayoutItemDto,
   type PayoutStatus,
 } from '@/lib/types/payouts';
+import { platformCurrencyCode } from '@/lib/config/currency';
 import { payoutNotFoundError } from './errors';
 import { findUsableDefaultMethod } from './ledger';
 import { getPayoutHoldGate } from './ports';
 
-/** The platform currency used only to label an all-zero summary for a provider with no ledger rows. */
-const EMPTY_LEDGER_CURRENCY = 'PKR';
 
 export interface DateRange {
   fromInstant: Date | null;
@@ -161,7 +160,9 @@ export async function earningsSummary(
   options: { currency: string | null; range: DateRange },
 ): Promise<EarningsSummaryDto> {
   const currencies = await availableCurrencies(providerProfileId);
-  const currency = options.currency ?? currencies[0] ?? EMPTY_LEDGER_CURRENCY;
+  // Spec 042 §3.9 (X-9): an all-zero summary for a provider with no ledger rows is labelled with the
+  // configured market default (`PLATFORM_CURRENCY_CODE`), never a hard-coded literal.
+  const currency = options.currency ?? currencies[0] ?? platformCurrencyCode();
   const figures = await summaryFigures(providerProfileId, currency, options.range);
   const method = await findUsableDefaultMethod(getDb(), providerProfileId, currency);
   const hold = await getPayoutHoldGate()(getDb(), providerProfileId);

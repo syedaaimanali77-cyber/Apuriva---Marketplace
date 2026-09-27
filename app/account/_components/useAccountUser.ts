@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, mutateHeaders, type ApiResult } from '@/app/requests/api-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import type { ActiveMode, UserDto } from '@/lib/types/users';
 
 /**
@@ -44,6 +45,8 @@ export function useAccountUser() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  // Spec 042 X-3/X-12: messages in the reader's locale; a known API error code is translated.
+  const { t, errorText } = useLocale();
 
   const refresh = useCallback(() => {
     let cancelled = false;
@@ -79,11 +82,11 @@ export function useAccountUser() {
     const result = await mutateJson('/api/v1/users/me/provider-profile', 'POST');
     setPending(false);
     if (!result.ok) {
-      setError(result.error?.message ?? "Couldn't create your provider profile. Try again.");
+      setError(errorText(result.error?.code, result.error?.message, t('chrome.accountUser.providerCreateFailed')));
       return false;
     }
     setUser((prev) => (prev ? { ...prev, hasProviderProfile: true } : prev));
-    setAnnouncement('Provider profile created. You can now switch to provider mode.');
+    setAnnouncement(t('chrome.accountUser.providerCreated'));
     window.dispatchEvent(new Event(ACCOUNT_UPDATED_EVENT));
     return true;
   }
@@ -96,11 +99,11 @@ export function useAccountUser() {
     setPending(false);
     if (!result.ok) {
       // Error state (spec 006 §5): inline error, mode indicator does not change until confirmed.
-      setError(result.error?.message ?? "Couldn't switch mode. Try again.");
+      setError(errorText(result.error?.code, result.error?.message, t('chrome.accountUser.switchFailed')));
       return false;
     }
     setUser(result.data ?? null);
-    setAnnouncement(mode === 'provider' ? 'Switched to provider mode.' : 'Switched to customer mode.');
+    setAnnouncement(mode === 'provider' ? t('chrome.accountUser.switchedProvider') : t('chrome.accountUser.switchedCustomer'));
     window.dispatchEvent(new Event(ACCOUNT_UPDATED_EVENT));
     return true;
   }
@@ -114,7 +117,7 @@ export function useAccountUser() {
     const result = await mutateJson('/api/v1/auth/logout', 'POST');
     setPending(false);
     if (!result.ok) {
-      setError(result.error?.message ?? "Couldn't log out. Try again.");
+      setError(errorText(result.error?.code, result.error?.message, t('chrome.accountUser.logoutFailed')));
       return false;
     }
     setUser(null);

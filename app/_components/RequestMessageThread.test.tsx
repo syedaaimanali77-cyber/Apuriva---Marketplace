@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RequestMessageThread } from './RequestMessageThread';
 import type { OfferMessageDto } from '@/lib/types/negotiation';
+import { en } from '@/lib/i18n/dictionaries/en';
 
 const LIST_URL = '/api/v1/requests/req-1/message-threads/prov-1/messages';
 
@@ -173,7 +174,8 @@ describe('RequestMessageThread (spec 019 §5, AC-1/AC-7/AC-8)', () => {
     await user.type(screen.getByLabelText(/Your message/), 'Draft survives');
     await user.click(screen.getByRole('button', { name: 'Send message' }));
 
-    expect(await screen.findByText('boom')).toBeInTheDocument();
+    // Spec 042 §3.7: a known stable code renders its dictionary text, not the server's English message.
+    expect(await screen.findByText(en.errors.INTERNAL_ERROR)).toBeInTheDocument();
     expect(screen.getByLabelText(/Your message/)).toHaveValue('Draft survives');
   });
 
@@ -185,7 +187,7 @@ describe('RequestMessageThread (spec 019 §5, AC-1/AC-7/AC-8)', () => {
 
     await user.type(screen.getByLabelText(/Your message/), 'Retry me');
     await user.click(screen.getByRole('button', { name: 'Send message' }));
-    await screen.findByText('boom');
+    await screen.findByText(en.errors.INTERNAL_ERROR); // spec 042 §3.7
     await user.click(screen.getByRole('button', { name: 'Send message' }));
 
     await waitFor(() => expect(calls.filter((c) => c.init?.method === 'POST')).toHaveLength(2));

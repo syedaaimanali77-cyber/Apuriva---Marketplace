@@ -7,24 +7,33 @@ import { Badge, Button, Card, ErrorState, Skeleton, Textarea } from '@/component
 import type { DisputeDto, DisputeMessageDto, DisputeStatus } from '@/lib/types/disputes';
 import { MAX_DISPUTE_REASON_LENGTH, MIN_DISPUTE_REASON_LENGTH } from '@/lib/disputes/limits';
 import { apiFetch, BOOKING_POLL_MS, mutateHeaders } from '../../booking-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatDate, formatMoney } from '@/lib/i18n/format';
 import styles from '../../bookings.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
 
-const STATUS_LABELS: Record<DisputeStatus, string> = {
-  open: 'Open',
-  under_review: 'Being reviewed',
-  resolved: 'Decided',
-  appealed: 'Under appeal',
-  closed: 'Closed',
+const STATUS_LABELS: Record<DisputeStatus, MessageKey> = {
+  open: 'dispute.status.open',
+  under_review: 'dispute.status.under_review',
+  resolved: 'dispute.status.resolved',
+  appealed: 'dispute.status.appealed',
+  closed: 'dispute.status.closed',
 };
 
-const DECISION_LABELS: Record<string, string> = {
-  no_action: 'No action',
-  refund_customer: 'Refund to the customer',
-  partial_refund_customer: 'Partial refund to the customer',
-  favour_provider: 'Decided in the provider’s favour',
-  mutual_resolution: 'Resolved by agreement',
+const DECISION_LABELS: Record<string, MessageKey> = {
+  no_action: 'dispute.decision.no_action',
+  refund_customer: 'dispute.decision.refund_customer',
+  partial_refund_customer: 'dispute.decision.partial_refund_customer',
+  favour_provider: 'dispute.decision.favour_provider',
+  mutual_resolution: 'dispute.decision.mutual_resolution',
+};
+
+const APPEAL_OUTCOME_LABELS: Record<string, MessageKey> = {
+  upheld: 'dispute.appealOutcome.upheld',
+  overturned: 'dispute.appealOutcome.overturned',
+  partially_upheld: 'dispute.appealOutcome.partially_upheld',
 };
 
 /** A stable key per mounted screen, so a double-submit is a replay rather than a second write. */
@@ -32,14 +41,6 @@ function newIdempotencyKey(prefix: string): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function formatMoney(minorUnits: number, currencyCode: string): string {
-  try {
-    return new Intl.NumberFormat('en-GB', { style: 'currency', currency: currencyCode }).format(minorUnits / 100);
-  } catch {
-    return `${(minorUnits / 100).toFixed(2)} ${currencyCode}`;
-  }
 }
 
 /**
@@ -61,6 +62,7 @@ function formatMoney(minorUnits: number, currencyCode: string): string {
  * this repository.
  */
 export default function BookingDisputePage() {
+  const { locale, t, errorText } = useLocale();
   const params = useParams<{ id: string }>();
   const bookingId = params.id;
 
@@ -80,7 +82,7 @@ export default function BookingDisputePage() {
     // route: a participant reaches their dispute through their own list, which is scoped by join.
     const list = await apiFetch<{ id: string; bookingId: string }[]>('/api/v1/disputes');
     if (!list.ok) {
-      setError(list.error?.message ?? 'This dispute could not be loaded.');
+      setError(errorText(list.error?.code, list.error?.message, t('dispute.loadFailed')));
       setStatus('error');
       return;
     }
@@ -93,7 +95,7 @@ export default function BookingDisputePage() {
 
     const detail = await apiFetch<DisputeDto>(`/api/v1/disputes/${match.id}`);
     if (!detail.ok) {
-      setError(detail.error?.message ?? 'This dispute could not be loaded.');
+      setError(errorText(detail.error?.code, detail.error?.message, t('dispute.loadFailed')));
       setStatus('error');
       return;
     }
@@ -102,7 +104,7 @@ export default function BookingDisputePage() {
     const thread = await apiFetch<DisputeMessageDto[]>(`/api/v1/disputes/${match.id}/messages`);
     setMessages(thread.ok ? thread.data ?? [] : []);
     setStatus('ready');
-  }, [bookingId]);
+  }, [bookingId, errorText, t]);
 
   useEffect(() => {
     void load();
@@ -124,7 +126,7 @@ export default function BookingDisputePage() {
     });
     setBusy(false);
     if (!response.ok) {
-      setFormError(response.error?.message ?? 'The dispute could not be opened.');
+      setFormError(errorText(response.error?.code, response.error?.message, t('dispute.openFailed')));
       return;
     }
     setReason('');
@@ -143,7 +145,7 @@ export default function BookingDisputePage() {
     setBusy(false);
     if (!response.ok) {
       // The draft is deliberately preserved on failure — §5 "Error".
-      setFormError(response.error?.message ?? 'Your message could not be sent.');
+      setFormError(errorText(response.error?.code, response.error?.message, t('dispute.messageFailed')));
       return;
     }
     setMessageBody('');
@@ -161,7 +163,7 @@ export default function BookingDisputePage() {
     });
     setBusy(false);
     if (!response.ok) {
-      setFormError(response.error?.message ?? 'Your appeal could not be filed.');
+      setFormError(errorText(response.error?.code, response.error?.message, t('dispute.appealFailed')));
       return;
     }
     setAppealReason('');
@@ -179,7 +181,7 @@ export default function BookingDisputePage() {
     });
     setBusy(false);
     if (!response.ok) {
-      setFormError(response.error?.message ?? 'The dispute could not be closed.');
+      setFormError(errorText(response.error?.code, response.error?.message, t('dispute.closeFailed')));
       return;
     }
     await load();
@@ -198,8 +200,8 @@ export default function BookingDisputePage() {
   if (status === 'error') {
     return (
       <main className={styles.page}>
-        <ErrorState title="We could not load this dispute" description={error ?? undefined} />
-        <Link href={`/bookings/${bookingId}`}>Back to the booking</Link>
+        <ErrorState title={t('dispute.errorTitle')} description={error ?? undefined} />
+        <Link href={`/bookings/${bookingId}`}>{t('dispute.back')}</Link>
       </main>
     );
   }
@@ -210,14 +212,10 @@ export default function BookingDisputePage() {
     const tooShort = reason.trim().length < MIN_DISPUTE_REASON_LENGTH;
     return (
       <main className={styles.page}>
-        <h1>Open a dispute</h1>
+        <h1>{t('dispute.openTitle')}</h1>
         <Card>
-          <p>
-            If something went wrong with this booking and you and the other party cannot agree, you can open a
-            dispute. A member of our team will read both sides and decide. Your payment is held while a dispute is
-            open.
-          </p>
-          <label htmlFor="dispute-reason">What went wrong?</label>
+          <p>{t('dispute.openIntro')}</p>
+          <label htmlFor="dispute-reason">{t('dispute.whatWentWrong')}</label>
           <Textarea
             id="dispute-reason"
             value={reason}
@@ -225,12 +223,12 @@ export default function BookingDisputePage() {
             maxLength={MAX_DISPUTE_REASON_LENGTH}
             disabled={busy}
           />
-          {formError ? <ErrorState title="That did not work" description={formError} /> : null}
+          {formError ? <ErrorState title={t('dispute.didNotWork')} description={formError} /> : null}
           <Button onClick={() => void openDispute()} disabled={busy || tooShort}>
-            Open the dispute
+            {t('dispute.open')}
           </Button>
         </Card>
-        <Link href={`/bookings/${bookingId}`}>Back to the booking</Link>
+        <Link href={`/bookings/${bookingId}`}>{t('dispute.back')}</Link>
       </main>
     );
   }
@@ -239,36 +237,36 @@ export default function BookingDisputePage() {
 
   return (
     <main className={styles.page}>
-      <h1>Dispute</h1>
+      <h1>{t('dispute.title')}</h1>
       <Card>
-        <Badge>{STATUS_LABELS[dispute.status]}</Badge>
+        <Badge>{t(STATUS_LABELS[dispute.status])}</Badge>
         <p>
-          <strong>{dispute.openedBy === 'me' ? 'You opened this dispute' : 'The other party opened this dispute'}</strong>
+          <strong>{dispute.openedBy === 'me' ? t('dispute.openedByMe') : t('dispute.openedByOther')}</strong>
         </p>
         <p>{dispute.reason}</p>
         <p>
-          {dispute.evidenceCount} piece{dispute.evidenceCount === 1 ? '' : 's'} of evidence · {dispute.messageCount}{' '}
-          message{dispute.messageCount === 1 ? '' : 's'}
+          {t(dispute.evidenceCount === 1 ? 'dispute.evidenceOne' : 'dispute.evidenceMany', { count: dispute.evidenceCount })} ·{' '}
+          {t(dispute.messageCount === 1 ? 'dispute.messageOne' : 'dispute.messageMany', { count: dispute.messageCount })}
         </p>
       </Card>
 
       {resolution ? (
         <Card>
-          <h2>The decision</h2>
+          <h2>{t('dispute.decisionTitle')}</h2>
           <p>
-            <strong>{DECISION_LABELS[resolution.decision] ?? resolution.decision}</strong>
+            <strong>{DECISION_LABELS[resolution.decision] ? t(DECISION_LABELS[resolution.decision]!) : resolution.decision}</strong>
           </p>
           {/* Master §2.3: the reasoning, not just the outcome. */}
           <p>{resolution.reasoning}</p>
           {resolution.proposedRefundAmountMinorUnits !== null && resolution.proposedRefundCurrencyCode ? (
             <p>
-              Refund to be issued:{' '}
-              {formatMoney(resolution.proposedRefundAmountMinorUnits, resolution.proposedRefundCurrencyCode)}
+              {t('dispute.refundToIssue')}{' '}
+              {formatMoney(resolution.proposedRefundAmountMinorUnits, resolution.proposedRefundCurrencyCode, locale)}
               {resolution.refundState === 'completed'
-                ? ' — sent'
+                ? t('dispute.refundSent')
                 : resolution.refundState === 'failed'
-                  ? ' — we could not send it; our team has been alerted'
-                  : ' — being processed by our finance team'}
+                  ? t('dispute.refundFailed')
+                  : t('dispute.refundProcessing')}
             </p>
           ) : null}
         </Card>
@@ -276,27 +274,33 @@ export default function BookingDisputePage() {
 
       {dispute.appeal ? (
         <Card>
-          <h2>Appeal</h2>
-          <p>{dispute.appeal.filedBy === 'me' ? 'You appealed this decision.' : 'The other party appealed this decision.'}</p>
+          <h2>{t('dispute.appeal')}</h2>
+          <p>{dispute.appeal.filedBy === 'me' ? t('dispute.appealedByMe') : t('dispute.appealedByOther')}</p>
           <p>{dispute.appeal.reason}</p>
           {dispute.appeal.outcome ? (
             <>
               <p>
-                <strong>Appeal outcome: {dispute.appeal.outcome.replace(/_/g, ' ')}</strong>
+                <strong>
+                  {t('dispute.appealOutcomeLabel', {
+                    outcome: APPEAL_OUTCOME_LABELS[dispute.appeal.outcome]
+                      ? t(APPEAL_OUTCOME_LABELS[dispute.appeal.outcome]!)
+                      : dispute.appeal.outcome.replace(/_/g, ' '),
+                  })}
+                </strong>
               </p>
               <p>{dispute.appeal.reasoning}</p>
             </>
           ) : (
-            <p>A different member of our team is reviewing it.</p>
+            <p>{t('dispute.reviewing')}</p>
           )}
         </Card>
       ) : null}
 
       {dispute.canAppeal && dispute.appealWindowEndsAt ? (
         <Card>
-          <h2>If you disagree</h2>
-          <p>You can appeal this decision until {new Date(dispute.appealWindowEndsAt).toLocaleDateString('en-GB')}. A different member of our team will review it.</p>
-          <label htmlFor="dispute-appeal-reason">Why do you disagree?</label>
+          <h2>{t('dispute.disagreeTitle')}</h2>
+          <p>{t('dispute.appealUntil', { date: formatDate(dispute.appealWindowEndsAt, locale) })}</p>
+          <label htmlFor="dispute-appeal-reason">{t('dispute.whyDisagree')}</label>
           <Textarea
             id="dispute-appeal-reason"
             value={appealReason}
@@ -305,24 +309,24 @@ export default function BookingDisputePage() {
             disabled={busy}
           />
           <Button onClick={() => void submitAppeal()} disabled={busy || appealReason.trim().length < MIN_DISPUTE_REASON_LENGTH}>
-            Appeal this decision
+            {t('dispute.appealButton')}
           </Button>
           <Button variant="secondary" onClick={() => void acceptOutcome()} disabled={busy}>
-            Accept the outcome and close
+            {t('dispute.accept')}
           </Button>
         </Card>
       ) : null}
 
       <Card>
-        <h2>Messages</h2>
+        <h2>{t('dispute.messages')}</h2>
         {messages.length === 0 ? (
-          <p>No messages yet.</p>
+          <p>{t('dispute.noMessages')}</p>
         ) : (
           <ul>
             {messages.map((message) => (
               <li key={message.id}>
                 <strong>
-                  {message.authorRole === 'me' ? 'You' : message.authorRole === 'admin' ? 'Apuriva' : 'The other party'}
+                  {message.authorRole === 'me' ? t('dispute.you') : message.authorRole === 'admin' ? t('dispute.apuriva') : t('dispute.otherParty')}
                 </strong>
                 <p>{message.body}</p>
               </li>
@@ -331,7 +335,7 @@ export default function BookingDisputePage() {
         )}
         {dispute.canPostMessage ? (
           <>
-            <label htmlFor="dispute-message">Add a message</label>
+            <label htmlFor="dispute-message">{t('dispute.addMessage')}</label>
             <Textarea
               id="dispute-message"
               value={messageBody}
@@ -340,16 +344,16 @@ export default function BookingDisputePage() {
               disabled={busy}
             />
             <Button onClick={() => void postMessage()} disabled={busy || messageBody.trim().length === 0}>
-              Send
+              {t('dispute.send')}
             </Button>
           </>
         ) : (
-          <p>This dispute no longer accepts new messages.</p>
+          <p>{t('dispute.noNewMessages')}</p>
         )}
       </Card>
 
-      {formError ? <ErrorState title="That did not work" description={formError} /> : null}
-      <Link href={`/bookings/${bookingId}`}>Back to the booking</Link>
+      {formError ? <ErrorState title={t('dispute.didNotWork')} description={formError} /> : null}
+      <Link href={`/bookings/${bookingId}`}>{t('dispute.back')}</Link>
     </main>
   );
 }

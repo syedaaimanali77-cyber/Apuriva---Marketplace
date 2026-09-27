@@ -9,12 +9,13 @@ import {
   apiFetch,
   BOOKING_POLL_MS,
   BOOKING_PROGRESSION,
-  BOOKING_STATUS_LABELS,
+  BOOKING_STATUS_KEYS,
   formatScheduled,
   isLiveBookingStatus,
   mutateHeaders,
   progressionIndex,
 } from '../booking-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import { RefundSection } from '../_components/RefundSection';
 import { CancellationPolicySection } from '../_components/CancellationPolicySection';
 import { BookingConversation } from '../_components/BookingConversation';
@@ -51,6 +52,7 @@ const NO_SHOW_REPORTABLE_STATUSES: readonly BookingStatus[] = [
  * party's confirmation. Per CLAUDE.md's branding rule the page carries no logo of its own.
  */
 export default function BookingDetailPage() {
+  const { locale, t, errorText } = useLocale();
   const params = useParams<{ id: string }>();
   const bookingId = params.id;
 
@@ -74,7 +76,7 @@ export default function BookingDetailPage() {
       ]);
 
       if (!bookingResult.ok || !bookingResult.data) {
-        setError(bookingResult.error?.message ?? 'We could not load this booking.');
+        setError(errorText(bookingResult.error?.code, bookingResult.error?.message, t('bookings.detail.loadFailed')));
         setStatus('error');
         liveRef.current = false;
         return;
@@ -85,7 +87,7 @@ export default function BookingDetailPage() {
       liveRef.current = isLiveBookingStatus(bookingResult.data.status);
       setStatus('ready');
     },
-    [bookingId],
+    [bookingId, errorText, t],
   );
 
   useEffect(() => {
@@ -124,11 +126,11 @@ export default function BookingDetailPage() {
     if (!result.ok) {
       const details = result.error?.code === 'COMPLETION_TOO_EARLY' ? (result.error as { details?: { retryAfterSeconds?: number } }).details : undefined;
       if (details?.retryAfterSeconds) setRetryAfter(details.retryAfterSeconds);
-      setCompleteError(result.error?.message ?? 'We could not mark this booking complete.');
+      setCompleteError(errorText(result.error?.code, result.error?.message, t('bookings.detail.completeFailed')));
       return;
     }
     await load(false);
-  }, [bookingId, load]);
+  }, [bookingId, errorText, load, t]);
 
   if (status === 'loading') {
     return (
@@ -141,7 +143,7 @@ export default function BookingDetailPage() {
   if (status === 'error' || !booking) {
     return (
       <main className={styles.page}>
-        <ErrorState title="We could not load this booking" description={error ?? undefined} onRetry={() => void load(true)} />
+        <ErrorState title={t('bookings.detail.errorTitle')} description={error ?? undefined} onRetry={() => void load(true)} />
       </main>
     );
   }
@@ -155,19 +157,19 @@ export default function BookingDetailPage() {
       <header className={styles.head}>
         <p className={styles.eyebrow}>
           <Link href="/bookings" className={styles.eyebrowLink}>
-            Bookings
+            {t('bookings.detail.bookings')}
           </Link>
         </p>
-        <h1 className={styles.title}>Your booking</h1>
+        <h1 className={styles.title}>{t('bookings.detail.title')}</h1>
         {/* Text plus badge — status is never conveyed by colour alone (§5 accessibility). */}
         <p className={styles.subtitle} role="status" aria-live="polite">
-          {BOOKING_STATUS_LABELS[booking.status]}
+          {t(BOOKING_STATUS_KEYS[booking.status])}
         </p>
       </header>
 
       <Card>
         <RequestStatusTimeline
-          steps={BOOKING_PROGRESSION.map((step) => ({ label: step.label }))}
+          steps={BOOKING_PROGRESSION.map((step) => ({ label: t(step.labelKey) }))}
           currentIndex={progressionIndex(booking.status)}
         />
       </Card>
@@ -175,42 +177,39 @@ export default function BookingDetailPage() {
       <Card>
         <div className={styles.detailGrid}>
           <div>
-            <p className={styles.detailLabel}>Scheduled</p>
-            <p className={styles.detailValue}>{formatScheduled(booking.scheduledAt, booking.scheduledTimezone)}</p>
+            <p className={styles.detailLabel}>{t('bookings.detail.scheduled')}</p>
+            <p className={styles.detailValue}>{formatScheduled(booking.scheduledAt, booking.scheduledTimezone, locale)}</p>
           </div>
           <div>
-            <p className={styles.detailLabel}>Duration</p>
-            <p className={styles.detailValue}>{booking.durationMinutes} minutes</p>
+            <p className={styles.detailLabel}>{t('bookings.detail.duration')}</p>
+            <p className={styles.detailValue}>{t('bookings.detail.minutes', { count: booking.durationMinutes })}</p>
           </div>
           <div>
-            <p className={styles.detailLabel}>Agreed price</p>
+            <p className={styles.detailLabel}>{t('bookings.detail.agreedPrice')}</p>
             <PriceDisplay
               priceDisplay={{ type: 'exact', amountMinorUnits: booking.priceAmountMinorUnits, currencyCode: booking.currencyCode }}
             />
           </div>
           <div>
-            <p className={styles.detailLabel}>Status</p>
-            <Badge>{BOOKING_STATUS_LABELS[booking.status]}</Badge>
+            <p className={styles.detailLabel}>{t('bookings.detail.status')}</p>
+            <Badge>{t(BOOKING_STATUS_KEYS[booking.status])}</Badge>
           </div>
         </div>
       </Card>
 
       {canComplete && (
         <Card>
-          <h2 className={styles.sectionTitle}>Is the work finished?</h2>
+          <h2 className={styles.sectionTitle}>{t('bookings.detail.finishedTitle')}</h2>
           {/* AC-8: equal authority, and no confirmation from the provider is requested anywhere. */}
-          <p className={styles.hint}>
-            You can mark this booking complete yourself — the provider does not need to confirm it.
-          </p>
+          <p className={styles.hint}>{t('bookings.detail.finishedHint')}</p>
           <div className={styles.actions}>
             <Button onClick={() => void markComplete()} loading={completing} disabled={dwellBlocked}>
-              Mark complete
+              {t('bookings.detail.markComplete')}
             </Button>
           </div>
           {dwellBlocked && (
             <p className={styles.hint} role="status" aria-live="polite">
-              This booking has only just started. You can mark it complete in {retryAfter} second
-              {retryAfter === 1 ? '' : 's'}.
+              {t(retryAfter === 1 ? 'bookings.detail.dwellOne' : 'bookings.detail.dwellMany', { count: retryAfter ?? 0 })}
             </p>
           )}
           {!dwellBlocked && completeError && (
@@ -219,23 +218,25 @@ export default function BookingDetailPage() {
             </p>
           )}
           {!dwellBlocked && !completeError && (
-            <p className={styles.hint}>A booking can be completed about {DWELL_HINT_SECONDS} seconds after it starts.</p>
+            <p className={styles.hint}>{t('bookings.detail.dwellHint', { seconds: DWELL_HINT_SECONDS })}</p>
           )}
         </Card>
       )}
 
       {completion && (
         <Card>
-          <h2 className={styles.sectionTitle}>Completed</h2>
+          <h2 className={styles.sectionTitle}>{t('bookings.detail.completed')}</h2>
           {/* AC-8: who completed it, read from the status history — never a separate field. */}
           <p className={styles.hint}>
-            Marked complete by the {completion.actorRole === 'customer' ? 'customer' : 'provider'} on{' '}
-            {formatScheduled(completion.occurredAt, booking.scheduledTimezone)}.
+            {t('bookings.detail.completedBy', {
+              role: completion.actorRole === 'customer' ? t('bookings.detail.roleCustomer') : t('bookings.detail.roleProvider'),
+              when: formatScheduled(completion.occurredAt, booking.scheduledTimezone, locale),
+            })}
           </p>
           {/* AC-10: an explicit, user-initiated route only — completion never opens a dispute itself. */}
           <p className={styles.hint}>
-            If you disagree with this, <Link href="/account">contact support</Link> to raise it. Nothing is opened
-            automatically on your behalf.
+            {t('bookings.detail.disagree')} <Link href="/account">{t('bookings.detail.contactSupport')}</Link>{' '}
+            {t('bookings.detail.disagreeTail')}
           </p>
         </Card>
       )}
@@ -270,13 +271,11 @@ export default function BookingDetailPage() {
           screen never invites an action the server would refuse. */}
       {CANCELLABLE_STATUSES.includes(booking.status) && (
         <Card>
-          <h2 className={styles.sectionTitle}>Need to cancel?</h2>
-          <p className={styles.hint}>
-            You will see the exact fee and refund before anything is confirmed.
-          </p>
+          <h2 className={styles.sectionTitle}>{t('bookings.detail.cancelTitle')}</h2>
+          <p className={styles.hint}>{t('bookings.detail.cancelHint')}</p>
           <div className={styles.actions}>
             <Link className={styles.eyebrowLink} href={`/bookings/${booking.id}/cancel`}>
-              Cancel booking
+              {t('bookings.detail.cancel')}
             </Link>
           </div>
         </Card>
@@ -284,14 +283,12 @@ export default function BookingDetailPage() {
 
       {NO_SHOW_REPORTABLE_STATUSES.includes(booking.status) && (
         <Card>
-          <h2 className={styles.sectionTitle}>Attendance issue</h2>
+          <h2 className={styles.sectionTitle}>{t('bookings.detail.attendanceTitle')}</h2>
           {/* Neutral by design (master spec §51): reporting asks for a review, it accuses nobody. */}
-          <p className={styles.hint}>
-            If the other party did not attend, you can ask our team to review it. They will be asked to respond first.
-          </p>
+          <p className={styles.hint}>{t('bookings.detail.attendanceHint')}</p>
           <div className={styles.actions}>
             <Link className={styles.eyebrowLink} href={`/bookings/${booking.id}/no-show`}>
-              Report an attendance issue
+              {t('bookings.detail.reportAttendance')}
             </Link>
           </div>
         </Card>
@@ -304,19 +301,24 @@ export default function BookingDetailPage() {
       */}
       <div className={styles.actions}>
         <Link className={styles.eyebrowLink} href={`/support/new?contextType=booking&contextId=${booking.id}`}>
-          Get help with this booking
+          {t('bookings.detail.help')}
         </Link>
       </div>
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Activity</h2>
+        <h2 className={styles.sectionTitle}>{t('bookings.detail.activity')}</h2>
         <ul className={styles.historyList}>
           {history.map((row) => (
             <li key={`${row.toStatus}-${row.occurredAt}`} className={styles.historyRow}>
-              <span>{BOOKING_STATUS_LABELS[row.toStatus]}</span>
+              <span>{t(BOOKING_STATUS_KEYS[row.toStatus])}</span>
               <span className={styles.historyActor}>
-                {row.actorRole === 'system' ? 'System' : row.actorRole === 'customer' ? 'You or the customer' : 'Provider'} ·{' '}
-                {formatScheduled(row.occurredAt, booking.scheduledTimezone)}
+                {row.actorRole === 'system'
+                  ? t('bookings.detail.actorSystem')
+                  : row.actorRole === 'customer'
+                    ? t('bookings.detail.actorCustomer')
+                    : t('bookings.detail.actorProvider')}{' '}
+                ·{' '}
+                {formatScheduled(row.occurredAt, booking.scheduledTimezone, locale)}
               </span>
             </li>
           ))}

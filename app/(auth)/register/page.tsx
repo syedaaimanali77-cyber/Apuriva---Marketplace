@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Button, FormField, Input } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import { AuthShell } from '../_components/AuthShell';
 import styles from '../auth.module.css';
 
@@ -32,6 +33,7 @@ function fieldError(errors: ApiErrorBody['errors'], field: string): string | und
  * API call, and validation rule below is unchanged from the original implementation.
  */
 export default function RegisterPage() {
+  const { t, errorText } = useLocale();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,10 +59,11 @@ export default function RegisterPage() {
         return;
       }
       if (result.error?.code === 'CONFLICT') {
-        setEmailError('An account with this email already exists.');
+        setEmailError(t('auth.register.emailTaken'));
         return;
       }
-      setGenericError("We couldn't create your account. Please try again.");
+      // Spec 042 X-3: a known code is shown in the reader's locale; otherwise the generic line.
+      setGenericError(errorText(result.error?.code, null, t('auth.register.failed')));
       return;
     }
 
@@ -69,20 +72,20 @@ export default function RegisterPage() {
 
   return (
     <AuthShell
-      brandHeadline="Join the marketplace built for getting things done."
+      brandHeadline={t('auth.register.headline')}
       footer={
         <>
-          Already have an account?{' '}
+          {t('auth.register.haveAccount')}{' '}
           <a href="/login" className={styles.footerLink}>
-            Log in
+            {t('auth.register.logIn')}
           </a>
         </>
       }
     >
       <div>
-        <span className={styles.eyebrow}>Get started</span>
-        <h1 className={styles.title}>Create your account</h1>
-        <p className={styles.subtitle}>Post a request, get offers, and get it done — free to join.</p>
+        <span className={styles.eyebrow}>{t('auth.register.eyebrow')}</span>
+        <h1 className={styles.title}>{t('auth.register.title')}</h1>
+        <p className={styles.subtitle}>{t('auth.register.subtitle')}</p>
       </div>
 
       <form
@@ -92,7 +95,7 @@ export default function RegisterPage() {
           handleSubmit();
         }}
       >
-        <FormField label="Email" htmlFor="email" error={emailError ?? undefined} required>
+        <FormField label={t('auth.email')} htmlFor="email" error={emailError ?? undefined} required>
           <Input
             id="email"
             type="email"
@@ -105,10 +108,10 @@ export default function RegisterPage() {
           />
         </FormField>
         <FormField
-          label="Password"
+          label={t('auth.password')}
           htmlFor="password"
           error={passwordError ?? undefined}
-          help={passwordError ? undefined : 'At least 8 characters.'}
+          help={passwordError ? undefined : t('auth.register.passwordHelp')}
           required
         >
           <Input
@@ -117,7 +120,7 @@ export default function RegisterPage() {
             size="lg"
             iconLeft="lock"
             autoComplete="new-password"
-            placeholder="Create a password"
+            placeholder={t('auth.register.passwordPlaceholder')}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             invalid={Boolean(passwordError)}
@@ -132,13 +135,13 @@ export default function RegisterPage() {
           loading={submitting}
           style={{ height: 'var(--auth-btn-h)', minHeight: 'var(--auth-btn-h)' }}
         >
-          Create account
+          {t('auth.register.submit')}
         </Button>
       </form>
 
       <div className={styles.divider}>
         <hr className={styles.dividerLine} />
-        <span className={styles.dividerLabel}>or</span>
+        <span className={styles.dividerLabel}>{t('auth.or')}</span>
         <hr className={styles.dividerLine} />
       </div>
 
@@ -149,9 +152,9 @@ export default function RegisterPage() {
           fullWidth
           disabled
           style={{ height: 'var(--auth-btn-h)', minHeight: 'var(--auth-btn-h)' }}
-          title="Real Google sign-in needs provider credentials — spec 005 §8 risk #1 ships a sandbox adapter only"
+          title={t('auth.googleUnavailable')}
         >
-          Continue with Google
+          {t('auth.google')}
         </Button>
         <Button
           variant="secondary"
@@ -159,9 +162,9 @@ export default function RegisterPage() {
           fullWidth
           disabled
           style={{ height: 'var(--auth-btn-h)', minHeight: 'var(--auth-btn-h)' }}
-          title="Real Apple sign-in needs provider credentials — spec 005 §8 risk #1 ships a sandbox adapter only"
+          title={t('auth.appleUnavailable')}
         >
-          Continue with Apple
+          {t('auth.apple')}
         </Button>
       </div>
     </AuthShell>

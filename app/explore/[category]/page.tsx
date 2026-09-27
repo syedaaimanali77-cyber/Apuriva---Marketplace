@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Badge, Button, Card, EmptyState, ErrorState, Icon, SearchBar, Skeleton, Tag } from '@/components';
+import { Badge, Button, Card, DirectionalIcon, EmptyState, ErrorState, Icon, SearchBar, Skeleton, Tag } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
 import type { PricingModel } from '@/lib/types/catalog';
 import type { CategoryPageDto } from '@/lib/types/service-page';
 import { imageForCategoryName } from '../../category-images';
@@ -14,12 +16,12 @@ type PageStatus = 'loading' | 'error' | 'ready';
 
 /** How the catalog's own `pricingModel` (spec 010) reads to a customer. Describes the pricing
  * *model* the service is published with — never an amount, since no price is in this payload. */
-const PRICING_LABEL: Record<PricingModel, string> = {
-  fixed: 'Fixed price',
-  package: 'Package pricing',
-  hourly: 'Hourly rate',
-  quote: 'Quote on request',
-  custom: 'Custom pricing',
+const PRICING_LABEL: Record<PricingModel, MessageKey> = {
+  fixed: 'category.pricing.fixed',
+  package: 'category.pricing.package',
+  hourly: 'category.pricing.hourly',
+  quote: 'category.pricing.quote',
+  custom: 'category.pricing.custom',
 };
 
 /**
@@ -37,6 +39,7 @@ const PRICING_LABEL: Record<PricingModel, string> = {
  * pagination remain spec 013's, never reimplemented here.
  */
 export default function CategoryPage() {
+  const { t, errorText } = useLocale();
   const params = useParams<{ category: string }>();
   const router = useRouter();
   const categoryId = params.category;
@@ -54,16 +57,16 @@ export default function CategoryPage() {
       const json = await res.json();
       if (!res.ok) {
         setStatus('error');
-        setError(json.message ?? "Couldn't load this category.");
+        setError(errorText(json.code, json.message, t('category.loadFailed')));
         return;
       }
       setPage(json.data as CategoryPageDto);
       setStatus('ready');
     } catch {
       setStatus('error');
-      setError("Couldn't load this category.");
+      setError(t('category.loadFailed'));
     }
-  }, [categoryId]);
+  }, [categoryId, errorText, t]);
 
   useEffect(() => {
     load();
@@ -114,16 +117,16 @@ export default function CategoryPage() {
       <header className={styles.head}>
         <span className={styles.eyebrow}>
           <Link href="/explore" className={styles.eyebrowLink}>
-            Explore
+            {t('category.explore')}
           </Link>
-          <Icon name="chevron-right" size="xs" className={styles.eyebrowSeparator} />
+          <DirectionalIcon name="chevron-right" size="xs" className={styles.eyebrowSeparator} />
           <span className={styles.eyebrowCurrent}>{page.name}</span>
         </span>
         <div className={styles.contextRow}>
           <span className={styles.contextThumb}>
             <Image
               src={imageForCategoryName(page.name)}
-              alt={`${page.name} services`}
+              alt={t('category.imageAlt', { name: page.name })}
               fill
               sizes="72px"
               style={{ objectFit: 'cover' }}
@@ -133,13 +136,13 @@ export default function CategoryPage() {
             <h1 className={styles.title}>{page.name}</h1>
             <p className={styles.metaLine}>
               <span data-numeric>
-                {page.popularServices.length} {page.popularServices.length === 1 ? 'service' : 'services'}
+                {t(page.popularServices.length === 1 ? 'category.serviceOne' : 'category.serviceMany', { count: page.popularServices.length })}
               </span>
               {page.filters.length > 0 ? (
                 <>
                   <span className={styles.metaDot}>·</span>
                   <span data-numeric>
-                    {page.filters.length} {page.filters.length === 1 ? 'speciality' : 'specialities'}
+                    {t(page.filters.length === 1 ? 'category.specialityOne' : 'category.specialityMany', { count: page.filters.length })}
                   </span>
                 </>
               ) : null}
@@ -152,23 +155,23 @@ export default function CategoryPage() {
        * lives at app/search, not duplicated here; this just deep-links into it. */}
       <section className={styles.searchPanel} aria-labelledby="category-search-label">
         <span className={styles.searchLabel} id="category-search-label">
-          What do you need in {page.name.toLowerCase()}?
+          {t('category.searchLabel', { name: page.name.toLowerCase() })}
         </span>
         <SearchBar
           value={searchText}
           onChange={setSearchText}
           onSubmit={submitSearch}
-          placeholder={`Search ${page.name.toLowerCase()}...`}
+          placeholder={t('category.searchPlaceholder', { name: page.name.toLowerCase() })}
         />
         <p className={styles.searchHint}>
           <Icon name="info" size="xs" color="var(--text-subtle)" />
-          Results stay inside {page.name.toLowerCase()} and can be filtered by location, budget and price.
+          {t('category.searchHint', { name: page.name.toLowerCase() })}
         </p>
       </section>
 
       {page.filters.length > 0 ? (
         <section className={styles.refineRow}>
-          <span className={styles.refineLabel}>Specialities in this category</span>
+          <span className={styles.refineLabel}>{t('category.specialities')}</span>
           <div className={styles.chips}>
             {page.filters.map((sub) => (
               <Tag key={sub.id}>{sub.name}</Tag>
@@ -179,9 +182,9 @@ export default function CategoryPage() {
 
       <section className={styles.results}>
         <div className={styles.resultsBar}>
-          <h2 className={styles.resultsTitle}>Services</h2>
+          <h2 className={styles.resultsTitle}>{t('category.services')}</h2>
           <span className={styles.resultsCount} data-numeric>
-            {page.popularServices.length} {page.popularServices.length === 1 ? 'result' : 'results'}
+            {t(page.popularServices.length === 1 ? 'category.resultOne' : 'category.resultMany', { count: page.popularServices.length })}
           </span>
         </div>
 
@@ -189,15 +192,15 @@ export default function CategoryPage() {
           <div className={styles.stateCard}>
             <EmptyState
               icon="search"
-              title="Nothing in this category yet"
-              description={`No published services matched ${page.name}. Search the whole catalog, or start from another category.`}
+              title={t('category.emptyTitle')}
+              description={t('category.emptyDescription', { name: page.name })}
               action={
                 <div className={styles.emptyActions}>
                   <Button variant="primary" iconLeft="search" onClick={() => submitSearch('')}>
-                    Search this category
+                    {t('category.searchCategory')}
                   </Button>
                   <Link href="/explore">
-                    <Button variant="secondary">Browse all categories</Button>
+                    <Button variant="secondary">{t('category.browseAll')}</Button>
                   </Link>
                 </div>
               }
@@ -224,9 +227,9 @@ export default function CategoryPage() {
                       </div>
                       <span className={styles.serviceAside}>
                         <Badge tone="neutral" size="sm" icon={null}>
-                          {PRICING_LABEL[service.pricingModel]}
+                          {t(PRICING_LABEL[service.pricingModel])}
                         </Badge>
-                        <Icon name="chevron-right" size="sm" color="var(--text-subtle)" />
+                        <DirectionalIcon name="chevron-right" size="sm" color="var(--text-subtle)" />
                       </span>
                     </div>
                   </Card>
@@ -241,22 +244,22 @@ export default function CategoryPage() {
         <p className={styles.note}>
           <Icon name="users" size="sm" color="var(--text-subtle)" />
           <span>
-            <span className={styles.noteTitle}>Recommended providers</span>
-            Provider recommendations for this category are coming soon.
+            <span className={styles.noteTitle}>{t('category.recommendedTitle')}</span>
+            {t('category.recommendedBody')}
           </span>
         </p>
         <p className={styles.note}>
           <Icon name="map-pin" size="sm" color="var(--text-subtle)" />
           <span>
-            <span className={styles.noteTitle}>Availability near you</span>
-            Share your location to see nearby availability.
+            <span className={styles.noteTitle}>{t('category.nearbyTitle')}</span>
+            {t('category.nearbyBody')}
           </span>
         </p>
         <p className={`${styles.note} ${styles.aiNote}`}>
           <Icon name="sparkles" size="sm" color="var(--ai-accent)" />
           <span>
-            <span className={styles.noteTitle}>Not sure what you need?</span>
-            Ask Apuriva&apos;s AI assistant.
+            <span className={styles.noteTitle}>{t('category.aiTitle')}</span>
+            {t('category.aiBody')}
           </span>
         </p>
       </div>

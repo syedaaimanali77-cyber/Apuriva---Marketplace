@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/ui/components/core/Button.jsx';
 import { IconButton } from '@/ui/components/core/IconButton.jsx';
 import { Input } from '@/ui/components/forms/Input.jsx';
+import { useLocale } from '@/app/_components/LocaleProvider';
 
 export interface SearchBarProps {
   value: string;
@@ -40,7 +41,10 @@ function getSpeechRecognitionConstructor(): (new () => SpeechRecognitionLike) | 
  * contract). No ASR is implemented here — this only calls whatever the browser already provides.
  * Controls are the DS `Input`, `IconButton` (voice) and `Button` (submit).
  */
-export function SearchBar({ value, onChange, onSubmit, placeholder = 'Search for a service...', loading = false }: SearchBarProps) {
+export function SearchBar({ value, onChange, onSubmit, placeholder, loading = false }: SearchBarProps) {
+  // Spec 042 X-2: platform labels translated. The typed query itself is never touched (AC-2): `value`
+  // goes to `onSubmit` exactly as entered, whatever the UI locale.
+  const { t } = useLocale();
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -80,15 +84,15 @@ export function SearchBar({ value, onChange, onSubmit, placeholder = 'Search for
           type="search"
           value={value}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
-          placeholder={placeholder}
-          aria-label="Search for a service"
+          placeholder={placeholder ?? t('comp.search.placeholder')}
+          aria-label={t('comp.search.label')}
           iconLeft="search"
         />
       </div>
       {voiceSupported ? (
         <IconButton
           icon="mic"
-          label={listening ? 'Listening...' : 'Search by voice'}
+          label={listening ? t('comp.search.listening') : t('comp.search.voice')}
           variant="outline"
           aria-pressed={listening}
           onClick={handleMicClick}
@@ -100,7 +104,7 @@ export function SearchBar({ value, onChange, onSubmit, placeholder = 'Search for
         />
       ) : null}
       <Button type="submit" variant="primary" loading={loading}>
-        Search
+        {t('comp.search.submit')}
       </Button>
     </form>
   );

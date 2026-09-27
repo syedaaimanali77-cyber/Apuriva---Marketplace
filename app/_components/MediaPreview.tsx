@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Badge, Icon, Skeleton } from '@/components';
 import type { FileAssetDto, FileUrlDto } from '@/lib/types/files';
+import { useLocale } from './LocaleProvider';
 import styles from './media-preview.module.css';
 
 /**
@@ -35,6 +36,7 @@ export function MediaPreview({
   urlEndpoint = defaultUrlEndpoint,
   refreshMarginMs = DEFAULT_REFRESH_MARGIN_MS,
 }: MediaPreviewProps) {
+  const { t } = useLocale();
   const [url, setUrl] = useState<FileUrlDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -46,15 +48,15 @@ export function MediaPreview({
       if (!res.ok) {
         // The server's answer is authoritative: a 404 here means the asset is gone or no longer
         // readable by this caller, and the component says so rather than retrying forever.
-        setError(res.status === 404 ? 'This file is no longer available.' : 'This file could not be loaded.');
+        setError(res.status === 404 ? t('media.gone') : t('media.loadFailed'));
         return;
       }
       const body = (await res.json()) as { data: FileUrlDto };
       setUrl(body.data);
     } catch {
-      setError('This file could not be loaded.');
+      setError(t('media.loadFailed'));
     }
-  }, [asset.id, urlEndpoint]);
+  }, [asset.id, t, urlEndpoint]);
 
   useEffect(() => {
     // Only a `ready` asset has a URL at all — the server answers 409 for anything else.
@@ -78,7 +80,7 @@ export function MediaPreview({
   if (asset.status !== 'ready') {
     return (
       <div className={styles.preview} data-status={asset.status}>
-        <Badge tone="neutral">{asset.status === 'rejected' ? 'Rejected' : 'Still checking this file'}</Badge>
+        <Badge tone="neutral">{asset.status === 'rejected' ? t('media.rejected') : t('media.checking')}</Badge>
       </div>
     );
   }
@@ -86,7 +88,7 @@ export function MediaPreview({
   if (error) {
     return (
       <div className={styles.preview}>
-        <Alert tone="error" title="File unavailable">
+        <Alert tone="error" title={t('media.unavailableTitle')}>
           {error}
         </Alert>
       </div>
@@ -106,7 +108,7 @@ export function MediaPreview({
       <figure className={styles.preview}>
         {/* eslint-disable-next-line @next/next/no-img-element -- the src is a short-lived signed URL
             or an external CDN URL resolved at runtime; next/image cannot pre-optimize either. */}
-        <img className={styles.image} src={url.url} alt={asset.fileName ?? 'Attached image'} />
+        <img className={styles.image} src={url.url} alt={asset.fileName ?? t('media.attachedImage')} />
       </figure>
     );
   }
@@ -115,8 +117,8 @@ export function MediaPreview({
   return (
     <a className={styles.fileRow} href={url.url} target="_blank" rel="noopener noreferrer">
       <Icon name={asset.kind === 'video' ? 'video' : 'file'} aria-hidden />
-      <span className={styles.fileName}>{asset.fileName ?? 'Attached file'}</span>
-      <Badge tone="neutral">{asset.kind === 'video' ? 'Video' : 'Document'}</Badge>
+      <span className={styles.fileName}>{asset.fileName ?? t('media.attachedFile')}</span>
+      <Badge tone="neutral">{asset.kind === 'video' ? t('media.video') : t('media.document')}</Badge>
     </a>
   );
 }

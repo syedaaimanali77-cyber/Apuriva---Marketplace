@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Badge, Button, ErrorState, FormField, PriceDisplay, Skeleton, Textarea } from '@/components';
+import { formatDateTime } from '@/lib/i18n/format';
 import type { NegotiationSenderRole, OfferMessageDto } from '@/lib/types/negotiation';
+import { useLocale } from './LocaleProvider';
 import styles from './request-message-thread.module.css';
 
 /** Spec 019 §5: no WebSocket layer exists — an open thread refetches this often (spec 018's cadence). */
@@ -112,17 +114,18 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
   closedMessage,
   onMessages,
   emptyContent,
-  composerHelp = "Don't share phone numbers or emails — they are removed.",
+  composerHelp,
   maxLength = MESSAGE_MAX_LENGTH,
-  redactionNotice = 'Contact details were removed — keep communication on APURIVA.',
+  redactionNotice,
   closedCodes = DEFAULT_CLOSED_CODES,
   blockedCodes = NO_CODES,
-  blockedMessage = 'You can no longer send messages in this conversation.',
+  blockedMessage,
   retainKeyOnFailure = false,
   live,
   announceIncoming = false,
   renderMessageMeta,
 }: RequestMessageThreadProps<M>) {
+  const { locale, t, errorText } = useLocale();
   const [status, setStatus] = useState<'loading' | 'error' | 'ready'>('loading');
   const [messages, setMessages] = useState<M[]>([]);
   const [draft, setDraft] = useState('');
@@ -252,8 +255,8 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
             if (announceIncoming && fresh.length > 0) {
               setAnnouncement(
                 fresh.length === 1
-                  ? `1 new message from ${counterpartyLabel}`
-                  : `${fresh.length} new messages from ${counterpartyLabel}`,
+                  ? t('thread.newOne', { name: counterpartyLabel })
+                  : t('thread.newMany', { count: fresh.length, name: counterpartyLabel }),
               );
             }
           }
@@ -285,7 +288,7 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
       document.removeEventListener('visibilitychange', resume);
       window.removeEventListener('focus', resume);
     };
-  }, [listUrl, liveIntervalMs, liveDeltaLimit, liveMaxBackoffMs, loadHistory, publish, announceIncoming, counterpartyLabel, viewerRole]);
+  }, [listUrl, liveIntervalMs, liveDeltaLimit, liveMaxBackoffMs, loadHistory, publish, announceIncoming, counterpartyLabel, viewerRole, t]);
 
   const retryLoad = useCallback(() => {
     if (!live) {
@@ -302,7 +305,7 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
     event.preventDefault();
     const body = draft.trim();
     if (body.length === 0) {
-      setSendError('Write a message first.');
+      setSendError(t('thread.writeFirst'));
       return;
     }
     setSending(true);
@@ -331,9 +334,9 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
           setBlocked(true);
         } else if (json.code === 'RATE_LIMITED') {
           const retryAfter = res.headers?.get?.('Retry-After') ?? null;
-          setSendError(retryAfter ? `You can send another message in ${retryAfter} s.` : 'You are sending messages too quickly. Try again shortly.');
+          setSendError(retryAfter ? t('thread.retryIn', { seconds: retryAfter }) : t('thread.tooQuick'));
         } else {
-          setSendError(json.message ?? "Couldn't send your message.");
+          setSendError(errorText(json.code, json.message, t('thread.sendFailed')));
         }
         return; // The drafted text is kept.
       }
@@ -343,16 +346,16 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
       if (live) publish(mergeMessages(messagesRef.current, [message]));
       else setMessages((previous) => [...previous, message]);
       setRedactedNotice(Boolean(message.contactRedacted));
-      setAnnouncement('Message sent.');
+      setAnnouncement(t('thread.sent'));
     } catch {
       if (!retainKeyOnFailure) pendingKeyRef.current = null;
-      setSendError("Couldn't send your message.");
+      setSendError(t('thread.sendFailed'));
     } finally {
       setSending(false);
     }
   }
 
-  const label = (role: NegotiationSenderRole) => (role === viewerRole ? 'You' : counterpartyLabel);
+  const label = (role: NegotiationSenderRole) => (role === viewerRole ? t('thread.you') : counterpartyLabel);
 
   return (
     <div className={styles.thread}>
@@ -361,29 +364,29 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
       </span>
 
       {status === 'loading' ? <Skeleton lines={2} /> : null}
-      {status === 'error' ? <ErrorState description="Couldn't load this conversation." onRetry={retryLoad} /> : null}
+      {status === 'error' ? <ErrorState description={t('thread.loadFailed')} onRetry={retryLoad} /> : null}
 
       {status === 'ready' && messages.length === 0
-        ? (emptyContent ?? <p className={styles.hint}>No messages yet — ask a question about this request.</p>)
+        ? (emptyContent ?? <p className={styles.hint}>{t('thread.empty')}</p>)
         : null}
 
       {status === 'ready' && messages.length > 0 ? (
-        <ol className={styles.list} aria-label={`Conversation with ${counterpartyLabel}`}>
+        <ol className={styles.list} aria-label={t('thread.conversationWith', { name: counterpartyLabel })}>
           {messages.map((message) => (
             <li key={message.id} className={`${styles.message} ${message.senderRole === viewerRole ? styles.own : ''}`}>
               <div className={styles.meta}>
                 <span>{label(message.senderRole)}</span>
-                <span>{new Date(message.createdAt).toLocaleString()}</span>
+                <span>{formatDateTime(message.createdAt, locale, { dateStyle: 'medium', timeStyle: 'short' })}</span>
                 {message.kind === 'change_request' ? (
                   <Badge tone="info" size="sm">
-                    Change requested
+                    {t('thread.changeRequested')}
                   </Badge>
                 ) : null}
               </div>
               <p className={styles.body}>{message.body}</p>
               {message.proposedPrice ? (
                 <p className={styles.hint}>
-                  Proposed price:{' '}
+                  {t('thread.proposedPrice')}{' '}
                   <PriceDisplay
                     priceDisplay={{
                       type: 'exact',
@@ -399,11 +402,11 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
         </ol>
       ) : null}
 
-      {reconnecting ? <p className={styles.hint}>Reconnecting… new messages will appear when the connection returns.</p> : null}
+      {reconnecting ? <p className={styles.hint}>{t('thread.reconnecting')}</p> : null}
 
       {redactedNotice ? (
-        <Alert tone="warning" title="Contact details removed" onDismiss={() => setRedactedNotice(false)}>
-          {redactionNotice}
+        <Alert tone="warning" title={t('thread.redactedTitle')} onDismiss={() => setRedactedNotice(false)}>
+          {redactionNotice ?? t('thread.redactionNotice')}
         </Alert>
       ) : null}
 
@@ -411,16 +414,16 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
         <p className={styles.hint}>{closedMessage}</p>
       ) : blocked ? (
         <p className={styles.hint} role="status">
-          {blockedMessage}
+          {blockedMessage ?? t('thread.blocked')}
         </p>
       ) : (
-        <form className={styles.composer} aria-label={`Message ${counterpartyLabel}`} onSubmit={send}>
+        <form className={styles.composer} aria-label={t('thread.composerLabel', { name: counterpartyLabel })} onSubmit={send}>
           {sendError ? (
-            <Alert tone="error" title="Message not sent">
+            <Alert tone="error" title={t('thread.notSent')}>
               {sendError}
             </Alert>
           ) : null}
-          <FormField label="Your message" htmlFor={`thread-${postUrl}`} help={composerHelp}>
+          <FormField label={t('thread.yourMessage')} htmlFor={`thread-${postUrl}`} help={composerHelp ?? t('thread.composerHelp')}>
             <Textarea
               id={`thread-${postUrl}`}
               maxLength={maxLength}
@@ -434,7 +437,7 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
           </FormField>
           <div className={styles.actions}>
             <Button type="submit" variant="primary" loading={sending}>
-              Send message
+              {t('thread.send')}
             </Button>
           </div>
         </form>

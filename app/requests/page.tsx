@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Badge, Button, Card, EmptyState, ErrorState, Icon, Skeleton } from '@/components';
+import { Badge, Button, Card, DirectionalIcon, EmptyState, ErrorState, Icon, Skeleton } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import { formatDate } from '@/lib/i18n/format';
 import type { RequestListFilter, RequestSummaryDto } from '@/lib/types/requests';
 import { apiFetch } from './api-client';
 import styles from './requests.module.css';
@@ -18,6 +20,7 @@ const PAGE_LIMIT = 20;
  * matching mechanic. Per CLAUDE.md's branding rule, no logo/header of its own.
  */
 export default function RequestsPage() {
+  const { locale, t, errorText } = useLocale();
   const [status, setStatus] = useState<PageStatus>('loading');
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<RequestListFilter>('active');
@@ -30,14 +33,14 @@ export default function RequestsPage() {
     const params = new URLSearchParams({ filter: nextFilter, limit: String(PAGE_LIMIT), offset: String(offset) });
     const result = await apiFetch<RequestSummaryDto[]>(`/api/v1/requests?${params.toString()}`);
     if (!result.ok) {
-      setError(result.error?.message ?? "Couldn't load your requests.");
+      setError(errorText(result.error?.code, result.error?.message, t('requests.list.loadFailed')));
       setStatus('error');
       return;
     }
     setRequests(result.data ?? []);
     setPageInfo(result.page ?? { limit: PAGE_LIMIT, offset, total: 0, nextOffset: null });
     setStatus('ready');
-  }, []);
+  }, [errorText, t]);
 
   useEffect(() => {
     load(filter, 0);
@@ -47,15 +50,15 @@ export default function RequestsPage() {
     <header className={styles.head}>
       <span className={styles.eyebrow}>
         <Icon name="file-text" size="xs" />
-        Requests
+        {t('requests.list.eyebrow')}
       </span>
-      <h1 className={styles.title}>Your requests</h1>
-      <p className={styles.lede}>Track what you&apos;ve asked for and where each request has got to.</p>
+      <h1 className={styles.title}>{t('requests.list.title')}</h1>
+      <p className={styles.lede}>{t('requests.list.lede')}</p>
     </header>
   );
 
   const tabs = (
-    <div className={styles.tabs} role="tablist" aria-label="Request list filter">
+    <div className={styles.tabs} role="tablist" aria-label={t('requests.list.filter')}>
       {(['active', 'history'] as RequestListFilter[]).map((value) => (
         <Button
           key={value}
@@ -65,7 +68,7 @@ export default function RequestsPage() {
           size="sm"
           onClick={() => setFilter(value)}
         >
-          {value === 'active' ? 'Active' : 'History'}
+          {value === 'active' ? t('requests.list.active') : t('requests.list.history')}
         </Button>
       ))}
     </div>
@@ -92,23 +95,19 @@ export default function RequestsPage() {
         <div className={styles.stateCard}>
           <EmptyState
             icon="file-text"
-            title={filter === 'active' ? 'No active requests' : 'No past requests'}
-            description={
-              filter === 'active'
-                ? 'When you ask for a service, it appears here so you can follow its progress.'
-                : 'Cancelled and completed requests will be listed here.'
-            }
+            title={filter === 'active' ? t('requests.list.emptyActiveTitle') : t('requests.list.emptyHistoryTitle')}
+            description={filter === 'active' ? t('requests.list.emptyActive') : t('requests.list.emptyHistory')}
             action={
               <Link href="/explore">
                 <Button variant="primary" iconLeft="compass">
-                  Explore services
+                  {t('requests.list.explore')}
                 </Button>
               </Link>
             }
             secondaryAction={
               <Link href="/search">
                 <Button variant="secondary" iconLeft="search">
-                  Search
+                  {t('requests.list.search')}
                 </Button>
               </Link>
             }
@@ -127,12 +126,12 @@ export default function RequestsPage() {
                     <div className={styles.rowMain}>
                       <h2 className={styles.rowTitle}>{request.serviceName}</h2>
                       <p className={styles.rowMeta}>
-                        <span>{new Date(request.createdAt).toLocaleDateString()}</span>
+                        <span>{formatDate(request.createdAt, locale)}</span>
                         {request.offerCount > 0 ? (
                           <>
                             <span className={styles.metaDot}>·</span>
                             <span data-numeric>
-                              {request.offerCount} {request.offerCount === 1 ? 'offer' : 'offers'}
+                              {t(request.offerCount === 1 ? 'requests.list.offerOne' : 'requests.list.offerMany', { count: request.offerCount })}
                             </span>
                           </>
                         ) : null}
@@ -140,9 +139,9 @@ export default function RequestsPage() {
                     </div>
                     <span className={styles.rowAside}>
                       <Badge tone={request.status === 'cancelled' ? 'neutral' : 'brand'} size="sm" icon={null}>
-                        {request.customerFacingStep}
+                        {t(`requestDetail.step.${request.status}`)}
                       </Badge>
-                      <Icon name="chevron-right" size="sm" color="var(--text-subtle)" />
+                      <DirectionalIcon name="chevron-right" size="sm" color="var(--text-subtle)" />
                     </span>
                   </div>
                 </Card>
@@ -157,17 +156,21 @@ export default function RequestsPage() {
                 disabled={pageInfo.offset === 0}
                 onClick={() => load(filter, Math.max(0, pageInfo.offset - pageInfo.limit))}
               >
-                Previous
+                {t('requests.list.previous')}
               </Button>
               <span className={styles.pageCount} data-numeric>
-                {pageInfo.offset + 1}-{Math.min(pageInfo.offset + pageInfo.limit, pageInfo.total)} of {pageInfo.total}
+                {t('requests.list.pageCount', {
+                  from: pageInfo.offset + 1,
+                  to: Math.min(pageInfo.offset + pageInfo.limit, pageInfo.total),
+                  total: pageInfo.total,
+                })}
               </span>
               <Button
                 variant="secondary"
                 disabled={pageInfo.nextOffset === null}
                 onClick={() => load(filter, pageInfo.nextOffset ?? 0)}
               >
-                Next
+                {t('requests.list.next')}
               </Button>
             </div>
           ) : null}

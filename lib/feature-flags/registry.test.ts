@@ -9,6 +9,8 @@ const APPROVED = [
   { key: 'ai-conversational-assistant', owningSpec: '034', controlledBy: 'business', isKillSwitch: false, clientReadable: false, default: true, overrideVar: 'AI_CONVERSATIONAL_ASSISTANT_ENABLED' },
   { key: 'ai-assistant', owningSpec: '033', controlledBy: 'developer', isKillSwitch: true, clientReadable: false, default: true, overrideVar: 'AI_ASSISTANT_ENABLED' },
   { key: 'ai-fraud-signals', owningSpec: '038', controlledBy: 'developer', isKillSwitch: false, clientReadable: false, default: false, overrideVar: 'AI_FRAUD_SIGNALS_ENABLED' },
+  // Spec 042 X-7/X-15: the seventh registered flag, seeded off by migration 0037.
+  { key: 'urdu-locale', owningSpec: '042', controlledBy: 'business', isKillSwitch: false, clientReadable: true, default: false, overrideVar: null },
 ] as const;
 
 const saved = { ...process.env };
@@ -20,7 +22,7 @@ afterEach(() => {
 });
 
 describe('the feature-flag registry (spec 041 §3.3, AC-5)', () => {
-  it('is exactly the six approved flags, in order, with their documented classification and defaults', () => {
+  it('is exactly the seven approved flags (spec 042 X-15 added urdu-locale), in order, with their documented classification and defaults', () => {
     expect(
       FEATURE_FLAG_REGISTRY.map((f) => ({
         key: f.key,
@@ -52,7 +54,7 @@ describe('the feature-flag registry (spec 041 §3.3, AC-5)', () => {
   });
 
   it('registers none of the flags the owning specs removed or never defined (D-8)', () => {
-    for (const key of ['matching-fairness-exposure', 'marketing-notifications', 'urdu-locale', 'demo-mode']) {
+    for (const key of ['matching-fairness-exposure', 'marketing-notifications', 'demo-mode']) {
       expect(isFeatureFlagKey(key)).toBe(false);
     }
     expect(isFeatureFlagKey(42)).toBe(false);

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card, ConfirmDialog, ErrorState, Skeleton, Table } from '@/components';
 import type { TableColumn } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import { formatDateTime } from '@/lib/i18n/format';
 import type { DataExportStatus, SessionSummaryDto } from '@/lib/types/privacy';
 import styles from './privacy-security.module.css';
 
@@ -69,10 +71,6 @@ interface DeletionState {
   deletionGraceEndsAt: string | null;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString();
-}
-
 /**
  * Spec 008 — Security Sessions & Privacy Center. One route surfacing every control this spec
  * owns: active sessions (view/log out one/log out all others), the Security Center's MFA on/off
@@ -81,6 +79,9 @@ function formatDate(iso: string): string {
  * this page carries no header/logo of its own — the global AppHeader already provides one.
  */
 export default function PrivacySecurityPage() {
+  const { locale, t, errorText } = useLocale();
+  // Spec 042 X-11: the shared formatter, in the reader's locale.
+  const formatDate = (iso: string) => formatDateTime(iso, locale);
   const [pageStatus, setPageStatus] = useState<PageStatus>('loading');
   const [pageError, setPageError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
@@ -119,7 +120,7 @@ export default function PrivacySecurityPage() {
 
     if (!sessionsRes.ok) {
       setPageStatus('error');
-      setPageError(sessionsRes.error?.message ?? "Couldn't load your Security & Privacy Center.");
+      setPageError(errorText(sessionsRes.error?.code, sessionsRes.error?.message, t('privacy.loadFailed')));
       return;
     }
 
@@ -127,7 +128,7 @@ export default function PrivacySecurityPage() {
     if (mfaRes.ok) setMfaEnabledState(mfaRes.data!.mfaEnabled);
     if (deletionRes.ok) setDeletion(deletionRes.data!);
     setPageStatus('ready');
-  }, []);
+  }, [errorText, t]);
 
   useEffect(() => {
     loadAll();
@@ -147,11 +148,11 @@ export default function PrivacySecurityPage() {
     });
     setSessionPending(null);
     if (!res.ok) {
-      setSessionsError(res.error?.message ?? "Couldn't log out that device. Try again.");
+      setSessionsError(errorText(res.error?.code, res.error?.message, t('privacy.logoutOneFailed')));
       return;
     }
     setSessions((prev) => prev.filter((s) => s.id !== id));
-    setAnnouncement('Device logged out.');
+    setAnnouncement(t('privacy.loggedOutOne'));
   }
 
   async function handleLogoutAllConfirmed() {
@@ -161,11 +162,11 @@ export default function PrivacySecurityPage() {
     setLogoutAllPending(false);
     setLogoutAllOpen(false);
     if (!res.ok) {
-      setSessionsError(res.error?.message ?? "Couldn't log out other devices. Try again.");
+      setSessionsError(errorText(res.error?.code, res.error?.message, t('privacy.logoutAllFailed')));
       return;
     }
     setSessions((prev) => prev.filter((s) => s.isCurrent));
-    setAnnouncement('Logged out of all other devices.');
+    setAnnouncement(t('privacy.loggedOutAll'));
   }
 
   // --- MFA -----------------------------------------------------------------
@@ -178,11 +179,11 @@ export default function PrivacySecurityPage() {
     });
     setMfaPending(false);
     if (!res.ok) {
-      setMfaError(res.error?.message ?? "Couldn't update MFA. Try again.");
+      setMfaError(errorText(res.error?.code, res.error?.message, t('privacy.mfaFailed')));
       return;
     }
     setMfaEnabledState(res.data!.mfaEnabled);
-    setAnnouncement(res.data!.mfaEnabled ? 'MFA enabled.' : 'MFA disabled.');
+    setAnnouncement(res.data!.mfaEnabled ? t('privacy.mfaEnabled') : t('privacy.mfaDisabled'));
   }
 
   // --- Data export -----------------------------------------------------------
@@ -191,23 +192,23 @@ export default function PrivacySecurityPage() {
     async function tick() {
       const res = await apiFetch<{ status: DataExportStatus; downloadUrl?: string }>(`/api/v1/users/me/data-export/${id}`);
       if (!res.ok) {
-        setExportError(res.error?.message ?? "Couldn't check your export status.");
+        setExportError(errorText(res.error?.code, res.error?.message, t('privacy.exportCheckFailed')));
         return;
       }
       setExportStatus(res.data!.status);
       if (res.data!.status === 'ready') {
         setDownloadUrl(res.data!.downloadUrl ?? null);
-        setAnnouncement('Your data export is ready to download.');
+        setAnnouncement(t('privacy.exportReadyAnnounce'));
         return;
       }
       if (res.data!.status === 'failed') {
-        setExportError('Your export failed to generate. Try requesting it again.');
+        setExportError(t('privacy.exportGenerateFailed'));
         return;
       }
       pollTimer.current = setTimeout(tick, 4000);
     }
     tick();
-  }, []);
+  }, [errorText, t]);
 
   async function handleRequestExport() {
     setExportError(null);
@@ -215,7 +216,7 @@ export default function PrivacySecurityPage() {
     const res = await mutateWithStepUp<{ exportRequestId: string }>('/api/v1/users/me/data-export', 'POST', 'request_data_export');
     setExportRequesting(false);
     if (!res.ok) {
-      setExportError(res.error?.message ?? "Couldn't start your export. Try again.");
+      setExportError(errorText(res.error?.code, res.error?.message, t('privacy.exportStartFailed')));
       return;
     }
     setExportId(res.data!.exportRequestId);
@@ -237,11 +238,11 @@ export default function PrivacySecurityPage() {
         setDeletionError(res.error.message);
         return;
       }
-      setDeletionError(res.error?.message ?? "Couldn't start account deletion. Try again.");
+      setDeletionError(errorText(res.error?.code, res.error?.message, t('privacy.deletionFailed')));
       return;
     }
     setDeletion({ lifecycleStatus: 'deletion_pending', deletionGraceEndsAt: res.data!.gracePeriodEndsAt });
-    setAnnouncement(`Account deletion requested. You can cancel until ${formatDate(res.data!.gracePeriodEndsAt)}.`);
+    setAnnouncement(t('privacy.deletionRequested', { date: formatDate(res.data!.gracePeriodEndsAt) }));
   }
 
   async function handleCancelDeletion() {
@@ -253,11 +254,11 @@ export default function PrivacySecurityPage() {
     });
     setCancelPending(false);
     if (!res.ok) {
-      setDeletionError(res.error?.message ?? "Couldn't cancel deletion. Try again.");
+      setDeletionError(errorText(res.error?.code, res.error?.message, t('privacy.cancelFailed')));
       return;
     }
     setDeletion({ lifecycleStatus: 'active', deletionGraceEndsAt: null });
-    setAnnouncement('Account deletion cancelled.');
+    setAnnouncement(t('privacy.deletionCancelled'));
   }
 
   // --- Render -----------------------------------------------------------
@@ -265,7 +266,7 @@ export default function PrivacySecurityPage() {
   if (pageStatus === 'loading') {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Security &amp; Privacy Center</h1>
+        <h1 className={styles.title}>{t('privacy.title')}</h1>
         <Card>
           <Skeleton lines={4} />
         </Card>
@@ -276,7 +277,7 @@ export default function PrivacySecurityPage() {
   if (pageStatus === 'error') {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Security &amp; Privacy Center</h1>
+        <h1 className={styles.title}>{t('privacy.title')}</h1>
         <ErrorState description={pageError ?? undefined} onRetry={loadAll} />
       </main>
     );
@@ -285,23 +286,23 @@ export default function PrivacySecurityPage() {
   const columns: TableColumn<SessionSummaryDto>[] = [
     {
       key: 'device',
-      header: 'Device',
+      header: t('privacy.device'),
       render: (row) => (
         <span className={styles.deviceCell}>
-          {row.deviceLabel ?? 'Unknown device'}
+          {row.deviceLabel ?? t('privacy.unknownDevice')}
           {row.isCurrent ? (
             <Badge tone="brand" size="sm" icon={null}>
-              This device
+              {t('privacy.thisDevice')}
             </Badge>
           ) : null}
         </span>
       ),
     },
-    { key: 'location', header: 'Location', render: (row) => row.approxLocation ?? 'Unknown' },
-    { key: 'lastActiveAt', header: 'Last active', render: (row) => formatDate(row.lastActiveAt) },
+    { key: 'location', header: t('privacy.location'), render: (row) => row.approxLocation ?? t('privacy.unknown') },
+    { key: 'lastActiveAt', header: t('privacy.lastActive'), render: (row) => formatDate(row.lastActiveAt) },
     {
       key: 'actions',
-      header: 'Actions',
+      header: t('privacy.actions'),
       align: 'end',
       render: (row) =>
         row.isCurrent ? null : (
@@ -310,9 +311,9 @@ export default function PrivacySecurityPage() {
             size="sm"
             loading={sessionPending === row.id}
             onClick={() => handleLogoutSingle(row.id)}
-            aria-label={`Log out ${row.deviceLabel ?? 'device'}`}
+            aria-label={t('privacy.logOutDevice', { device: row.deviceLabel ?? t('privacy.deviceFallback') })}
           >
-            Log out
+            {t('privacy.logOut')}
           </Button>
         ),
     },
@@ -322,7 +323,7 @@ export default function PrivacySecurityPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Security &amp; Privacy Center</h1>
+      <h1 className={styles.title}>{t('privacy.title')}</h1>
 
       <span role="status" aria-live="polite" className={styles.visuallyHidden}>
         {announcement}
@@ -331,15 +332,15 @@ export default function PrivacySecurityPage() {
       <section aria-labelledby="sessions-heading" className={styles.section}>
         <div className={styles.sectionHeader}>
           <h2 id="sessions-heading" className={styles.sectionTitle}>
-            Active sessions
+            {t('privacy.sessionsTitle')}
           </h2>
           <Button variant="secondary" disabled={otherSessionsCount === 0} onClick={() => setLogoutAllOpen(true)}>
-            Log out all other devices
+            {t('privacy.logOutAll')}
           </Button>
         </div>
 
         {sessionsError ? (
-          <Alert tone="error" title="Something went wrong">
+          <Alert tone="error" title={t('common.somethingWentWrong')}>
             {sessionsError}
           </Alert>
         ) : null}
@@ -347,16 +348,16 @@ export default function PrivacySecurityPage() {
         <Table
           columns={columns}
           rows={sessions}
-          caption="Your active sessions"
-          emptyMessage="No active sessions."
+          caption={t('privacy.sessionsCaption')}
+          emptyMessage={t('privacy.noSessions')}
         />
       </section>
 
       <ConfirmDialog
         open={logoutAllOpen}
-        title="Log out all other devices?"
-        description="Every session except this one will be signed out immediately. You'll stay signed in here."
-        confirmLabel="Log out other devices"
+        title={t('privacy.logOutAllTitle')}
+        description={t('privacy.logOutAllDescription')}
+        confirmLabel={t('privacy.logOutOthers')}
         tone="danger"
         pending={logoutAllPending}
         onConfirm={handleLogoutAllConfirmed}
@@ -365,19 +366,15 @@ export default function PrivacySecurityPage() {
 
       <section aria-labelledby="mfa-heading" className={styles.section}>
         <h2 id="mfa-heading" className={styles.sectionTitle}>
-          Two-factor authentication
+          {t('privacy.mfaTitle')}
         </h2>
         {mfaError ? (
-          <Alert tone="error" title="Something went wrong">
+          <Alert tone="error" title={t('common.somethingWentWrong')}>
             {mfaError}
           </Alert>
         ) : null}
         <p className={styles.sectionDescription}>
-          {mfaEnabled === null
-            ? "We couldn't determine your current MFA status."
-            : mfaEnabled
-              ? 'Two-factor authentication is currently on for your account.'
-              : 'Two-factor authentication is currently off for your account.'}
+          {mfaEnabled === null ? t('privacy.mfaUnknown') : mfaEnabled ? t('privacy.mfaOn') : t('privacy.mfaOff')}
         </p>
         <Button
           variant={mfaEnabled ? 'secondary' : 'primary'}
@@ -385,36 +382,36 @@ export default function PrivacySecurityPage() {
           disabled={mfaEnabled === null}
           onClick={() => handleMfaToggle(!mfaEnabled)}
         >
-          {mfaEnabled ? 'Disable MFA' : 'Enable MFA'}
+          {mfaEnabled ? t('privacy.disableMfa') : t('privacy.enableMfa')}
         </Button>
       </section>
 
       <section aria-labelledby="export-heading" className={styles.section}>
         <h2 id="export-heading" className={styles.sectionTitle}>
-          Export your data
+          {t('privacy.exportTitle')}
         </h2>
         {exportError ? (
-          <Alert tone="error" title="Something went wrong">
+          <Alert tone="error" title={t('common.somethingWentWrong')}>
             {exportError}
           </Alert>
         ) : null}
 
         {exportStatus === 'idle' || exportStatus === 'failed' ? (
           <Button variant="secondary" loading={exportRequesting} onClick={handleRequestExport}>
-            Request my data export
+            {t('privacy.requestExport')}
           </Button>
         ) : null}
 
         {exportStatus === 'pending' || exportStatus === 'processing' ? (
           <p role="status" className={styles.sectionDescription}>
-            Preparing your export — this may take a few minutes. You can leave this page; it'll keep going.
+            {t('privacy.preparing')}
           </p>
         ) : null}
 
         {exportStatus === 'ready' && downloadUrl ? (
-          <Alert tone="success" title="Your export is ready">
+          <Alert tone="success" title={t('privacy.exportReady')}>
             <a href={downloadUrl} className={styles.downloadLink}>
-              Download my data
+              {t('privacy.download')}
             </a>
           </Alert>
         ) : null}
@@ -422,35 +419,35 @@ export default function PrivacySecurityPage() {
 
       <section aria-labelledby="deletion-heading" className={styles.section}>
         <h2 id="deletion-heading" className={styles.sectionTitle}>
-          Delete your account
+          {t('privacy.deleteTitle')}
         </h2>
         {deletionError ? (
-          <Alert tone="error" title="Something went wrong">
+          <Alert tone="error" title={t('common.somethingWentWrong')}>
             {deletionError}
           </Alert>
         ) : null}
 
         {deletion.lifecycleStatus === 'deletion_pending' && deletion.deletionGraceEndsAt ? (
-          <Alert tone="warning" title="Account deletion pending">
-            Your account will be deleted on {formatDate(deletion.deletionGraceEndsAt)}. You can cancel until then.
+          <Alert tone="warning" title={t('privacy.pendingTitle')}>
+            {t('privacy.pendingText', { date: formatDate(deletion.deletionGraceEndsAt) })}
             <div style={{ marginTop: 'var(--space-3)' }}>
               <Button variant="secondary" loading={cancelPending} onClick={handleCancelDeletion}>
-                Cancel deletion
+                {t('privacy.cancelDeletion')}
               </Button>
             </div>
           </Alert>
         ) : (
           <Button variant="danger" onClick={() => setDeletionConfirmOpen(true)}>
-            Delete my account
+            {t('privacy.deleteAccount')}
           </Button>
         )}
       </section>
 
       <ConfirmDialog
         open={deletionConfirmOpen}
-        title="Delete your account?"
-        description="Your account will enter a grace period, then your personal data will be permanently anonymized. This can't be undone once that happens."
-        confirmLabel="Delete my account"
+        title={t('privacy.confirmTitle')}
+        description={t('privacy.confirmDescription')}
+        confirmLabel={t('privacy.deleteAccount')}
         tone="danger"
         pending={deletionPending}
         onConfirm={handleDeletionConfirmed}

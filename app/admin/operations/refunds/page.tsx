@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Badge, Button, Card, ConfirmDialog, ErrorState, Skeleton, Table } from '@/components';
 import type { TableColumn } from '@/components';
+import { useLocales } from '@/app/_components/useLocales';
+import { formatMoney as formatLocaleMoney } from '@/lib/i18n/format';
 import type { RefundDto } from '@/lib/types/refunds';
 import styles from '../../admin.module.css';
 
@@ -49,7 +51,12 @@ export default function AdminRefundsPage() {
 
   const [bookingId, setBookingId] = useState('');
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('PKR');
+  // Spec 042 §3.9 (X-10): the filter starts at the configured market default from L1, never a literal.
+  const [currency, setCurrency] = useState('');
+  const { platformCurrencyCode } = useLocales();
+  useEffect(() => {
+    if (platformCurrencyCode) setCurrency((current) => current || platformCurrencyCode);
+  }, [platformCurrencyCode]);
   const [reason, setReason] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
@@ -197,10 +204,7 @@ const STATUS_LABELS: Record<string, string> = {
   failed: 'Failed',
 };
 
+/** Spec 042 X-10/X-11: the shared formatter; admin screens stay English. A typed non-integer shows as 0. */
 function formatMoney(amountMinorUnits: number, currencyCode: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(amountMinorUnits / 100);
-  } catch {
-    return `${currencyCode} ${(amountMinorUnits / 100).toFixed(2)}`;
-  }
+  return formatLocaleMoney(Number.isSafeInteger(amountMinorUnits) ? amountMinorUnits : 0, currencyCode, 'en');
 }

@@ -4,6 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Card, EmptyState, ErrorState, Icon, IntentChip, ListRow, ResultCard, SearchBar, Select, Skeleton } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import { useLocales } from '@/app/_components/useLocales';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatMoney } from '@/lib/i18n/format';
 import type { AutocompleteSuggestionDto, SearchIntentDto, SearchResultDto, SearchSort } from '@/lib/types/search';
 import styles from './search.module.css';
 
@@ -78,11 +82,11 @@ function buildQueryString(filters: Filters, page: { limit: number; offset: numbe
 
 const PAGE_LIMIT = 20;
 
-const SORT_OPTIONS: { value: SearchSort; label: string }[] = [
-  { value: 'relevance', label: 'Relevance' },
-  { value: 'distance', label: 'Distance' },
-  { value: 'price_asc', label: 'Price: low to high' },
-  { value: 'price_desc', label: 'Price: high to low' },
+const SORT_OPTIONS: { value: SearchSort; label: MessageKey }[] = [
+  { value: 'relevance', label: 'search.sort.relevance' },
+  { value: 'distance', label: 'search.sort.distance' },
+  { value: 'price_asc', label: 'search.sort.price_asc' },
+  { value: 'price_desc', label: 'search.sort.price_desc' },
 ];
 
 /**
@@ -94,6 +98,10 @@ const SORT_OPTIONS: { value: SearchSort; label: string }[] = [
  * logo/header of its own.
  */
 export default function SearchPage() {
+  // Spec 042: platform text is translated; the typed query is sent to /search and /search/interpret
+  // exactly as entered, in any script and any UI locale (AC-2).
+  const { locale, t, errorText } = useLocale();
+  const { platformCurrencyCode } = useLocales();
   const urlParams = useSearchParams();
   const isMobile = useIsMobile();
 
@@ -122,7 +130,7 @@ export default function SearchPage() {
 
     if (!res.ok) {
       setStatus('error');
-      setError(res.error?.message ?? "We couldn't load results. Your filters are saved.");
+      setError(errorText(res.error?.code, res.error?.message, t('search.loadFailed')));
       setLoadingMore(false);
       return;
     }
@@ -139,7 +147,7 @@ export default function SearchPage() {
         body: JSON.stringify({ q: nextFilters.q, serviceId: nextFilters.serviceId, categoryId: nextFilters.categoryId }),
       }).catch(() => {});
     }
-  }, []);
+  }, [errorText, t]);
 
   const handleSearch = useCallback(
     async (text: string) => {
@@ -274,22 +282,31 @@ export default function SearchPage() {
   }
 
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
-  if (filters.serviceId) chips.push({ key: 'serviceId', label: intent?.serviceNameRaw ?? 'Service filter', onRemove: removeServiceFilter });
-  if (intent?.area) chips.push({ key: 'area', label: `Near ${intent.area}`, onRemove: removeAreaFilter });
-  if (intent?.date) chips.push({ key: 'date', label: `Date: ${intent.date}`, onRemove: removeDateChip });
+  if (filters.serviceId) chips.push({ key: 'serviceId', label: intent?.serviceNameRaw ?? t('search.serviceFilter'), onRemove: removeServiceFilter });
+  if (intent?.area) chips.push({ key: 'area', label: t('search.near', { area: intent.area }), onRemove: removeAreaFilter });
+  if (intent?.date) chips.push({ key: 'date', label: t('search.date', { date: intent.date }), onRemove: removeDateChip });
   if (filters.budgetMaxMinorUnits !== undefined) {
-    chips.push({ key: 'budget', label: `Budget <= ${filters.budgetMaxMinorUnits / 100}`, onRemove: adjustBudget });
+    // Spec 042 AC-3: the budget is money, so it is formatted in its own currency — the interpreted intent's
+    // `currencyCode`, else the market default from L1 (§3.9). Until either is known no amount is guessed.
+    const budgetCurrency = intent?.currencyCode ?? platformCurrencyCode;
+    chips.push({
+      key: 'budget',
+      label: budgetCurrency
+        ? t('search.budget', { amount: formatMoney(filters.budgetMaxMinorUnits, budgetCurrency, locale) })
+        : t('search.budgetUnpriced'),
+      onRemove: adjustBudget,
+    });
   }
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Search</h1>
+      <h1 className={styles.title}>{t('search.title')}</h1>
 
       <SearchBar value={queryText} onChange={setQueryText} onSubmit={handleSearch} loading={status === 'loading'} />
 
       {suggestions.length > 0 ? (
         <Card elevation="flat" padding={0} style={{ overflow: 'hidden' }}>
-          <ul aria-label="Search suggestions" className={styles.suggestions}>
+          <ul aria-label={t('search.suggestions')} className={styles.suggestions}>
             {suggestions.map((s, i) => (
               <li key={`${s.type}-${s.label}-${i}`}>
                 <ListRow
@@ -310,7 +327,7 @@ export default function SearchPage() {
 
       <div className={styles.controlsRow}>
         <label htmlFor="search-sort" className={styles.controlLabel}>
-          Sort
+          {t('search.sortLabel')}
         </label>
         <div className={styles.sortSelect}>
           <Select
@@ -318,7 +335,7 @@ export default function SearchPage() {
             size="sm"
             value={filters.sort ?? 'relevance'}
             onChange={(e) => changeSort(e.target.value as SearchSort)}
-            options={SORT_OPTIONS}
+            options={SORT_OPTIONS.map((option) => ({ value: option.value, label: t(option.label) }))}
           />
         </div>
       </div>
@@ -334,10 +351,7 @@ export default function SearchPage() {
       {intent && !interpretFailed ? (
         <p className={styles.aiNote} role="note">
           <Icon name="sparkles" size="sm" color="var(--ai-accent)" style={{ marginTop: 2 }} />
-          <span>
-            These filters were suggested by AI interpretation of your search — always shown as suggestions, never as facts. Results
-            themselves always come from the real Apuriva catalog.
-          </span>
+          <span>{t('search.aiNote')}</span>
         </p>
       ) : null}
 
@@ -354,29 +368,29 @@ export default function SearchPage() {
       ) : results.length === 0 ? (
         <EmptyState
           icon="search"
-          title="No results found"
-          description="Try expanding your search area, adjusting your budget, or browsing nearby services."
-          suggestions={['Expand your search area', 'Adjust your budget', 'Browse nearby services']}
+          title={t('search.emptyTitle')}
+          description={t('search.emptyDescription')}
+          suggestions={[t('search.suggestExpand'), t('search.suggestBudget'), t('search.suggestBrowse')]}
           action={
             <div className={styles.emptyActions}>
               {filters.radiusKm !== undefined ? (
                 <Button variant="secondary" onClick={expandArea}>
-                  Expand search area
+                  {t('search.expand')}
                 </Button>
               ) : null}
               {filters.budgetMaxMinorUnits !== undefined ? (
                 <Button variant="secondary" onClick={adjustBudget}>
-                  Adjust budget
+                  {t('search.adjustBudget')}
                 </Button>
               ) : null}
               <Link href="/explore">
-                <Button variant="secondary">Browse nearby</Button>
+                <Button variant="secondary">{t('search.browseNearby')}</Button>
               </Link>
               {/* Spec 015 (request creation) isn't implemented yet — an honest placeholder rather
                * than a broken/fabricated link, the same pattern app/explore/[category]/page.tsx
                * already uses for its own out-of-scope dependencies. */}
-              <Button variant="primary" disabled title="Coming soon">
-                Post a request
+              <Button variant="primary" disabled title={t('search.comingSoon')}>
+                {t('search.postRequest')}
               </Button>
             </div>
           }
@@ -398,13 +412,17 @@ export default function SearchPage() {
                 disabled={pageInfo.offset === 0}
                 onClick={() => runSearch(filters, Math.max(0, pageInfo.offset - pageInfo.limit), false)}
               >
-                Previous
+                {t('search.previous')}
               </Button>
               <span className={styles.pageCount} data-numeric>
-                {pageInfo.offset + 1}-{Math.min(pageInfo.offset + pageInfo.limit, pageInfo.total)} of {pageInfo.total}
+                {t('search.pageCount', {
+                  from: pageInfo.offset + 1,
+                  to: Math.min(pageInfo.offset + pageInfo.limit, pageInfo.total),
+                  total: pageInfo.total,
+                })}
               </span>
               <Button variant="secondary" disabled={pageInfo.nextOffset === null} onClick={() => runSearch(filters, pageInfo.nextOffset ?? 0, false)}>
-                Next
+                {t('search.next')}
               </Button>
             </div>
           )}

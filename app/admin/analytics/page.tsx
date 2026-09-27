@@ -20,6 +20,7 @@ import type {
   SupplyDemandReportDto,
   SupplyDemandRowDto,
 } from '@/lib/types/analytics';
+import { formatMoney as formatLocaleMoney, formatNumber as formatLocaleNumber } from '@/lib/i18n/format';
 import styles from '../admin.module.css';
 
 const DAY_MS = 86_400_000;
@@ -59,12 +60,9 @@ function rangeQuery(range: DateRange): string {
   return `from=${range.from}&to=${toExclusive}`;
 }
 
+/** Spec 042 X-11: the shared locale formatters. Admin screens stay English (§5.1), so always `'en'`. */
 function formatMoney(minorUnits: number, currencyCode: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(minorUnits / 100);
-  } catch {
-    return `${currencyCode} ${(minorUnits / 100).toFixed(2)}`;
-  }
+  return formatLocaleMoney(minorUnits, currencyCode, 'en');
 }
 
 function formatPercent(value: number | null): string {
@@ -72,7 +70,7 @@ function formatPercent(value: number | null): string {
 }
 
 function formatNumber(value: number | null): string {
-  return value === null ? '—' : value.toLocaleString();
+  return value === null ? '—' : formatLocaleNumber(value, 'en');
 }
 
 /**
@@ -211,13 +209,13 @@ export default function AdminAnalyticsPage() {
       align: 'end',
       render: (r) => formatMoney(r.providerNetMinorUnits, r.currencyCode),
     },
-    { key: 'lineCount', header: 'Lines', numeric: true, align: 'end', render: (r) => r.lineCount.toLocaleString() },
+    { key: 'lineCount', header: 'Lines', numeric: true, align: 'end', render: (r) => formatLocaleNumber(r.lineCount, 'en') },
   ];
 
   const supplyColumns: TableColumn<SupplyDemandRowDto>[] = [
     { key: 'serviceName', header: 'Service', render: (r) => r.serviceName },
-    { key: 'demand', header: 'Requests', numeric: true, align: 'end', render: (r) => r.demand.toLocaleString() },
-    { key: 'supply', header: 'Active providers', numeric: true, align: 'end', render: (r) => r.supply.toLocaleString() },
+    { key: 'demand', header: 'Requests', numeric: true, align: 'end', render: (r) => formatLocaleNumber(r.demand, 'en') },
+    { key: 'supply', header: 'Active providers', numeric: true, align: 'end', render: (r) => formatLocaleNumber(r.supply, 'en') },
     {
       key: 'demandPerProvider',
       header: 'Requests per provider',
@@ -229,7 +227,7 @@ export default function AdminAnalyticsPage() {
 
   const providerColumns: TableColumn<ProviderPerformanceDto>[] = [
     { key: 'providerProfileId', header: 'Provider profile', render: (r) => r.providerProfileId },
-    { key: 'notifications', header: 'Notifications', numeric: true, align: 'end', render: (r) => r.notifications.toLocaleString() },
+    { key: 'notifications', header: 'Notifications', numeric: true, align: 'end', render: (r) => formatLocaleNumber(r.notifications, 'en') },
     { key: 'exposureShare', header: 'Exposure share', numeric: true, align: 'end', render: (r) => formatPercent(r.exposureShare) },
     {
       key: 'responseTimeMinutes',
@@ -250,8 +248,8 @@ export default function AdminAnalyticsPage() {
 
   const trendColumns: TableColumn<ServiceTrendRowDto>[] = [
     { key: 'serviceName', header: 'Service', render: (r) => r.serviceName },
-    { key: 'currentRequests', header: 'This period', numeric: true, align: 'end', render: (r) => r.currentRequests.toLocaleString() },
-    { key: 'previousRequests', header: 'Previous period', numeric: true, align: 'end', render: (r) => r.previousRequests.toLocaleString() },
+    { key: 'currentRequests', header: 'This period', numeric: true, align: 'end', render: (r) => formatLocaleNumber(r.currentRequests, 'en') },
+    { key: 'previousRequests', header: 'Previous period', numeric: true, align: 'end', render: (r) => formatLocaleNumber(r.previousRequests, 'en') },
     { key: 'changeRate', header: 'Change', numeric: true, align: 'end', render: (r) => formatPercent(r.changeRate) },
   ];
 
@@ -302,7 +300,7 @@ export default function AdminAnalyticsPage() {
             density="dense"
             columns={[
               { key: 'stage', header: 'Stage', render: (s: FunnelReportDto['stages'][number]) => s.stage },
-              { key: 'count', header: 'Count', numeric: true, align: 'end', render: (s) => s.count.toLocaleString() },
+              { key: 'count', header: 'Count', numeric: true, align: 'end', render: (s) => formatLocaleNumber(s.count, 'en') },
               {
                 key: 'conversion',
                 header: 'vs previous stage',
@@ -394,14 +392,14 @@ export default function AdminAnalyticsPage() {
       >
         {(d) => (
           <div style={statGrid}>
-            <StatBlock icon="bell" label="Notifications" value={d.notifications.toLocaleString()} />
+            <StatBlock icon="bell" label="Notifications" value={formatLocaleNumber(d.notifications, 'en')} />
             <StatBlock
               icon="sparkles"
               label="New-provider boosted share"
               value={formatPercent(d.boostedShare)}
-              hint={`Configured cap ${formatPercent(d.configuredExplorationCap)} · ${d.boostedNotifications.toLocaleString()} boosted`}
+              hint={`Configured cap ${formatPercent(d.configuredExplorationCap)} · ${formatLocaleNumber(d.boostedNotifications, 'en')} boosted`}
             />
-            <StatBlock icon="users" label="Providers notified" value={d.distinctProvidersNotified.toLocaleString()} />
+            <StatBlock icon="users" label="Providers notified" value={formatLocaleNumber(d.distinctProvidersNotified, 'en')} />
             <StatBlock
               icon="trending-up"
               label="Top 10% providers' share"
@@ -422,9 +420,9 @@ export default function AdminAnalyticsPage() {
       >
         {(d) => (
           <div style={statGrid}>
-            <StatBlock icon="users" label="Active before" value={d.previousActiveCustomers.toLocaleString()} />
-            <StatBlock icon="users" label="Active this period" value={d.currentActiveCustomers.toLocaleString()} />
-            <StatBlock icon="badge-check" label="Retained" value={d.retainedCustomers.toLocaleString()} />
+            <StatBlock icon="users" label="Active before" value={formatLocaleNumber(d.previousActiveCustomers, 'en')} />
+            <StatBlock icon="users" label="Active this period" value={formatLocaleNumber(d.currentActiveCustomers, 'en')} />
+            <StatBlock icon="badge-check" label="Retained" value={formatLocaleNumber(d.retainedCustomers, 'en')} />
             <StatBlock icon="trending-up" label="Retention rate" value={formatPercent(d.retentionRate)} />
           </div>
         )}
@@ -451,8 +449,8 @@ export default function AdminAnalyticsPage() {
       >
         {(d) => (
           <div style={statGrid}>
-            <StatBlock icon="trending-up" label="Requests" value={d.totalRequests.toLocaleString()} />
-            <StatBlock icon="sparkles" label="Tokens" value={d.totalTokens.toLocaleString()} />
+            <StatBlock icon="trending-up" label="Requests" value={formatLocaleNumber(d.totalRequests, 'en')} />
+            <StatBlock icon="sparkles" label="Tokens" value={formatLocaleNumber(d.totalTokens, 'en')} />
             <StatBlock icon="wallet" label="Estimated cost" value={formatMoney(d.estimatedCostMinorUnits, d.currencyCode)} />
             <StatBlock
               icon="zap"

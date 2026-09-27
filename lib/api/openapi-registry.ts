@@ -1602,4 +1602,17 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Client-readable flags for the running environment (guest or signed-in); never a developer flag; no-store',
     tags: ['feature-flags'],
   },
+  // Spec 042 §3.11 (X-16).
+  {
+    method: 'GET',
+    path: '/locales',
+    summary: "Available UI locales, the caller's resolved locale and the platform market currency (guest or signed-in); no-store",
+    tags: ['i18n'],
+  },
+  {
+    method: 'PATCH',
+    path: '/users/me/locale',
+    summary: "Save (or clear with null) the caller's UI locale; sets the apuriva_locale cookie",
+    tags: ['i18n'],
+  },
 ];

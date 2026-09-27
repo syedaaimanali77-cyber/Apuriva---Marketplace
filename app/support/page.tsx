@@ -16,18 +16,22 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button, Card, EmptyState, ErrorState, ListRow, Skeleton, Textarea } from '@/components';
 import { apiFetch, mutateHeaders } from '@/app/requests/api-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatDate } from '@/lib/i18n/format';
 import type { SupportAssistantAnswerDto, SupportTicketSummaryDto } from '@/lib/types/support';
 import styles from './support.module.css';
 
-const STATUS_LABELS: Record<string, string> = {
-  open: 'Open',
-  assigned: 'With a support admin',
-  awaiting_user: 'Waiting for your reply',
-  resolved: 'Resolved',
-  closed: 'Closed',
+const STATUS_LABELS: Record<string, MessageKey> = {
+  open: 'support.status.open',
+  assigned: 'support.status.assigned',
+  awaiting_user: 'support.status.awaiting_user',
+  resolved: 'support.status.resolved',
+  closed: 'support.status.closed',
 };
 
 export default function SupportHomePage() {
+  const { locale, t } = useLocale();
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<SupportAssistantAnswerDto | null>(null);
   const [asking, setAsking] = useState(false);
@@ -41,10 +45,10 @@ export default function SupportHomePage() {
       setTickets(result.data);
       setListError(null);
     } else {
-      setListError('We could not load your past requests.');
+      setListError(t('support.home.listFailed'));
       setTickets([]);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadTickets();
@@ -67,16 +71,13 @@ export default function SupportHomePage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Get help</h1>
-      <p className={styles.body}>
-        Ask a question and we will try to answer it straight away. You can always talk to a person
-        instead.
-      </p>
+      <h1 className={styles.title}>{t('support.home.title')}</h1>
+      <p className={styles.body}>{t('support.home.intro')}</p>
 
       <Card>
         <div className={styles.assistant}>
           <label className={styles.label} htmlFor="support-question">
-            What do you need help with?
+            {t('support.home.question')}
           </label>
           <Textarea
             id="support-question"
@@ -84,11 +85,11 @@ export default function SupportHomePage() {
             onChange={(event) => setQuestion(event.target.value)}
             rows={3}
             maxLength={2000}
-            placeholder="For example: how do I cancel a booking?"
+            placeholder={t('support.home.placeholder')}
           />
           <div className={styles.row}>
             <Button onClick={ask} disabled={asking || question.trim().length === 0}>
-              {asking ? 'Asking…' : 'Ask'}
+              {asking ? t('support.home.asking') : t('support.home.ask')}
             </Button>
           </div>
 
@@ -99,9 +100,7 @@ export default function SupportHomePage() {
               <div className={styles.assistantAnswer}>{answer.answer}</div>
             ) : null}
             {!asking && answer && !answer.available ? (
-              <p className={styles.help}>
-                We could not answer that automatically just now. A person can help you instead.
-              </p>
+              <p className={styles.help}>{t('support.home.cannotAnswer')}</p>
             ) : null}
           </div>
         </div>
@@ -113,19 +112,19 @@ export default function SupportHomePage() {
       */}
       <div className={styles.escalation}>
         <Link href="/support/new">
-          <Button variant="primary">Talk to a human</Button>
+          <Button variant="primary">{t('support.home.human')}</Button>
         </Link>
-        <span className={styles.help}>A support admin will reply in your ticket.</span>
+        <span className={styles.help}>{t('support.home.humanHint')}</span>
       </div>
 
-      <h2 className={styles.sectionTitle}>Your past requests</h2>
-      {listError ? <ErrorState title="Something went wrong" description={listError} /> : null}
+      <h2 className={styles.sectionTitle}>{t('support.home.past')}</h2>
+      {listError ? <ErrorState title={t('common.somethingWentWrong')} description={listError} /> : null}
       {tickets === null ? (
         <Skeleton />
       ) : tickets.length === 0 ? (
         <EmptyState
-          title="You have not contacted support yet"
-          description="When you do, your requests and their replies will appear here."
+          title={t('support.home.emptyTitle')}
+          description={t('support.home.emptyDescription')}
         />
       ) : (
         <div className={styles.ticketList}>
@@ -133,7 +132,10 @@ export default function SupportHomePage() {
             <Link key={ticket.id} href={`/support/tickets/${ticket.id}`}>
               <ListRow
                 title={ticket.subject}
-                subtitle={`${STATUS_LABELS[ticket.status] ?? ticket.status} · ${new Date(ticket.createdAt).toLocaleDateString()}`}
+                subtitle={t('support.home.ticketMeta', {
+                  status: STATUS_LABELS[ticket.status] ? t(STATUS_LABELS[ticket.status]!) : ticket.status,
+                  date: formatDate(ticket.createdAt, locale),
+                })}
               />
             </Link>
           ))}

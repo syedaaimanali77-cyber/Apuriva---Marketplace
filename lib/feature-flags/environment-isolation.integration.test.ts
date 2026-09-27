@@ -29,10 +29,10 @@ describe.skipIf(!dbReachable)('environment isolation (spec 041 AC-6)', { timeout
     await setStoredFlag(KEY, 'production', true);
     process.env.APP_ENV = 'staging';
     expect(await isFeatureEnabled(KEY)).toBe(false);
-    expect(await resolveClientFlags()).toEqual({ [KEY]: false });
+    expect(await resolveClientFlags()).toEqual({ [KEY]: false, 'urdu-locale': false }); // spec 042 X-15: seeded off
     process.env.APP_ENV = 'production';
     expect(await isFeatureEnabled(KEY)).toBe(true);
-    expect(await resolveClientFlags()).toEqual({ [KEY]: true });
+    expect(await resolveClientFlags()).toEqual({ [KEY]: true, 'urdu-locale': false });
     process.env.APP_ENV = 'staging';
   });
 

@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { OfferTimer } from '@/components';
+import { formatTime } from '@/lib/i18n/format';
 import { countdownSecondsRemaining, OFFER_WINDOW_MS } from '@/lib/offers/timer';
+import { useLocale } from './LocaleProvider';
 import styles from './offer-countdown.module.css';
 
 export interface OfferCountdownProps {
@@ -25,6 +27,7 @@ export interface OfferCountdownProps {
  * a static "expires at" text is exposed instead, and only reaching 0 is announced.
  */
 export function OfferCountdown({ expiresAt, serverNow, onElapsed, size = 'sm' }: OfferCountdownProps) {
+  const { locale, t } = useLocale();
   const fetchedAt = useRef(0);
   const firedFor = useRef<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -51,9 +54,11 @@ export function OfferCountdown({ expiresAt, serverNow, onElapsed, size = 'sm' }:
       <div aria-hidden="true">
         <OfferTimer secondsRemaining={seconds} totalSeconds={OFFER_WINDOW_MS / 1000} size={size} />
       </div>
-      <span className={styles.visuallyHidden}>Offer window ends at {new Date(expiresAt).toLocaleTimeString()}</span>
+      <span className={styles.visuallyHidden}>
+        {t('shared.offerCountdown.endsAt', { time: formatTime(expiresAt, locale, { timeStyle: 'medium' }) })}
+      </span>
       <span role="status" aria-live="polite" className={styles.visuallyHidden}>
-        {seconds === 0 ? 'Offer time is up — checking the latest status.' : ''}
+        {seconds === 0 ? t('shared.offerCountdown.elapsed') : ''}
       </span>
     </div>
   );

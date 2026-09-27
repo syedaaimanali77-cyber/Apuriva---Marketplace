@@ -2,30 +2,25 @@
 
 import { useRef } from 'react';
 import Link from 'next/link';
-import { Alert, Badge, Button, ErrorState, Icon, Skeleton } from '@/components';
+import { Alert, Badge, Button, DirectionalIcon, ErrorState, Icon, Skeleton } from '@/components';
+import { LocaleSwitcher } from '@/app/_components/LocaleSwitcher';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import { branding } from '@/lib/config/branding';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
 import type { ActiveMode } from '@/lib/types/users';
 import { useAccountUser } from './_components/useAccountUser';
 import { ModeIndicator } from './_components/ModeIndicator';
 import styles from './account.module.css';
 
-const MODE_COPY: Record<ActiveMode, { title: string; description: string; icon: string }> = {
-  customer: {
-    title: 'Customer Mode',
-    description: "You're discovering, requesting and booking local services.",
-    icon: 'user',
-  },
-  provider: {
-    title: 'Service Provider Mode',
-    description: "You're operating as a service provider — responding to requests and managing your work.",
-    icon: 'briefcase',
-  },
+const MODE_COPY: Record<ActiveMode, { title: MessageKey; description: MessageKey; icon: string }> = {
+  customer: { title: 'account.mode.customer.title', description: 'account.mode.customer.description', icon: 'user' },
+  provider: { title: 'account.mode.provider.title', description: 'account.mode.provider.description', icon: 'briefcase' },
 };
 
 interface SettingsDestination {
   id: string;
-  title: string;
-  description: string;
+  title: MessageKey;
+  description: MessageKey;
   icon: string;
   /** Absent for a destination no page exists for yet — rendered as a non-interactive row. */
   href?: string;
@@ -34,27 +29,37 @@ interface SettingsDestination {
 // Profile and Preferences have no page yet (no route, no spec); they're listed honestly as
 // "Coming soon" rows rather than links that would 404.
 const SETTINGS_DESTINATIONS: SettingsDestination[] = [
-  { id: 'profile', title: 'Profile', description: 'Personal details for your account', icon: 'user' },
-  { id: 'preferences', title: 'Preferences', description: 'How your account behaves and what you see', icon: 'settings' },
+  { id: 'profile', title: 'account.destinations.profile.title', description: 'account.destinations.profile.description', icon: 'user' },
+  {
+    id: 'preferences',
+    title: 'account.destinations.preferences.title',
+    description: 'account.destinations.preferences.description',
+    icon: 'settings',
+  },
   {
     id: 'addresses',
-    title: 'Addresses',
-    description: 'Saved places for faster requests and bookings',
+    title: 'account.destinations.addresses.title',
+    description: 'account.destinations.addresses.description',
     icon: 'map-pin',
     href: '/account/addresses',
   },
   // Spec 026 §5 — the notification centre and preferences entry point (no header bell; see spec §7).
   {
     id: 'notifications',
-    title: 'Notifications',
-    description: 'Your notifications, and how and when we contact you',
+    title: 'account.destinations.notifications.title',
+    description: 'account.destinations.notifications.description',
     icon: 'bell',
     href: '/account/notifications',
   },
 ];
 
 // Exactly the sections app/account/privacy-security/page.tsx already renders — nothing invented.
-const SECURITY_FEATURES = ['Active sessions', 'Two-factor authentication', 'Data export', 'Account deletion'];
+const SECURITY_FEATURES: MessageKey[] = [
+  'account.security.sessions',
+  'account.security.twoFactor',
+  'account.security.export',
+  'account.security.deletion',
+];
 
 /**
  * Spec 014 §2 AC-4/AC-5 — the shared "Account" nav destination for both customer and provider
@@ -71,6 +76,7 @@ const SECURITY_FEATURES = ['Active sessions', 'Two-factor authentication', 'Data
  */
 export default function AccountPage() {
   const { status, user, pending, error, announcement, switchMode, becomeProvider, logout, retry } = useAccountUser();
+  const { t } = useLocale();
   // Button isn't built with forwardRef — reached via this wrapping span, the same way AccountMenu
   // reaches its IconButton trigger.
   const switchWrapRef = useRef<HTMLDivElement>(null);
@@ -92,7 +98,7 @@ export default function AccountPage() {
   if (status === 'unavailable') {
     return (
       <main className={styles.page}>
-        <ErrorState description="We could not reach the server." onRetry={retry} />
+        <ErrorState description={t('account.unreachable')} onRetry={retry} />
       </main>
     );
   }
@@ -106,32 +112,32 @@ export default function AccountPage() {
           </span>
           <div className={styles.guestCopy}>
             <h1 id="guest-heading" className={styles.guestTitle}>
-              Welcome to {branding.appName}
+              {t('account.guest.welcome', { appName: branding.appName })}
             </h1>
-            <p className={styles.guestDescription}>Sign in to manage your account, requests, bookings and preferences.</p>
+            <p className={styles.guestDescription}>{t('account.guest.description')}</p>
           </div>
 
           <div className={styles.guestActions}>
             <Link href="/login" className={`${styles.linkButton} ${styles.linkButtonPrimary}`}>
-              Log in
+              {t('account.guest.logIn')}
             </Link>
             <Link href="/register" className={`${styles.linkButton} ${styles.linkButtonSecondary}`}>
-              Create an account
+              {t('account.guest.register')}
             </Link>
           </div>
 
           <ul className={styles.guestBenefits}>
             <li>
               <Icon name="check" size="sm" />
-              Post requests and compare offers from local providers
+              {t('account.guest.benefitRequests')}
             </li>
             <li>
               <Icon name="check" size="sm" />
-              Book services and keep track of your bookings
+              {t('account.guest.benefitBookings')}
             </li>
             <li>
               <Icon name="check" size="sm" />
-              Save addresses and control your privacy and security
+              {t('account.guest.benefitPrivacy')}
             </li>
           </ul>
         </section>
@@ -159,13 +165,13 @@ export default function AccountPage() {
           <Icon name="user" size="lg" />
         </span>
         <div className={styles.profileBody}>
-          <h1 className={styles.title}>Your account</h1>
-          <p className={styles.subtitle}>Manage how you use the marketplace, your saved places and your security.</p>
+          <h1 className={styles.title}>{t('account.title')}</h1>
+          <p className={styles.subtitle}>{t('account.subtitle')}</p>
           <div className={styles.profileBadges}>
             <ModeIndicator mode={user.activeMode} />
             {user.isAdmin ? (
               <Badge tone="neutral" icon="shield-check">
-                Administrator
+                {t('account.administrator')}
               </Badge>
             ) : null}
           </div>
@@ -178,28 +184,23 @@ export default function AccountPage() {
             <Icon name={mode.icon} size="lg" />
           </span>
           <div className={styles.modeCopy}>
-            <p className={styles.eyebrow}>Active mode</p>
+            <p className={styles.eyebrow}>{t('account.activeMode')}</p>
             <h2 id="active-mode-heading" className={styles.modeTitle}>
-              {mode.title}
+              {t(mode.title)}
             </h2>
-            <p className={styles.modeDescription}>{mode.description}</p>
+            <p className={styles.modeDescription}>{t(mode.description)}</p>
           </div>
         </div>
 
         {user.hasProviderProfile ? (
           <div className={styles.modeSwitch} ref={switchWrapRef}>
             <p className={styles.modeSwitchHint}>
-              {otherMode === 'provider'
-                ? 'Ready to take on work? Switch to manage requests as a provider.'
-                : 'Need a service yourself? Switch back to book as a customer.'}
+              {otherMode === 'provider' ? t('account.toProvider') : t('account.toCustomer')}
             </p>
-            <Button
-              variant="primary"
-              iconRight="arrow-right"
-              loading={pending}
-              onClick={() => switchMode(otherMode)}
-            >
-              Switch to {MODE_COPY[otherMode].title}
+            <Button variant="primary" loading={pending} onClick={() => switchMode(otherMode)}>
+              {t('account.switchTo', { mode: t(MODE_COPY[otherMode].title) })}
+              {/* Spec 042 §5.2: a directional glyph, so it mirrors right-to-left (the DS `iconRight` cannot). */}
+              {pending ? null : <DirectionalIcon name="arrow-right" size="sm" />}
             </Button>
           </div>
         ) : null}
@@ -211,17 +212,14 @@ export default function AccountPage() {
             <Icon name="briefcase" size="lg" />
           </span>
           <div className={styles.opportunityCopy}>
-            <p className={`${styles.eyebrow} ${styles.eyebrowAccent}`}>Earn with your skills</p>
+            <p className={`${styles.eyebrow} ${styles.eyebrowAccent}`}>{t('account.earn')}</p>
             <h2 id="become-provider-heading" className={styles.opportunityTitle}>
-              Become a Service Provider
+              {t('account.becomeTitle')}
             </h2>
-            <p className={styles.opportunityDescription}>
-              Set up a provider profile to start offering your services. You&apos;ll stay in Customer Mode until you choose
-              to switch.
-            </p>
+            <p className={styles.opportunityDescription}>{t('account.becomeDescription')}</p>
           </div>
           <Button variant="primary" loading={pending} onClick={handleBecomeProvider} style={{ flexShrink: 0 }}>
-            Become a Provider
+            {t('account.becomeButton')}
           </Button>
         </section>
       ) : null}
@@ -231,10 +229,14 @@ export default function AccountPage() {
         {announcement}
       </span>
 
-      <nav className={styles.settings} aria-label="Account settings">
+      {/* Spec 042 §5.2: the signed-in language switcher (persists `users.locale`). Renders nothing while only
+          one locale is available, i.e. while `urdu-locale` is off. */}
+      <LocaleSwitcher mode="account" />
+
+      <nav className={styles.settings} aria-label={t('account.settingsNav')}>
         <section className={styles.group} aria-labelledby="settings-heading">
           <h2 id="settings-heading" className={styles.groupTitle}>
-            Account settings
+            {t('account.settingsTitle')}
           </h2>
           <ul className={styles.list}>
             {SETTINGS_DESTINATIONS.map((item) => {
@@ -244,16 +246,16 @@ export default function AccountPage() {
                     <Icon name={item.icon} size="md" />
                   </span>
                   <span className={styles.rowBody}>
-                    <span className={styles.rowTitle}>{item.title}</span>
-                    <span className={styles.rowDescription}>{item.description}</span>
+                    <span className={styles.rowTitle}>{t(item.title)}</span>
+                    <span className={styles.rowDescription}>{t(item.description)}</span>
                   </span>
                   {item.href ? (
                     <span className={styles.rowChevron}>
-                      <Icon name="chevron-right" size="sm" />
+                      <DirectionalIcon name="chevron-right" size="sm" />
                     </span>
                   ) : (
                     <Badge tone="neutral" icon={null} size="sm">
-                      Coming soon
+                      {t('account.comingSoon')}
                     </Badge>
                   )}
                 </>
@@ -275,34 +277,34 @@ export default function AccountPage() {
 
         <section className={styles.group} aria-labelledby="security-heading">
           <h2 id="security-heading" className={styles.groupTitle}>
-            Security
+            {t('account.securityTitle')}
           </h2>
           <Link href="/account/privacy-security" className={`${styles.row} ${styles.securityRow}`}>
             <span className={`${styles.rowIcon} ${styles.securityIcon}`}>
               <Icon name="shield-check" size="md" />
             </span>
             <span className={styles.rowBody}>
-              <span className={styles.rowTitle}>Privacy & Security</span>
-              <span className={styles.rowDescription}>Control where you&apos;re signed in and how your data is handled</span>
+              <span className={styles.rowTitle}>{t('account.privacySecurity')}</span>
+              <span className={styles.rowDescription}>{t('account.privacyDescription')}</span>
               <span className={styles.securityFeatures}>
                 {SECURITY_FEATURES.map((feature) => (
                   <span key={feature} className={styles.securityFeature}>
-                    {feature}
+                    {t(feature)}
                   </span>
                 ))}
               </span>
             </span>
             <span className={styles.rowChevron}>
-              <Icon name="chevron-right" size="sm" />
+              <DirectionalIcon name="chevron-right" size="sm" />
             </span>
           </Link>
         </section>
       </nav>
 
       <footer className={styles.signOut}>
-        <p className={styles.signOutText}>Signed in on this device</p>
+        <p className={styles.signOutText}>{t('account.signedIn')}</p>
         <Button variant="ghost" iconLeft="log-out" loading={pending} onClick={() => logout()}>
-          Log out
+          {t('account.logOut')}
         </Button>
       </footer>
     </main>

@@ -22,7 +22,8 @@ import type {
   NotificationType,
   OutboundChannel,
 } from '@/lib/types/notifications';
-import { renderNotification } from './catalogue';
+import type { Locale } from '@/lib/i18n/config';
+import { isNotificationType, renderNotification } from './catalogue';
 import { marketingMaxPerWindow, marketingWindowDays } from './config';
 import { loadStoredPreferences, promotionsAllowed, resolveOutboundChannels } from './preferences';
 import { queryRows, type Executor } from './sql';
@@ -38,19 +39,43 @@ export interface NotificationRow {
   type: string;
   title: string;
   body: string;
+  /** Spec 042 §3.8: the stored template variables, so a read can re-render the row for its reader. */
+  params: NotificationParams | null;
   read_at: Date | null;
   created_at: Date;
 }
 
-export const NOTIFICATION_COLUMNS = sql`id, category, type, title, body, read_at, created_at`;
+export const NOTIFICATION_COLUMNS = sql`id, category, type, title, body, params, read_at, created_at`;
 
+/**
+ * Spec 042 §3.8 (X-6) — the title/body for `locale`, re-rendered from `type` + stored `params`. A historical
+ * row's plain-string params render as stored. The stored English `title`/`body` (the canonical record) are
+ * used only when the type is no longer in the catalogue, or the stored params can no longer render it.
+ */
+function renderForReader(row: NotificationRow, locale: Locale | undefined): { title: string; body: string } {
+  if (locale === undefined || !isNotificationType(row.type)) return { title: row.title, body: row.body };
+  try {
+    const rendered = renderNotification(row.type, row.params ?? {}, locale);
+    return { title: rendered.title, body: rendered.body };
+  } catch {
+    return { title: row.title, body: row.body };
+  }
+}
+
+/** The row with its STORED canonical English text (export, history, and `notify()` itself). */
 export function toNotificationDto(row: NotificationRow): NotificationDto {
+  return toReaderNotificationDto(row, undefined);
+}
+
+/** Spec 042 §3.8 — the row re-rendered for a reader's `locale` (the inbox). */
+export function toReaderNotificationDto(row: NotificationRow, locale: Locale | undefined): NotificationDto {
+  const { title, body } = renderForReader(row, locale);
   return {
     id: row.id,
     category: row.category as NotificationCategory,
     type: row.type as NotificationType,
-    title: row.title,
-    body: row.body,
+    title,
+    body,
     readAt: row.read_at ? new Date(row.read_at).toISOString() : null,
     createdAt: new Date(row.created_at).toISOString(),
   };
@@ -77,6 +102,7 @@ export async function notify(event: NotificationEventInput): Promise<NotifyResul
   assertEvent(event);
   const params: NotificationParams = event.params ?? {};
   // Throws for an unknown type or a missing declared param — a programming error in the producer.
+  // Rendered in English: the stored title/body are the canonical record for export and history (spec 042 §3.8).
   const rendered = renderNotification(event.type, params);
   const { category } = rendered;
 

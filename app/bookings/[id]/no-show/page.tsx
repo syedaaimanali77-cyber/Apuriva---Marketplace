@@ -6,6 +6,8 @@ import { useParams } from 'next/navigation';
 import { Badge, Button, Card, ErrorState, FormField, Skeleton, Textarea } from '@/components';
 import type { NoShowReportDto, NoShowStatus } from '@/lib/types/no-show';
 import { apiFetch, mutateHeaders } from '../../booking-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
 import styles from '../../bookings.module.css';
 
 /**
@@ -19,29 +21,24 @@ import styles from '../../bookings.module.css';
  *
  * Neither party ever sees the other's statement here — the participant DTO does not carry it.
  */
-const STATUS_COPY: Record<NoShowStatus, { label: string; detail: string }> = {
-  reported: { label: 'Submitted', detail: 'This report has just been submitted.' },
-  awaiting_response: {
-    label: 'Waiting for a response',
-    detail: 'The other party has been asked to respond. Nothing is decided until they do, or their time to respond passes.',
-  },
-  under_review: {
-    label: 'Under review',
-    detail: 'Our team is reviewing this. No conclusion has been reached and no charge has been applied.',
-  },
-  resolved: { label: 'Resolved', detail: 'Our team has reviewed and closed this report.' },
-  withdrawn: { label: 'Withdrawn', detail: 'This report was withdrawn.' },
+const STATUS_COPY: Record<NoShowStatus, { label: MessageKey; detail: MessageKey }> = {
+  reported: { label: 'noShow.status.reported.label', detail: 'noShow.status.reported.detail' },
+  awaiting_response: { label: 'noShow.status.awaiting_response.label', detail: 'noShow.status.awaiting_response.detail' },
+  under_review: { label: 'noShow.status.under_review.label', detail: 'noShow.status.under_review.detail' },
+  resolved: { label: 'noShow.status.resolved.label', detail: 'noShow.status.resolved.detail' },
+  withdrawn: { label: 'noShow.status.withdrawn.label', detail: 'noShow.status.withdrawn.detail' },
 };
 
-const OUTCOME_COPY: Record<string, string> = {
-  no_show_confirmed_customer: 'Reviewed: the customer did not attend.',
-  no_show_confirmed_provider: 'Reviewed: the provider did not attend.',
-  no_fault: 'Reviewed: neither party was found at fault. The booking was cancelled and fully refunded.',
-  inconclusive: 'Reviewed: there was not enough information to reach a conclusion. Nothing was charged.',
-  escalated_to_dispute: 'Reviewed and escalated for formal dispute resolution.',
+const OUTCOME_COPY: Record<string, MessageKey> = {
+  no_show_confirmed_customer: 'noShow.outcome.no_show_confirmed_customer',
+  no_show_confirmed_provider: 'noShow.outcome.no_show_confirmed_provider',
+  no_fault: 'noShow.outcome.no_fault',
+  inconclusive: 'noShow.outcome.inconclusive',
+  escalated_to_dispute: 'noShow.outcome.escalated_to_dispute',
 };
 
 export default function NoShowPage() {
+  const { t, errorText } = useLocale();
   const params = useParams<{ id: string }>();
   const bookingId = params.id;
 
@@ -71,12 +68,12 @@ export default function NoShowPage() {
     });
     setBusy(false);
     if (!response.ok) {
-      setError(response.error?.message ?? 'This report could not be submitted.');
+      setError(errorText(response.error?.code, response.error?.message, t('noShow.reportFailed')));
       return;
     }
     setStatement('');
     await load();
-  }, [bookingId, statement, load]);
+  }, [bookingId, errorText, statement, load, t]);
 
   const respond = useCallback(
     async (reportId: string) => {
@@ -89,13 +86,13 @@ export default function NoShowPage() {
       });
       setBusy(false);
       if (!response.ok) {
-        setError(response.error?.message ?? 'Your response could not be submitted.');
+        setError(errorText(response.error?.code, response.error?.message, t('noShow.respondFailed')));
         return;
       }
       setStatement('');
       await load();
     },
-    [statement, load],
+    [errorText, statement, load, t],
   );
 
   const withdraw = useCallback(
@@ -109,12 +106,12 @@ export default function NoShowPage() {
       });
       setBusy(false);
       if (!response.ok) {
-        setError(response.error?.message ?? 'This report could not be withdrawn.');
+        setError(errorText(response.error?.code, response.error?.message, t('noShow.withdrawFailed')));
         return;
       }
       await load();
     },
-    [load],
+    [errorText, load, t],
   );
 
   if (reports === null) {
@@ -130,25 +127,25 @@ export default function NoShowPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Attendance issue</h1>
+      <h1 className={styles.title}>{t('noShow.title')}</h1>
 
-      {error ? <ErrorState title="Something went wrong" description={error} /> : null}
+      {error ? <ErrorState title={t('common.somethingWentWrong')} description={error} /> : null}
 
       {reports.map((entry) => {
         const copy = STATUS_COPY[entry.status];
         return (
           <section key={entry.id} className={styles.section}>
-            <h2 className={styles.sectionTitle}>{entry.isOwnReport ? 'Your report' : 'Report about this booking'}</h2>
+            <h2 className={styles.sectionTitle}>{entry.isOwnReport ? t('noShow.yourReport') : t('noShow.reportAbout')}</h2>
             <Card>
-              <Badge>{copy.label}</Badge>
-              <p className={styles.hint}>{copy.detail}</p>
+              <Badge>{t(copy.label)}</Badge>
+              <p className={styles.hint}>{t(copy.detail)}</p>
               {entry.status === 'resolved' && entry.outcome ? (
-                <p className={styles.detailValue}>{OUTCOME_COPY[entry.outcome] ?? 'Reviewed and closed.'}</p>
+                <p className={styles.detailValue}>{t(OUTCOME_COPY[entry.outcome] ?? 'noShow.outcome.closed')}</p>
               ) : null}
               {entry.status === 'awaiting_response' && entry.isOwnReport ? (
                 <div className={styles.actions}>
                   <Button variant="ghost" onClick={() => void withdraw(entry.id)} disabled={busy}>
-                    Withdraw report
+                    {t('noShow.withdraw')}
                   </Button>
                 </div>
               ) : null}
@@ -159,12 +156,10 @@ export default function NoShowPage() {
 
       {againstMe && againstMe.status === 'awaiting_response' && !againstMe.responseFiled ? (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Your response</h2>
+          <h2 className={styles.sectionTitle}>{t('noShow.yourResponse')}</h2>
           <Card>
-            <p className={styles.hint}>
-              Tell us what happened from your side. Your response goes to our review team, not to the other party.
-            </p>
-            <FormField label="What happened?" htmlFor="no-show-response-statement">
+            <p className={styles.hint}>{t('noShow.responseHint')}</p>
+            <FormField label={t('noShow.whatHappened')} htmlFor="no-show-response-statement">
               <Textarea
                 id="no-show-response-statement"
                 value={statement}
@@ -174,7 +169,7 @@ export default function NoShowPage() {
             </FormField>
             <div className={styles.actions}>
               <Button onClick={() => void respond(againstMe.id)} disabled={busy}>
-                Send response
+                {t('noShow.sendResponse')}
               </Button>
             </div>
           </Card>
@@ -183,13 +178,10 @@ export default function NoShowPage() {
 
       {!ownReport ? (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Report that the other party did not attend</h2>
+          <h2 className={styles.sectionTitle}>{t('noShow.reportTitle')}</h2>
           <Card>
-            <p className={styles.hint}>
-              The other party will be asked to respond, and our team decides the outcome. Reporting does not by itself
-              charge anyone or cancel the booking.
-            </p>
-            <FormField label="What happened?" htmlFor="no-show-report-statement" optional>
+            <p className={styles.hint}>{t('noShow.reportHint')}</p>
+            <FormField label={t('noShow.whatHappened')} htmlFor="no-show-report-statement" optional>
               <Textarea
                 id="no-show-report-statement"
                 value={statement}
@@ -199,7 +191,7 @@ export default function NoShowPage() {
             </FormField>
             <div className={styles.actions}>
               <Button onClick={() => void report()} disabled={busy}>
-                Submit report
+                {t('noShow.submit')}
               </Button>
             </div>
           </Card>
@@ -207,7 +199,7 @@ export default function NoShowPage() {
       ) : null}
 
       <Link className={styles.eyebrowLink} href={`/bookings/${bookingId}`}>
-        Back to booking
+        {t('noShow.back')}
       </Link>
     </main>
   );

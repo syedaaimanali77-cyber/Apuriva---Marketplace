@@ -82,7 +82,27 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
-export type NotificationParams = Record<string, string | number | null>;
+/**
+ * Spec 042 §3.8 (X-6) — a money param is TYPED, never pre-formatted English, so each reader's locale
+ * formats it. Rows written before spec 042 carry plain strings, which still render as stored.
+ */
+export interface NotificationMoneyParam {
+  amountMinorUnits: number;
+  currencyCode: string;
+}
+
+export type NotificationParamValue = string | number | null | NotificationMoneyParam;
+
+export type NotificationParams = Record<string, NotificationParamValue>;
+
+export function isMoneyParam(value: unknown): value is NotificationMoneyParam {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    Number.isSafeInteger((value as NotificationMoneyParam).amountMinorUnits) &&
+    typeof (value as NotificationMoneyParam).currencyCode === 'string'
+  );
+}
 
 /** What a producing spec hands over — four fields and nothing else (§3). */
 export interface NotificationEventInput {

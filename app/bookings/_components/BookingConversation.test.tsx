@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BookingConversation } from './BookingConversation';
 import type { ConversationDto, MessageDto } from '@/lib/types/messaging';
+import { en } from '@/lib/i18n/dictionaries/en';
 
 // The first render waits on a summary fetch and a history fetch; under full-suite CPU contention that can
 // exceed Testing Library's 1s default (the same allowance app/account/privacy-security/page.test.tsx makes).
@@ -198,7 +199,8 @@ describe('BookingConversation (spec 025 §5)', () => {
 
     await user.type(screen.getByLabelText(/Your message/), 'Hello');
     await user.click(screen.getByRole('button', { name: 'Send message' }));
-    expect(await screen.findByText('Network trouble')).toBeInTheDocument();
+    // Spec 042 §3.7: a known stable code renders its dictionary text, not the server's English message.
+    expect(await screen.findByText(en.errors.INTERNAL_ERROR)).toBeInTheDocument();
     expect(screen.getByLabelText(/Your message/)).toHaveValue('Hello');
 
     await user.click(screen.getByRole('button', { name: 'Send message' }));

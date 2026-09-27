@@ -8,13 +8,16 @@ import type { BookingDto } from '@/lib/types/bookings';
 import type { PaymentDto, PriceAdjustmentDto } from '@/lib/types/payments';
 import { apiFetch, mutateHeaders, type ApiErrorBody } from '../../booking-client';
 import { CancellationPolicySection } from '../../_components/CancellationPolicySection';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { formatDateTime, formatMoney as formatLocaleMoney } from '@/lib/i18n/format';
 import styles from './payment.module.css';
 
 type PageStatus = 'loading' | 'error' | 'ready';
 
-/** Master spec §105's exact payment wording. Never softened, never replaced with a guess. */
-const PAYMENT_FAILED_HEADLINE = "Payment wasn't completed.";
-const PAYMENT_FAILED_DETAIL = 'No charge was confirmed.';
+/** Master spec §105's exact payment wording (spec 042: its translations say the same). Never softened, never replaced with a guess. */
+const PAYMENT_FAILED_HEADLINE: MessageKey = 'payment.failedHeadline';
+const PAYMENT_FAILED_DETAIL: MessageKey = 'payment.failedDetail';
 
 /**
  * Spec 021 §5, `/bookings/{id}/payment` — the customer's payment screen.
@@ -33,6 +36,9 @@ const PAYMENT_FAILED_DETAIL = 'No charge was confirmed.';
  * provides the one intentional brand placement.
  */
 export default function BookingPaymentPage() {
+  const { locale, t, errorText } = useLocale();
+  const formatMoney = (amountMinorUnits: number, currencyCode: string) => formatLocaleMoney(amountMinorUnits, currencyCode, locale);
+  const formatInstant = (iso: string) => formatInstantIn(iso, locale);
   const params = useParams<{ id: string }>();
   const bookingId = params.id;
 
@@ -48,7 +54,7 @@ export default function BookingPaymentPage() {
   const load = useCallback(async () => {
     const bookingResult = await apiFetch<BookingDto>(`/api/v1/bookings/${bookingId}`);
     if (!bookingResult.ok || !bookingResult.data) {
-      setLoadError(bookingResult.error?.message ?? 'We could not load this booking.');
+      setLoadError(errorText(bookingResult.error?.code, bookingResult.error?.message, t('payment.loadFailed')));
       setStatus('error');
       return;
     }
@@ -63,7 +69,7 @@ export default function BookingPaymentPage() {
     setAdjustments(adjustmentResult.ok && adjustmentResult.data ? adjustmentResult.data : []);
 
     setStatus('ready');
-  }, [bookingId]);
+  }, [bookingId, errorText, t]);
 
   useEffect(() => {
     void load();
@@ -136,7 +142,7 @@ export default function BookingPaymentPage() {
   if (status === 'error' || !booking) {
     return (
       <main className={styles.page}>
-        <ErrorState title="We couldn't load this payment." description={loadError ?? undefined} onRetry={() => void load()} />
+        <ErrorState title={t('payment.errorTitle')} description={loadError ?? undefined} onRetry={() => void load()} />
       </main>
     );
   }
@@ -149,32 +155,30 @@ export default function BookingPaymentPage() {
       <header className={styles.head}>
         <p className={styles.eyebrow}>
           <Link className={styles.eyebrowLink} href={`/bookings/${booking.id}`}>
-            Back to booking
+            {t('payment.back')}
           </Link>
         </p>
-        <h1 className={styles.title}>Payment</h1>
-        <p className={styles.subtitle}>
-          Your booking is confirmed once payment is confirmed by the payment provider — not before.
-        </p>
+        <h1 className={styles.title}>{t('payment.title')}</h1>
+        <p className={styles.subtitle}>{t('payment.subtitle')}</p>
       </header>
 
       <Card>
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Amount due</h2>
+          <h2 className={styles.sectionTitle}>{t('payment.amountDue')}</h2>
           <div className={styles.summaryRow}>
-            <span className={styles.summaryLabel}>Agreed price</span>
+            <span className={styles.summaryLabel}>{t('payment.agreedPrice')}</span>
             <span className={styles.summaryValue}>{formatMoney(booking.priceAmountMinorUnits, booking.currencyCode)}</span>
           </div>
 
           {payment ? (
             <div className={styles.summaryRow}>
-              <span className={styles.summaryLabel}>Payment status</span>
-              <Badge>{PAYMENT_STATUS_LABELS[payment.status] ?? payment.status}</Badge>
+              <span className={styles.summaryLabel}>{t('payment.paymentStatus')}</span>
+              <Badge>{PAYMENT_STATUS_LABELS[payment.status] ? t(PAYMENT_STATUS_LABELS[payment.status]!) : payment.status}</Badge>
             </div>
           ) : null}
 
           {/* Loading: an explicit progress statement, never an optimistic success. */}
-          {pending ? <p className={styles.status}>Processing payment...</p> : null}
+          {pending ? <p className={styles.status}>{t('payment.processing')}</p> : null}
 
           {/*
             §105's payment pattern owns BOTH recovery actions, so there is exactly one "Try Again"
@@ -184,13 +188,13 @@ export default function BookingPaymentPage() {
           */}
           {failure && !pending ? (
             <ErrorState
-              title={PAYMENT_FAILED_HEADLINE}
-              description={failure.code === 'PAYMENT_FAILED' ? PAYMENT_FAILED_DETAIL : failure.message}
+              title={t(PAYMENT_FAILED_HEADLINE)}
+              description={failure.code === 'PAYMENT_FAILED' ? t(PAYMENT_FAILED_DETAIL) : errorText(failure.code, failure.message)}
               onRetry={() => void pay()}
-              retryLabel="Try Again"
+              retryLabel={t('payment.tryAgain')}
               secondaryAction={
                 <Button variant="secondary" onClick={() => void pay()} disabled={pending}>
-                  Change Payment Method
+                  {t('payment.changeMethod')}
                 </Button>
               }
             />
@@ -200,21 +204,23 @@ export default function BookingPaymentPage() {
             failure ? null : (
               <div className={styles.actions}>
                 <Button onClick={() => void pay()} disabled={pending}>
-                  Pay now
+                  {t('payment.payNow')}
                 </Button>
               </div>
             )
           ) : (
-            <p className={styles.status}>Payment confirmed by the payment provider.</p>
+            <p className={styles.status}>{t('payment.confirmed')}</p>
           )}
 
           {payment?.protectionState ? (
             <p className={styles.protection}>
               {payment.protectionState === 'held'
-                ? `Payment protection is active${payment.protectionWindowEndsAt ? ` until ${formatInstant(payment.protectionWindowEndsAt)}` : ''}.`
+                ? payment.protectionWindowEndsAt
+                  ? t('payment.protectionActiveUntil', { when: formatInstant(payment.protectionWindowEndsAt) })
+                  : t('payment.protectionActive')
                 : payment.protectionState === 'released'
-                  ? 'Payment protection has ended and the provider is due to be paid.'
-                  : 'Payment protection is on hold while this booking is in dispute.'}
+                  ? t('payment.protectionReleased')
+                  : t('payment.protectionDisputed')}
             </p>
           ) : null}
         </section>
@@ -223,12 +229,12 @@ export default function BookingPaymentPage() {
       {adjustments.length > 0 ? (
         <Card>
           <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Price changes</h2>
+            <h2 className={styles.sectionTitle}>{t('payment.priceChanges')}</h2>
             <ul className={styles.adjustmentList}>
               {adjustments.map((adjustment) => (
                 <li key={adjustment.id}>
                   <div className={styles.summaryRow}>
-                    <span className={styles.summaryLabel}>Additional charge</span>
+                    <span className={styles.summaryLabel}>{t('payment.additionalCharge')}</span>
                     <span className={styles.summaryValue}>
                       {formatMoney(adjustment.additionalAmountMinorUnits, adjustment.additionalCurrencyCode)}
                     </span>
@@ -237,20 +243,22 @@ export default function BookingPaymentPage() {
                   {adjustment.status === 'pending_approval' ? (
                     <div className={styles.actions}>
                       <Button onClick={() => setConfirming(adjustment)} disabled={pending}>
-                        Review and approve
+                        {t('payment.reviewApprove')}
                       </Button>
                       <Button variant="secondary" onClick={() => void rejectAdjustment(adjustment)} disabled={pending}>
-                        Decline
+                        {t('payment.decline')}
                       </Button>
                     </div>
                   ) : (
-                    <Badge>{ADJUSTMENT_STATUS_LABELS[adjustment.status] ?? adjustment.status}</Badge>
+                    <Badge>
+                      {ADJUSTMENT_STATUS_LABELS[adjustment.status] ? t(ADJUSTMENT_STATUS_LABELS[adjustment.status]!) : adjustment.status}
+                    </Badge>
                   )}
                 </li>
               ))}
             </ul>
             {pendingApprovals.length > 0 ? (
-              <p className={styles.status}>Nothing extra is charged unless you approve it.</p>
+              <p className={styles.status}>{t('payment.nothingExtra')}</p>
             ) : null}
           </section>
         </Card>
@@ -267,13 +275,16 @@ export default function BookingPaymentPage() {
 
       <ConfirmDialog
         open={confirming !== null}
-        title="Approve this additional charge?"
+        title={t('payment.approveTitle')}
         description={
           confirming
-            ? `You will be charged an additional ${formatMoney(confirming.additionalAmountMinorUnits, confirming.additionalCurrencyCode)} for: ${confirming.reason}. Nothing is charged until you approve.`
+            ? t('payment.approveText', {
+                amount: formatMoney(confirming.additionalAmountMinorUnits, confirming.additionalCurrencyCode),
+                reason: confirming.reason,
+              })
             : ''
         }
-        confirmLabel="Approve and pay"
+        confirmLabel={t('payment.approveAndPay')}
         tone="primary"
         pending={pending}
         onConfirm={() => {
@@ -285,35 +296,28 @@ export default function BookingPaymentPage() {
   );
 }
 
-const PAYMENT_STATUS_LABELS: Record<string, string> = {
-  created: 'Not yet paid',
-  requires_action: 'Extra verification needed',
-  authorized: 'Authorized',
-  captured: 'Paid',
-  failed: 'Not completed',
-  refunded: 'Refunded',
-  partially_refunded: 'Partly refunded',
+const PAYMENT_STATUS_LABELS: Record<string, MessageKey> = {
+  created: 'payment.status.created',
+  requires_action: 'payment.status.requires_action',
+  authorized: 'payment.status.authorized',
+  captured: 'payment.status.captured',
+  failed: 'payment.status.failed',
+  refunded: 'payment.status.refunded',
+  partially_refunded: 'payment.status.partially_refunded',
 };
 
-const ADJUSTMENT_STATUS_LABELS: Record<string, string> = {
-  pending_approval: 'Waiting for your approval',
-  approved: 'Approved',
-  rejected: 'Declined',
-  charged: 'Charged',
-  failed: 'Not completed',
+const ADJUSTMENT_STATUS_LABELS: Record<string, MessageKey> = {
+  pending_approval: 'payment.adjustmentStatus.pending_approval',
+  approved: 'payment.adjustmentStatus.approved',
+  rejected: 'payment.adjustmentStatus.rejected',
+  charged: 'payment.adjustmentStatus.charged',
+  failed: 'payment.adjustmentStatus.failed',
 };
 
-function formatMoney(amountMinorUnits: number, currencyCode: string): string {
+/** Spec 042 X-11: the shared formatter, in the reader's locale. */
+function formatInstantIn(iso: string, locale: string): string {
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(amountMinorUnits / 100);
-  } catch {
-    return `${currencyCode} ${(amountMinorUnits / 100).toFixed(2)}`;
-  }
-}
-
-function formatInstant(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
+    return formatDateTime(iso, locale, { dateStyle: 'medium', timeStyle: 'short' });
   } catch {
     return iso;
   }

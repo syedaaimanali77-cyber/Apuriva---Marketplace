@@ -12,6 +12,7 @@ import { Input } from '@/components/Input';
 import { Skeleton } from '@/components/Skeleton';
 import type { AiConversationSummaryDto, AiMessageDto } from '@/lib/types/ai-assistant';
 import { aiFetch, aiMutation, formatAiInstant } from '@/app/_components/ask-apuriva-client';
+import { useLocale } from '@/app/_components/LocaleProvider';
 import styles from '@/app/_components/ai-account.module.css';
 
 const PAGE_SIZE = 20;
@@ -24,6 +25,7 @@ type Pending = { kind: 'one'; conversation: AiConversationSummaryDto } | { kind:
  * through `ConfirmDialog`; clearing history states that AI memory and activity are kept.
  */
 export default function AiConversationsPage() {
+  const { locale, t } = useLocale();
   const [status, setStatus] = useState<Status>('loading');
   const [items, setItems] = useState<AiConversationSummaryDto[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
@@ -70,7 +72,7 @@ export default function AiConversationsPage() {
     const res = await aiFetch<AiConversationSummaryDto[]>(listUrl(activeQuery, nextOffset));
     setLoadingMore(false);
     if (!res.ok) {
-      setError("We couldn't load more conversations. Try again.");
+      setError(t('aiAccount.conversations.loadMoreFailed'));
       return;
     }
     setItems((current) => [...current, ...(res.data ?? []).filter((c) => !current.some((x) => x.id === c.id))]);
@@ -98,16 +100,16 @@ export default function AiConversationsPage() {
     setDeleting(false);
     setPending(null);
     if (!res.ok) {
-      setError(target.kind === 'all' ? "We couldn't clear your history. Nothing was deleted." : "We couldn't delete that conversation. Try again.");
+      setError(target.kind === 'all' ? t('aiAccount.conversations.clearFailed') : t('aiAccount.conversations.deleteFailed'));
       return;
     }
     if (target.kind === 'all') {
       setItems([]);
       setNextOffset(null);
-      setAnnouncement('Conversation history cleared.');
+      setAnnouncement(t('aiAccount.conversations.cleared'));
     } else {
       setItems((current) => current.filter((c) => c.id !== target.conversation.id));
-      setAnnouncement('Conversation deleted.');
+      setAnnouncement(t('aiAccount.conversations.deleted'));
     }
     setOpenId(null);
   }
@@ -120,27 +122,27 @@ export default function AiConversationsPage() {
       <section className={styles.section} aria-labelledby="ai-conversations-heading" aria-busy={status === 'loading'}>
         <div className={styles.header}>
           <h1 id="ai-conversations-heading" className={styles.title}>
-            Ask Apuriva conversations
+            {t('aiAccount.conversations.title')}
           </h1>
           {status === 'ready' && items.length > 0 && !activeQuery ? (
             <Button variant="secondary" size="sm" onClick={() => setPending({ kind: 'all' })}>
-              Clear history
+              {t('aiAccount.conversations.clearHistory')}
             </Button>
           ) : null}
         </div>
-        <p className={styles.hint}>Temporary conversations are never saved, so they never appear here.</p>
+        <p className={styles.hint}>{t('aiAccount.conversations.temporaryHint')}</p>
 
         <form className={styles.search} role="search" onSubmit={search}>
           <Input
             type="search"
-            aria-label="Search your conversations"
-            placeholder="Search your conversations"
+            aria-label={t('aiAccount.conversations.searchLabel')}
+            placeholder={t('aiAccount.conversations.searchLabel')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             iconLeft="search"
           />
           <Button type="submit" variant="secondary" size="sm">
-            Search
+            {t('aiAccount.conversations.search')}
           </Button>
         </form>
 
@@ -153,28 +155,30 @@ export default function AiConversationsPage() {
           </div>
         ) : status === 'error' ? (
           <ErrorState
-            title="We couldn't load your conversations"
-            description="Check your connection and try again."
+            title={t('aiAccount.conversations.loadFailedTitle')}
+            description={t('aiAccount.conversations.loadFailedDescription')}
             onRetry={() => void load(activeQuery)}
           />
         ) : items.length === 0 ? (
           <EmptyState
             icon="message-circle"
-            title={activeQuery ? 'No conversations match your search' : 'No conversations yet'}
-            description={activeQuery ? 'Try different words.' : 'Conversations you have with Ask Apuriva will appear here.'}
+            title={activeQuery ? t('aiAccount.conversations.noMatchTitle') : t('aiAccount.conversations.emptyTitle')}
+            description={activeQuery ? t('aiAccount.conversations.noMatchDescription') : t('aiAccount.conversations.emptyDescription')}
           />
         ) : (
           <>
             <ul className={styles.list}>
               {items.map((conversation) => {
-                const title = conversation.preview || 'Conversation';
+                const title = conversation.preview || t('aiAccount.conversations.untitled');
                 return (
                   <li key={conversation.id}>
                     <Card elevation="flat">
                       <div className={styles.row}>
                         <div className={styles.rowBody}>
                           <p className={styles.rowTitle}>{title}</p>
-                          <p className={styles.rowMeta}>Last updated {formatAiInstant(conversation.updatedAt)}</p>
+                          <p className={styles.rowMeta}>
+                            {t('aiAccount.conversations.lastUpdated', { when: formatAiInstant(conversation.updatedAt, locale) })}
+                          </p>
                         </div>
                         <div className={styles.actions}>
                           <Button
@@ -183,27 +187,27 @@ export default function AiConversationsPage() {
                             aria-expanded={openId === conversation.id}
                             onClick={() => void toggle(conversation)}
                           >
-                            {openId === conversation.id ? 'Hide' : 'View'}
+                            {openId === conversation.id ? t('aiAccount.conversations.hide') : t('aiAccount.conversations.view')}
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            aria-label={`Delete conversation "${title}"`}
+                            aria-label={t('aiAccount.conversations.deleteLabel', { title })}
                             onClick={() => setPending({ kind: 'one', conversation })}
                           >
-                            Delete
+                            {t('aiAccount.conversations.delete')}
                           </Button>
                         </div>
                       </div>
                       {openId === conversation.id ? (
-                        <div className={styles.transcript} aria-label="Conversation transcript" role="region">
+                        <div className={styles.transcript} aria-label={t('aiAccount.conversations.transcript')} role="region">
                           {transcript.status === 'loading' ? (
                             <Skeleton height={48} />
                           ) : transcript.status === 'error' ? (
-                            <ErrorState compact title="We couldn't load this conversation" onRetry={() => void toggle(conversation)} />
+                            <ErrorState compact title={t('aiAccount.conversations.transcriptFailed')} onRetry={() => void toggle(conversation)} />
                           ) : (
                             transcript.messages.map((m) => (
-                              <AiMessage key={m.id} role={m.role} timestamp={formatAiInstant(m.createdAt)}>
+                              <AiMessage key={m.id} role={m.role} timestamp={formatAiInstant(m.createdAt, locale)}>
                                 {m.body}
                               </AiMessage>
                             ))
@@ -217,7 +221,7 @@ export default function AiConversationsPage() {
             </ul>
             {nextOffset !== null ? (
               <Button variant="secondary" loading={loadingMore} onClick={() => void loadMore()}>
-                Load more
+                {t('aiAccount.conversations.loadMore')}
               </Button>
             ) : null}
           </>
@@ -226,13 +230,11 @@ export default function AiConversationsPage() {
 
       <ConfirmDialog
         open={pending !== null}
-        title={pending?.kind === 'all' ? 'Clear your conversation history?' : 'Delete this conversation?'}
+        title={pending?.kind === 'all' ? t('aiAccount.conversations.clearTitle') : t('aiAccount.conversations.deleteTitle')}
         description={
-          pending?.kind === 'all'
-            ? 'Every saved conversation and its messages will be deleted. Your remembered preferences and your AI activity history are kept, and bookings and requests stay under their own records.'
-            : 'This conversation and its messages will be deleted. Your remembered preferences and your AI activity history are kept.'
+          pending?.kind === 'all' ? t('aiAccount.conversations.clearDescription') : t('aiAccount.conversations.deleteDescription')
         }
-        confirmLabel={pending?.kind === 'all' ? 'Clear history' : 'Delete'}
+        confirmLabel={pending?.kind === 'all' ? t('aiAccount.conversations.clearHistory') : t('aiAccount.conversations.delete')}
         pending={deleting}
         onConfirm={() => void confirmDelete()}
         onCancel={() => setPending(null)}
