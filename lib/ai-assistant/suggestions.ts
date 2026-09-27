@@ -31,7 +31,7 @@ export const SUGGESTION_TEXT: Record<AiProactiveSuggestionDto['kind'], string> =
 
 /** `GET /api/v1/ai/suggestions` — `[]` when off, when the assistant is off, or without a customer profile. */
 export async function listSuggestions(userId: string): Promise<AiProactiveSuggestionDto[]> {
-  if (!isAskApurivaAvailable()) return [];
+  if (!(await isAskApurivaAvailable())) return [];
   const preferences = await getAiPreferences(userId);
   if (!preferences.proactiveSuggestionsEnabled) return [];
 

@@ -6,7 +6,7 @@ import { getOptionalSession } from '@/lib/auth/require-session';
 import { hashRequestIp } from '@/lib/auth/ip-hash';
 import { interpretationLowConfidenceError, validationError } from '@/lib/search/errors';
 import { interpretSearchQuery } from '@/lib/search/interpret';
-import { isNlInterpretationEnabled } from '@/lib/search/feature-flags';
+import { isFeatureEnabled } from '@/lib/feature-flags/resolve';
 
 /**
  * Spec 013 §3, `POST /api/v1/search/interpret` — AI-assisted, read-only, low-risk (spec 034's
@@ -27,7 +27,8 @@ export const POST = withApiRoute(async (request, correlationId) => {
   }
 
   // §9: falling back to keyword-only search if AI interpretation is disabled/misbehaving.
-  if (!isNlInterpretationEnabled()) throw interpretationLowConfidenceError();
+  // Spec 041 X-2: the registry value (SEARCH_NL_INTERPRETATION_ENABLED remains a deploy-level override).
+  if (!(await isFeatureEnabled('search-nl-interpretation'))) throw interpretationLowConfidenceError();
 
   const intent = await interpretSearchQuery(body.text);
   return apiSuccess(intent, correlationId);

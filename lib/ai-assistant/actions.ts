@@ -137,7 +137,7 @@ export async function confirmAction(
   idempotencyKey: string,
   rawBody: unknown,
 ): Promise<{ action: AiActionDto; message?: AiMessageDto; replayed: boolean }> {
-  requireAskApurivaAvailable();
+  await requireAskApurivaAvailable();
 
   const body = (typeof rawBody === 'object' && rawBody !== null && !Array.isArray(rawBody) ? rawBody : {}) as Record<string, unknown>;
   const extra = Object.keys(body).filter((field) => field !== 'confirmationId');

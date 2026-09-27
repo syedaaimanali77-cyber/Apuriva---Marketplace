@@ -8,18 +8,23 @@
  * reading, searching, deleting and clearing conversations, memory view/delete/reset, the
  * preference, activity history, export and the deletion sweep all keep working (master §81, §82).
  */
-import { AiUnavailableError, isAiAssistantEnabled } from '@/lib/ai';
+import { AiUnavailableError } from '@/lib/ai';
+import { isFeatureEnabled } from '@/lib/feature-flags/resolve';
 
 export function isConversationalAssistantEnabled(): boolean {
   return process.env.AI_CONVERSATIONAL_ASSISTANT_ENABLED !== 'false';
 }
 
-/** True only when both this spec's flag and spec 033's platform kill switch are on. */
-export function isAskApurivaAvailable(): boolean {
-  return isConversationalAssistantEnabled() && isAiAssistantEnabled();
+/**
+ * True only when both this spec's flag and spec 033's platform kill switch are on. Spec 041 X-4: both
+ * are read from the flag registry for this environment, uncached (AC-4); each env var above remains
+ * a deploy-level override.
+ */
+export async function isAskApurivaAvailable(): Promise<boolean> {
+  return (await isFeatureEnabled('ai-conversational-assistant')) && (await isFeatureEnabled('ai-assistant'));
 }
 
 /** Throws spec 033's `AiUnavailableError` (`503 AI_PROVIDER_UNAVAILABLE`) unless both flags are on. */
-export function requireAskApurivaAvailable(): void {
-  if (!isAskApurivaAvailable()) throw new AiUnavailableError('Ask Apuriva is temporarily unavailable.');
+export async function requireAskApurivaAvailable(): Promise<void> {
+  if (!(await isAskApurivaAvailable())) throw new AiUnavailableError('Ask Apuriva is temporarily unavailable.');
 }

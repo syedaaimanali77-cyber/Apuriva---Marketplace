@@ -6,7 +6,7 @@ import { searchServices } from '@/lib/search/query';
 import { listRecentSearches } from '@/lib/search/recent';
 import type { HomeFeedDto } from '@/lib/types/home';
 import type { SearchResultDto } from '@/lib/types/search';
-import { isHomePersonalizationEnabled } from './feature-flags';
+import { isFeatureEnabled } from '@/lib/feature-flags/resolve';
 
 const CURATED_LIMIT = 8;
 const RECENT_RELEVANT_LIMIT = 8;
@@ -90,7 +90,9 @@ export async function getHomeFeed(session: SessionRow | null): Promise<HomeFeedD
     return { sections: [await curatedPopular()] };
   }
 
-  const personalizationEnabled = isHomePersonalizationEnabled() && (await getCustomerPersonalizationEnabled(session.userId));
+  // Spec 041 X-3: the registry value (HOME_PERSONALIZATION_ENABLED remains a deploy-level override).
+  const personalizationEnabled =
+    (await isFeatureEnabled('home-personalization-v1')) && (await getCustomerPersonalizationEnabled(session.userId));
   const recent = personalizationEnabled ? await recentRelevant(session.userId) : null;
 
   const mode = selectFeedMode({ personalizationEnabled, hasRecentRelevantItems: recent !== null });

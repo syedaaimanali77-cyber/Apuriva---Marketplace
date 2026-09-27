@@ -1581,4 +1581,25 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Requests per service in the window vs the previous equal window (analytics/read)',
     tags: ['analytics'],
   },
+  // Spec 041 §3.6 — feature flags. The running environment's values only (APP_ENV); developer flags are
+  // Super Admin only and never client-readable.
+  {
+    method: 'GET',
+    path: '/admin/feature-flags',
+    summary: 'Flags for the running environment (feature_flags/read); developer flags only with feature_flags/read_technical',
+    tags: ['feature-flags'],
+  },
+  {
+    method: 'PATCH',
+    path: '/admin/feature-flags/{key}',
+    summary:
+      'Toggle one flag for the running environment; body environment, enabled, expectedVersion, reason; CSRF; toggle or toggle_technical; audited',
+    tags: ['feature-flags'],
+  },
+  {
+    method: 'GET',
+    path: '/feature-flags/effective',
+    summary: 'Client-readable flags for the running environment (guest or signed-in); never a developer flag; no-store',
+    tags: ['feature-flags'],
+  },
 ];

@@ -89,6 +89,8 @@ describe('the scope map itself (spec 039 §3.7)', () => {
         'catalog.subcategory',
         'catalog.suggestion',
         'disputes',
+        'feature_flags',
+        'feature_flags.technical',
         'fraud_signal',
         'matching.config',
         'messaging',

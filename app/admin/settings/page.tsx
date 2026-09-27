@@ -11,6 +11,7 @@ export default function AdminSettingsPage() {
       links={[
         { href: '/admin/roles', label: 'Roles & permissions' },
         { href: '/admin/settings/audit-log', label: 'Audit log' }, // spec 039 X-7
+        { href: '/admin/settings/feature-flags', label: 'Feature flags' }, // spec 041 X-8
       ]}
     />
   );

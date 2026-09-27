@@ -74,7 +74,7 @@ export async function memoryContextFor(userId: string): Promise<Array<{ key: str
  * by the one just confirmed (`200`). Naturally idempotent, so it takes no `Idempotency-Key`.
  */
 export async function confirmMemory(userId: string, rawBody: unknown): Promise<{ item: AiMemoryItemDto; created: boolean }> {
-  requireAskApurivaAvailable();
+  await requireAskApurivaAvailable();
 
   if (typeof rawBody !== 'object' || rawBody === null || Array.isArray(rawBody)) {
     throw validationError([{ field: 'body', message: 'must be an object' }]);

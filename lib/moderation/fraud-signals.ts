@@ -19,7 +19,7 @@ import type { FraudSignalDto, FraudSignalSource, FraudSignalStatus } from '@/lib
 import { FRAUD_SIGNALS_READ_ACTION, FRAUD_SIGNALS_TRIAGE_ACTION } from './catalogue';
 import { adminForbiddenError, fraudSignalNotFoundError, fraudSignalStatusConflictError } from './errors';
 import { auditModeration, MODERATION_EVENT_TYPES } from './audit';
-import { isAiFraudSignalsEnabled } from './flags';
+import { isFeatureEnabled } from '@/lib/feature-flags/resolve';
 import { requireFraudSignalPermission } from './permissions';
 import { SELECT_SIGNAL, toFraudSignalDto, type FraudSignalRow } from './rows';
 import { isModerationId } from './validation';
@@ -46,7 +46,8 @@ export interface RecordFraudSignalInput {
  * the same `(rule_key, target)` already exists (the partial unique index is the dedupe authority).
  */
 export async function recordFraudSignal(input: RecordFraudSignalInput): Promise<boolean> {
-  if (input.source === 'ai_assisted' && !isAiFraudSignalsEnabled()) throw new AiFraudSignalsDisabledError();
+  // Spec 041 X-5: the registry value (AI_FRAUD_SIGNALS_ENABLED remains a deploy-level override).
+  if (input.source === 'ai_assisted' && !(await isFeatureEnabled('ai-fraud-signals'))) throw new AiFraudSignalsDisabledError();
   const inserted = await queryRows<{ id: string }>(
     getDb(),
     sql`INSERT INTO fraud_signals (target_user_id, source, rule_key, observed_count, threshold, window_days)

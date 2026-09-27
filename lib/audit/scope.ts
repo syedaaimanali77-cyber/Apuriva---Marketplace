@@ -33,6 +33,10 @@ export const AUDIT_RESOURCE_READ_PERMISSION: Readonly<Record<string, { resource:
   'catalog.service_field': { resource: 'catalog.service', action: 'view' },
   'catalog.suggestion': { resource: 'catalog.suggestion', action: 'view' },
   disputes: { resource: 'disputes', action: 'read' },
+  // Spec 041 X-7 (approved): a business-flag change is visible to flag readers; a developer-flag
+  // change only to `read_technical` holders (Super Admin), so it never reaches a business admin (AC-2).
+  feature_flags: { resource: 'feature_flags', action: 'read' },
+  'feature_flags.technical': { resource: 'feature_flags', action: 'read_technical' },
   // Spec 038's audit events take their resource from the event-type prefix (`fraud_signal.*`).
   fraud_signal: { resource: 'fraud_signals', action: 'read' },
   'matching.config': { resource: 'matching.config', action: 'read' },

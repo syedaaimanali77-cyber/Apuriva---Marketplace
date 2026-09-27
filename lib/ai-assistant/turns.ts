@@ -94,7 +94,7 @@ export async function sendTurn(
   idempotencyKey: string,
   rawBody: unknown,
 ): Promise<{ message: AiMessageDto; replayed: boolean }> {
-  requireAskApurivaAvailable();
+  await requireAskApurivaAvailable();
 
   const body = (typeof rawBody === 'object' && rawBody !== null && !Array.isArray(rawBody) ? rawBody : {}) as Record<string, unknown>;
   const extra = Object.keys(body).filter((field) => field !== 'body');
@@ -282,7 +282,7 @@ async function persistTurn(
  * and this function can neither act nor write.
  */
 export async function sendTemporaryTurn(userId: string, rawBody: unknown): Promise<AiTemporaryReplyDto> {
-  requireAskApurivaAvailable();
+  await requireAskApurivaAvailable();
 
   const body = (typeof rawBody === 'object' && rawBody !== null && !Array.isArray(rawBody) ? rawBody : {}) as Record<string, unknown>;
   const extra = Object.keys(body).filter((field) => field !== 'turns');

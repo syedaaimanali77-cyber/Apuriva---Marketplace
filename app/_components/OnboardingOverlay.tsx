@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components';
+import { fetchClientFlag } from '@/lib/feature-flags/client';
 import { hasSeenOnboarding, markOnboardingSeen } from '@/lib/onboarding/seen-state';
 import styles from './onboarding-overlay.module.css';
 
@@ -23,7 +24,16 @@ export function OnboardingOverlay() {
   const dismissButtonWrapRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    if (!hasSeenOnboarding()) setVisible(true);
+    if (hasSeenOnboarding()) return;
+    // Spec 041 X-6: `onboarding-intro-v1` (spec 007 §9, default on) — hidden only when the flag is
+    // explicitly off; an unreachable flag service shows the documented default.
+    let cancelled = false;
+    fetchClientFlag('onboarding-intro-v1', true).then((enabled) => {
+      if (!cancelled && enabled) setVisible(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

@@ -3434,7 +3434,59 @@ export const auditLogs = pgTable(
   ],
 );
 
-export const featureFlags = pgTable('feature_flags', { ...baseColumns() });
+/** Spec 041 §3.2 — the environments a flag value is keyed by (mirrored by `lib/types/feature-flags.ts`). */
+export const FLAG_ENVIRONMENT_VALUES = ['development', 'staging', 'production'] as const;
+/** Spec 041 §3.3 — who controls a flag (master §71): business admins, or developers (Super Admin). */
+export const FLAG_CONTROL_VALUES = ['business', 'developer'] as const;
+
+/**
+ * Spec 041 §4 (migration 0036) completes spec 003's `feature_flags` STUB — altered, never
+ * re-created. One row per registered flag (`lib/feature-flags/registry.ts` is the source of truth;
+ * 0036 seeds it). A developer flag can never be client-readable (AC-2).
+ */
+export const featureFlags = pgTable(
+  'feature_flags',
+  {
+    ...baseColumns(),
+    key: text('key').notNull(),
+    description: text('description').notNull(),
+    controlledBy: text('controlled_by', { enum: FLAG_CONTROL_VALUES }).notNull(),
+    isKillSwitch: boolean('is_kill_switch').notNull().default(false),
+    clientReadable: boolean('client_readable').notNull().default(false),
+    removalCriteria: text('removal_criteria'),
+  },
+  (t) => [
+    uniqueIndex('feature_flags_key_uq').on(t.key),
+    check('feature_flags_key_format_ck', sql`${t.key} ~ '^[a-z][a-z0-9]*(-[a-z0-9]+)*$' and char_length(${t.key}) <= 64`),
+    check('feature_flags_description_ck', sql`char_length(${t.description}) between 1 and 500`),
+    check('feature_flags_controlled_by_ck', sql`${t.controlledBy} in ('business','developer')`),
+    check('feature_flags_client_readable_business_ck', sql`not ${t.clientReadable} or ${t.controlledBy} = 'business'`),
+  ],
+);
+
+/**
+ * Spec 041 §4 — one value per (flag, environment). A deployment reads and writes only the row for
+ * its own `APP_ENV` (§3.2), so a staging toggle never reaches production (AC-6). `version` is the
+ * optimistic-concurrency version of the toggle endpoint. Written only by `lib/feature-flags/admin.ts`.
+ */
+export const featureFlagEnvironmentValues = pgTable(
+  'feature_flag_environment_values',
+  {
+    ...baseColumns(),
+    featureFlagId: uuid('feature_flag_id')
+      .notNull()
+      .references(() => featureFlags.id, { onDelete: 'restrict' }),
+    environment: text('environment', { enum: FLAG_ENVIRONMENT_VALUES }).notNull(),
+    enabled: boolean('enabled').notNull(),
+    /** The admin who last changed it; `null` for the migration seed. */
+    updatedByAdminId: uuid('updated_by_admin_id').references(() => adminProfiles.id, { onDelete: 'restrict' }),
+  },
+  (t) => [
+    uniqueIndex('feature_flag_environment_values_flag_environment_uq').on(t.featureFlagId, t.environment),
+    index('feature_flag_environment_values_updated_by_admin_id_idx').on(t.updatedByAdminId),
+    check('feature_flag_environment_values_environment_ck', sql`${t.environment} in ('development','staging','production')`),
+  ],
+);
 
 /** Spec 023 §3 — the only policy type this repository has. A closed vocabulary from day one. */
 export const POLICY_TYPES = ['cancellation'] as const;

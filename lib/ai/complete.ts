@@ -10,7 +10,7 @@ import { checkRateLimit } from '@/lib/api/rate-limit';
 import { aiCacheKey, aiInputFingerprint, isCacheableTask, readAiCache, writeAiCache } from './cache';
 import { aiGuestMaxRequestsPerDay, aiGuestMaxTokensPerDay, aiMaxRequestsPerDay, aiMaxTokensPerDay, aiMaxTokensPerRequest, aiRequestTimeoutMs } from './config';
 import { AiQuotaExceededError, AiRateLimitedError, AiUnavailableError } from './errors';
-import { isAiAssistantEnabled } from './feature-flags';
+import { isFeatureEnabled } from '@/lib/feature-flags/resolve';
 import { resolveAiProvider } from './provider';
 import type { AiCompletionRequest, AiCompletionResult, AiSubject } from './types';
 import { subjectKey } from './types';
@@ -66,8 +66,10 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 export async function completeAi(request: AiCompletionRequest): Promise<AiCompletionResult> {
-  // 1. Flag — the platform-wide kill switch (master spec §119).
-  if (!isAiAssistantEnabled()) throw new AiUnavailableError('AI is disabled.');
+  // 1. Flag — the platform-wide kill switch (master spec §119). Spec 041 X-1: the registry value for
+  // this environment, uncached, so turning it off stops the next call (AC-4); `AI_ASSISTANT_ENABLED`
+  // remains a deploy-level override.
+  if (!(await isFeatureEnabled('ai-assistant'))) throw new AiUnavailableError('AI is disabled.');
 
   // 2. Provider resolution. An `AiProviderConfigurationError` from here is deliberately NOT caught
   //    anywhere in this function: a misconfigured deployment must be loud, not degraded.

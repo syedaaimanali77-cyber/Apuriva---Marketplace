@@ -66,7 +66,7 @@ export async function createConversation(
   idempotencyKey: string,
   rawBody: unknown,
 ): Promise<{ conversation: AiConversationDto; replayed: boolean }> {
-  requireAskApurivaAvailable();
+  await requireAskApurivaAvailable();
 
   const body = rawBody ?? {};
   if (typeof body !== 'object' || Array.isArray(body) || Object.keys(body as object).length > 0) {
