@@ -4,6 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import ExplorePage from './page';
 import type { CategoryDto } from '@/lib/types/catalog';
 
+// The page's search console pushes into `/search` (spec 013) on submit — same stub the home
+// page's test uses for its hero search bar.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 const CATEGORY: CategoryDto = {
   id: '1',
   name: 'Cleaning',

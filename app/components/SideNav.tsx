@@ -8,12 +8,14 @@ import styles from './nav-shell.module.css';
 export interface SideNavProps {
   items: NavItem[];
   activeId?: string;
+  /** Mirrors the ui/ `SideNav` tone: `dark` is the DS's navy admin-console chrome. */
+  tone?: 'light' | 'dark';
 }
 
 /** Spec 014 §5 desktop primary navigation — same item set as `BottomTabBar`, adapted layout. */
-export function SideNav({ items, activeId }: SideNavProps) {
+export function SideNav({ items, activeId, tone = 'light' }: SideNavProps) {
   return (
-    <nav aria-label="Primary" className={styles.sideNav}>
+    <nav aria-label="Primary" className={styles.sideNav} data-tone={tone}>
       {items.map((item) => {
         const on = item.id === activeId;
         return (

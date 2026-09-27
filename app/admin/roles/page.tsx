@@ -9,12 +9,24 @@ import styles from '../admin.module.css';
 interface ApiErrorBody {
   code: string;
   message: string;
+  errors?: { field: string; message: string }[];
 }
 
 interface ApiResult<T> {
   ok: boolean;
   data?: T;
   error?: ApiErrorBody;
+}
+
+/** `VALIDATION_ERROR` responses carry the specific `field`/`message` (e.g. "userId must be a
+ * valid UUID.") behind the generic top-level message — surface it so the operator knows exactly
+ * what to fix instead of a bare "The request failed validation." (spec 009 §3 error contract). */
+function describeError(error: ApiErrorBody | undefined, fallback: string): string {
+  if (!error) return fallback;
+  if (error.errors?.length) {
+    return error.errors.map((e) => `${e.field} ${e.message}`).join(' ');
+  }
+  return error.message ?? fallback;
 }
 
 /** Same CSRF-cookie-echo pattern as app/account/privacy-security/page.tsx. */
@@ -88,7 +100,7 @@ export default function AdminRolesPage() {
     });
     setAssignPending(false);
     if (!res.ok) {
-      setFormError(res.error?.message ?? "Couldn't assign that role.");
+      setFormError(describeError(res.error, "Couldn't assign that role."));
       return;
     }
     setAnnouncement(`Assigned ${selectedRole} to ${targetUserId}.`);
@@ -107,7 +119,7 @@ export default function AdminRolesPage() {
     });
     setRevokePending(false);
     if (!res.ok) {
-      setFormError(res.error?.message ?? "Couldn't revoke that role.");
+      setFormError(describeError(res.error, "Couldn't revoke that role."));
       return;
     }
     setAnnouncement(`Revoked ${selectedRole} from ${targetUserId}.`);
@@ -115,7 +127,7 @@ export default function AdminRolesPage() {
 
   if (pageStatus === 'loading') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Admin roles</h1>
         <Card>
           <Skeleton lines={4} />
@@ -126,7 +138,7 @@ export default function AdminRolesPage() {
 
   if (pageStatus === 'forbidden') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Admin roles</h1>
         <Alert tone="warning" title="Super Admin required">
           Role management is scoped to the Super Admin role (spec 009 AC-5) — your account doesn't currently hold it.
@@ -137,7 +149,7 @@ export default function AdminRolesPage() {
 
   if (pageStatus === 'error') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} data-density="dense">
         <h1 className={styles.title}>Admin roles</h1>
         <ErrorState description={pageError ?? undefined} onRetry={load} />
       </main>
@@ -147,7 +159,7 @@ export default function AdminRolesPage() {
   const columns: TableColumn<AdminRoleDto['name']>[] = [{ key: 'name', header: 'Role', render: (name) => name }];
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-density="dense">
       <h1 className={styles.title}>Admin roles</h1>
 
       <span role="status" aria-live="polite" className={styles.visuallyHidden}>
@@ -163,7 +175,7 @@ export default function AdminRolesPage() {
             {formError}
           </Alert>
         ) : null}
-        <div className={styles.form}>
+        <Card elevation="flat" className={styles.form}>
           <div className={styles.formField}>
             <FormField label="User id" htmlFor="target-user-id">
               <Input id="target-user-id" value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)} placeholder="user uuid" />
@@ -188,7 +200,7 @@ export default function AdminRolesPage() {
               Revoke
             </Button>
           </div>
-        </div>
+        </Card>
       </section>
 
       <section aria-labelledby="catalog-heading" className={styles.section}>

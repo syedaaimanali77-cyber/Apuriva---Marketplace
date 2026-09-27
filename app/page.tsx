@@ -4,35 +4,19 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ActiveBookingBanner, Button, EmptyState, ErrorState, Icon, ResultCard, SearchBar, Skeleton, Switch } from '@/components';
+import { ActiveBookingBanner, Button, EmptyState, ErrorState, ResultCard, SearchBar, Skeleton, Switch } from '@/components';
+import { AskApuriva } from '@/app/_components/AskApurivaPanel';
 import { branding } from '@/lib/config/branding';
 import type { CategoryDto } from '@/lib/types/catalog';
 import type { HomeFeedDto, PersonalizationSettingsDto } from '@/lib/types/home';
 import { imageForCategoryName } from './category-images';
+import { apiFetch, mutateHeaders } from './requests/api-client';
 import styles from './home.module.css';
 
-interface ApiErrorBody {
-  code: string;
-  message: string;
-}
-
-interface ApiResult<T> {
-  ok: boolean;
-  data?: T;
-  error?: ApiErrorBody;
-}
-
-async function getJson<T>(url: string): Promise<ApiResult<T>> {
-  const res = await fetch(url, { credentials: 'same-origin' });
-  const json = await res.json().catch(() => ({}));
-  return res.ok ? { ok: true, data: json.data as T } : { ok: false, error: json as ApiErrorBody };
-}
-
-/** Mirrors the CSRF-cookie-echo pattern already used in app/account/_components/AccountMenu.tsx —
- * the CSRF cookie (spec 005 §3) is deliberately not httpOnly. */
-function readCsrfCookie(): string {
-  return document.cookie.split('; ').find((row) => row.startsWith('apuriva_csrf='))?.split('=')[1] ?? '';
-}
+// The repository's shared client fetch helper: a request that never completed (dev-server
+// recompile, dropped connection) resolves as `NETWORK_ERROR` instead of an unhandled
+// `Failed to fetch`, so the feed's own ErrorState + Try again handles it.
+const getJson = apiFetch;
 
 type Status = 'loading' | 'error' | 'ready';
 
@@ -94,10 +78,9 @@ export default function HomePage() {
   async function togglePersonalization(next: boolean) {
     const previous = settings;
     setSettings((prev) => (prev ? { ...prev, personalizationEnabled: next } : prev));
-    const res = await fetch('/api/v1/users/me/personalization-settings', {
+    const res = await apiFetch('/api/v1/users/me/personalization-settings', {
       method: 'PATCH',
-      credentials: 'same-origin',
-      headers: { 'content-type': 'application/json', 'x-csrf-token': readCsrfCookie() },
+      headers: mutateHeaders(),
       body: JSON.stringify({ personalizationEnabled: next }),
     });
     if (res.ok) {
@@ -233,20 +216,7 @@ export default function HomePage() {
         ))
       )}
 
-      <div className={styles.promoBanner}>
-        <span className={styles.promoIcon}>
-          <Icon name="sparkles" size="lg" color="var(--teal-600)" />
-        </span>
-        <div>
-          <h2 className={styles.promoTitle}>Apuriva AI Assistant</h2>
-          <p className={styles.promoDescription}>
-            Smart suggestions and offer comparisons, right from the app — coming soon.
-          </p>
-        </div>
-        <Button variant="secondary" disabled title="Coming soon">
-          Ask AI Assistant
-        </Button>
-      </div>
+      <AskApuriva />
     </main>
   );
 }

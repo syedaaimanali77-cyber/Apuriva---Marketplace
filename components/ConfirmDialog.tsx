@@ -20,11 +20,15 @@ export interface ConfirmDialogProps {
 const FOCUSABLE_SELECTOR = 'button:not(:disabled), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 /**
- * Spec 002 names `Dialog`/`ConfirmDialog` but ships no implementation in `ui/` (see
- * components/index.ts) — this is spec 008's own, built from existing tokens the same way
- * app/account/_components/AccountMenu.tsx builds its dropdown. A destructive confirmation
- * (deletion, "log out all devices") per spec 008 §5: explicit confirmation, consequence stated
- * plainly, fully keyboard operable, with the one focus trap this UI intentionally has.
+ * Spec 008's destructive confirmation (deletion, "log out all devices") per §5: explicit
+ * confirmation, consequence stated plainly, fully keyboard operable, with the one focus trap this
+ * UI intentionally has.
+ *
+ * The restored ui/ now ships `Dialog`/`ConfirmDialog` (ui/components/overlays) and this surface
+ * follows them — scrim, `--radius-xl` panel with `--shadow-overlay`, `text-xl` title, ghost cancel
+ * and a hairline-divided footer. It isn't a re-export because the ui/ version lacks behavior spec
+ * 008 relies on: `alertdialog` semantics with labelled/described-by, a Tab focus trap, focus
+ * restoration on close, and blocking Escape/scrim dismissal while a confirm is pending.
  */
 export function ConfirmDialog({
   open,
@@ -98,17 +102,15 @@ export function ConfirmDialog({
         aria-describedby={description ? 'confirm-dialog-description' : undefined}
         tabIndex={-1}
         style={{
-          width: '100%',
-          maxWidth: 420,
-          display: 'grid',
-          gap: 'var(--space-4)',
-          padding: 'var(--space-6)',
+          width: 'min(440px, 100%)',
+          maxHeight: '86vh',
+          overflow: 'auto',
           background: 'var(--surface-card)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-lg)',
+          borderRadius: 'var(--radius-xl)',
+          boxShadow: 'var(--shadow-overlay)',
         }}
       >
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start', padding: 'var(--space-6) var(--space-6) var(--space-5)' }}>
           <span
             style={{
               width: 40,
@@ -125,8 +127,8 @@ export function ConfirmDialog({
               color={tone === 'danger' ? 'var(--status-error-fg)' : 'var(--teal-600)'}
             />
           </span>
-          <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-            <h2 id="confirm-dialog-title" style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)' }}>
+          <div style={{ flex: 1, display: 'grid', gap: 'var(--space-1)' }}>
+            <h2 id="confirm-dialog-title" style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-semibold)' }}>
               {title}
             </h2>
             {description ? (
@@ -137,8 +139,17 @@ export function ConfirmDialog({
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
-          <Button variant="secondary" onClick={onCancel} disabled={pending}>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 'var(--space-2)',
+            justifyContent: 'flex-end',
+            padding: 'var(--space-4) var(--space-6)',
+            borderTop: '1px solid var(--border-subtle)',
+          }}
+        >
+          <Button variant="ghost" onClick={onCancel} disabled={pending}>
             {cancelLabel}
           </Button>
           <Button variant={tone === 'danger' ? 'danger' : 'primary'} onClick={onConfirm} loading={pending}>

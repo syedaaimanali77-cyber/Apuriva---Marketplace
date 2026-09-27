@@ -27,7 +27,21 @@ export function mutateHeaders(extra?: Record<string, string>): Record<string, st
 }
 
 export async function apiFetch<T>(url: string, init?: RequestInit): Promise<ApiResult<T>> {
-  const res = await fetch(url, { credentials: 'same-origin', ...init });
+  let res: Response;
+  try {
+    res = await fetch(url, { credentials: 'same-origin', ...init });
+  } catch {
+    // `fetch` REJECTS (rather than resolving with a status) when the request never completed at
+    // all: the dev server recompiling mid-request, a dropped connection, or an offline browser.
+    // Left unhandled that rejection escapes every caller's `await` and surfaces as an unhandled
+    // `TypeError: Failed to fetch`, crashing the screen instead of showing the error state it
+    // already implements. Converting it to the standard result shape is what lets each screen's
+    // existing `if (!result.ok)` branch render its own ErrorState + Retry — the same
+    // `NETWORK_ERROR` convention `app/account/notifications/page.tsx` uses.
+    return { ok: false, error: { code: 'NETWORK_ERROR', message: 'We could not reach the server.' } };
+  }
+  // Deliberately outside the catch: once a response exists, the request reached the server, so a
+  // failure below is a real bug here and must not be disguised as a network problem.
   if (res.status === 204) return { ok: true };
   const json = await res.json().catch(() => ({}));
   return res.ok

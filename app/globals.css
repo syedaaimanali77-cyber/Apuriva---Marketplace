@@ -21,6 +21,55 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Base typography, links, focus and figures — mirrors ui/tokens/base.css in the APURIVA Design
+   System. ui/ components (e.g. EmptyState, ErrorState, Dialog headings) render bare <h2>/<h3>
+   and rely on this reset for their spacing; every page-level heading in app/ already sets its
+   own margin through its CSS module. */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-family: var(--font-display);
+  color: var(--text-heading);
+  letter-spacing: var(--tracking-snug);
+  line-height: var(--leading-tight);
+}
+
+a {
+  color: var(--text-link);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+/* :where() keeps this at element specificity, so class-styled links (nav items, cards) keep
+   their own colors on hover. */
+a:where(:hover) {
+  color: var(--text-link-hover);
+}
+
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--teal-600);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+:where(button, a, [role='button']) {
+  touch-action: manipulation;
+}
+
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Directional ui/ glyphs (e.g. ListRow's chevron) mirror through this token under RTL. */
+[dir='rtl'] {
+  --rtl-flip: scaleX(-1);
 }
 
 /* Standard visually-hidden pattern — components/Skeleton (ui/components/core/Skeleton.jsx)

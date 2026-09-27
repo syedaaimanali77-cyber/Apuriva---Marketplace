@@ -84,6 +84,12 @@
   }
 }
 
+/* Headerless routes (login/register — see HEADERLESS_ROUTES) render no nav, so their full-bleed
+   shell (marked data-app-shell="none") reserves no room for one. */
+.contentArea:has(> [data-app-shell='none']) {
+  padding: 0;
+}
+
 .sideItem {
   display: flex;
   align-items: center;
@@ -97,10 +103,36 @@
   font-size: var(--text-base);
   font-weight: var(--weight-medium);
   color: var(--text-body);
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.sideItem:hover:not([data-active='true']) {
+  background: var(--action-ghost-bg-hover);
+  color: var(--text-heading);
 }
 
 .sideItem[data-active='true'] {
   font-weight: var(--weight-semibold);
   background: var(--surface-brand-subtle);
   color: var(--text-brand);
+}
+
+/* Dark tone — the ui/ SideNav's navy admin-console chrome. */
+.sideNav[data-tone='dark'] {
+  background: var(--surface-nav-inverse);
+  border-inline-end-color: var(--border-inverse);
+}
+
+.sideNav[data-tone='dark'] .sideItem {
+  color: var(--navy-100);
+}
+
+.sideNav[data-tone='dark'] .sideItem:hover:not([data-active='true']) {
+  background: var(--navy-800);
+  color: var(--white);
+}
+
+.sideNav[data-tone='dark'] .sideItem[data-active='true'] {
+  background: var(--navy-800);
+  color: var(--teal-300);
 }

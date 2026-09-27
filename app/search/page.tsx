@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Button, EmptyState, ErrorState, IntentChip, ResultCard, SearchBar, Skeleton } from '@/components';
+import { Button, Card, EmptyState, ErrorState, Icon, IntentChip, ListRow, ResultCard, SearchBar, Select, Skeleton } from '@/components';
 import type { AutocompleteSuggestionDto, SearchIntentDto, SearchResultDto, SearchSort } from '@/lib/types/search';
 import styles from './search.module.css';
 
@@ -77,6 +77,13 @@ function buildQueryString(filters: Filters, page: { limit: number; offset: numbe
 }
 
 const PAGE_LIMIT = 20;
+
+const SORT_OPTIONS: { value: SearchSort; label: string }[] = [
+  { value: 'relevance', label: 'Relevance' },
+  { value: 'distance', label: 'Distance' },
+  { value: 'price_asc', label: 'Price: low to high' },
+  { value: 'price_desc', label: 'Price: high to low' },
+];
 
 /**
  * Spec 013 §5 — the search/discovery experience. AC-1: interpreted intent shown as removable
@@ -281,38 +288,39 @@ export default function SearchPage() {
       <SearchBar value={queryText} onChange={setQueryText} onSubmit={handleSearch} loading={status === 'loading'} />
 
       {suggestions.length > 0 ? (
-        <ul aria-label="Search suggestions" style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 4 }}>
-          {suggestions.map((s, i) => (
-            <li key={`${s.type}-${s.label}-${i}`}>
-              <button
-                type="button"
-                onClick={() => {
-                  setQueryText(s.type === 'recent_search' ? s.value : s.label);
-                  handleSearch(s.type === 'recent_search' ? s.value : s.label);
-                }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-body)', fontSize: 'var(--text-sm)', padding: '4px 0' }}
-              >
-                {s.label}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <Card elevation="flat" padding={0} style={{ overflow: 'hidden' }}>
+          <ul aria-label="Search suggestions" className={styles.suggestions}>
+            {suggestions.map((s, i) => (
+              <li key={`${s.type}-${s.label}-${i}`}>
+                <ListRow
+                  icon={s.type === 'recent_search' ? 'clock' : 'search'}
+                  title={s.label}
+                  chevron={false}
+                  onClick={() => {
+                    setQueryText(s.type === 'recent_search' ? s.value : s.label);
+                    handleSearch(s.type === 'recent_search' ? s.value : s.label);
+                  }}
+                  style={i === suggestions.length - 1 ? { borderBottom: 'none' } : undefined}
+                />
+              </li>
+            ))}
+          </ul>
+        </Card>
       ) : null}
 
       <div className={styles.controlsRow}>
-        <label htmlFor="search-sort" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+        <label htmlFor="search-sort" className={styles.controlLabel}>
           Sort
         </label>
-        <select
-          id="search-sort"
-          value={filters.sort ?? 'relevance'}
-          onChange={(e) => changeSort(e.target.value as SearchSort)}
-        >
-          <option value="relevance">Relevance</option>
-          <option value="distance">Distance</option>
-          <option value="price_asc">Price: low to high</option>
-          <option value="price_desc">Price: high to low</option>
-        </select>
+        <div className={styles.sortSelect}>
+          <Select
+            id="search-sort"
+            size="sm"
+            value={filters.sort ?? 'relevance'}
+            onChange={(e) => changeSort(e.target.value as SearchSort)}
+            options={SORT_OPTIONS}
+          />
+        </div>
       </div>
 
       {chips.length > 0 ? (
@@ -325,17 +333,20 @@ export default function SearchPage() {
 
       {intent && !interpretFailed ? (
         <p className={styles.aiNote} role="note">
-          These filters were suggested by AI interpretation of your search — always shown as suggestions, never as facts. Results
-          themselves always come from the real Apuriva catalog.
+          <Icon name="sparkles" size="sm" color="var(--ai-accent)" style={{ marginTop: 2 }} />
+          <span>
+            These filters were suggested by AI interpretation of your search — always shown as suggestions, never as facts. Results
+            themselves always come from the real Apuriva catalog.
+          </span>
         </p>
       ) : null}
 
       {status === 'loading' ? (
         <div className={styles.grid}>
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i}>
+            <Card key={i}>
               <Skeleton lines={3} />
-            </div>
+            </Card>
           ))}
         </div>
       ) : status === 'error' ? (
@@ -389,7 +400,7 @@ export default function SearchPage() {
               >
                 Previous
               </Button>
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+              <span className={styles.pageCount} data-numeric>
                 {pageInfo.offset + 1}-{Math.min(pageInfo.offset + pageInfo.limit, pageInfo.total)} of {pageInfo.total}
               </span>
               <Button variant="secondary" disabled={pageInfo.nextOffset === null} onClick={() => runSearch(filters, pageInfo.nextOffset ?? 0, false)}>

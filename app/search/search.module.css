@@ -5,7 +5,7 @@
  */
 
 .page {
-  max-width: 1100px;
+  max-width: var(--container-wide);
   margin: 0 auto;
   padding: var(--space-8) var(--space-6);
   display: grid;
@@ -16,7 +16,14 @@
   margin: 0;
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
   color: var(--text-heading);
+}
+
+.suggestions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .controlsRow {
@@ -26,18 +33,34 @@
   flex-wrap: wrap;
 }
 
+.controlLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--field-label);
+}
+
+.sortSelect {
+  width: 200px;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
 
+/* DS AI surface — Ask Apuriva is teal-tinted, never purple. */
 .aiNote {
+  margin: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--ai-border);
+  border-radius: var(--radius-md);
+  background: var(--ai-surface);
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--text-body);
 }
 
 .grid {
@@ -51,6 +74,11 @@
   justify-content: center;
   align-items: center;
   gap: var(--space-3);
+}
+
+.pageCount {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 
 .sentinel {
