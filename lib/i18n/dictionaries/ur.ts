@@ -414,8 +414,8 @@ export const ur = {
     or: 'یا',
     google: 'Google کے ساتھ جاری رکھیں',
     apple: 'Apple کے ساتھ جاری رکھیں',
-    googleUnavailable: 'Google سائن اِن کے لیے فراہم کنندہ کی اسناد درکار ہیں — فی الحال صرف سینڈ باکس دستیاب ہے',
-    appleUnavailable: 'Apple سائن اِن کے لیے فراہم کنندہ کی اسناد درکار ہیں — فی الحال صرف سینڈ باکس دستیاب ہے',
+    googleUnavailable: 'ابھی دستیاب نہیں۔',
+    appleUnavailable: 'ابھی دستیاب نہیں۔',
     email: 'ای میل',
     password: 'پاس ورڈ',
     login: {

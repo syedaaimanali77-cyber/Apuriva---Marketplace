@@ -92,4 +92,14 @@ describe('LoginPage (spec 005 §5 UI states)', () => {
     render(<LoginPage />);
     expect(screen.getByRole('button', { name: 'Send code' })).toBeDisabled();
   });
+
+  it('AC-4: Google and Apple stay disabled, with plain user-facing copy (no internal spec or sandbox text)', () => {
+    render(<LoginPage />);
+    for (const name of ['Continue with Google', 'Continue with Apple']) {
+      const button = screen.getByRole('button', { name });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute('title', 'Not available yet.');
+      expect(button.getAttribute('title')).not.toMatch(/spec|sandbox|credential|risk/i);
+    }
+  });
 });

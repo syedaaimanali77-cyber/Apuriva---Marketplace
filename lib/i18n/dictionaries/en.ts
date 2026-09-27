@@ -420,8 +420,8 @@ export const en = {
     or: 'or',
     google: 'Continue with Google',
     apple: 'Continue with Apple',
-    googleUnavailable: 'Real Google sign-in needs provider credentials — spec 005 §8 risk #1 ships a sandbox adapter only',
-    appleUnavailable: 'Real Apple sign-in needs provider credentials — spec 005 §8 risk #1 ships a sandbox adapter only',
+    googleUnavailable: 'Not available yet.',
+    appleUnavailable: 'Not available yet.',
     email: 'Email',
     password: 'Password',
     login: {

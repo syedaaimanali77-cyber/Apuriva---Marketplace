@@ -20,6 +20,12 @@ export function otpExpiredError(): ApiRouteError {
   return new ApiRouteError('OTP_EXPIRED', 'This code has expired — request a new one.', { status: 422 });
 }
 
+/** `503` AC-4 — no usable OAuth adapter (the sandbox's production guard). Mirrors spec 021's
+ * `PAYMENT_PROVIDER_UNAVAILABLE`: the request fails closed, and no account is created or entered. */
+export function oauthProviderUnavailableError(): ApiRouteError {
+  return new ApiRouteError('OAUTH_PROVIDER_UNAVAILABLE', 'This sign-in method is not available.', { status: 503 });
+}
+
 /** Spec 008 §3: any sensitive action gated by `requireStepUp` (lib/auth/step-up.ts) — a missing,
  * stale, or already-consumed step-up token, regardless of which domain endpoint required it. */
 export function stepUpRequiredError(message = 'This action requires fresh step-up re-authentication.'): ApiRouteError {
