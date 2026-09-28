@@ -9,6 +9,9 @@
   margin: 0 auto;
   padding: var(--space-8) var(--space-6);
   display: grid;
+  /* One column that may shrink below its content's min-content (an implicit `auto` track grows to
+     the search form's ~370px intrinsic width and overflows a 375px screen — spec 043 AC-6). */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-6);
 }
 

@@ -36,6 +36,14 @@ export function AccountMenu() {
     triggerWrapRef.current?.querySelector('button')?.focus();
   }
 
+  // ARIA menu button: opening the menu moves focus to its first enabled item (the panel itself when
+  // every item is disabled mid-switch), so Arrow keys and Escape work from inside it.
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    (panel?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? panel)?.focus();
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     function onPointerDown(e: MouseEvent) {
@@ -108,7 +116,7 @@ export function AccountMenu() {
       </span>
 
       {open ? (
-        <div ref={panelRef} role="menu" aria-label={t('chrome.accountMenu.menu')} className={styles.panel}>
+        <div ref={panelRef} role="menu" tabIndex={-1} aria-label={t('chrome.accountMenu.menu')} className={styles.panel}>
           <div className={styles.panelHeader}>
             <ModeIndicator mode={user.activeMode} />
           </div>
