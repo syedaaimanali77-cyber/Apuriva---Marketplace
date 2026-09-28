@@ -1,0 +1,144 @@
+# Build status
+
+Maintained per master specification §129–§130 and spec 046 §3.12 (AC-7). **Update this file in the
+same PR as every spec implementation** — CI's `check:build-status` fails a PR that moves a
+`docs/specs/*` status to `Approved` or `Implemented` without changing it.
+
+_Last updated: 2026-09-28 — spec 046 (Engineering Operations: CI/CD & Observability)._
+
+## Completed
+
+Specs **001–042** are implemented and `Approved` (each landed as its own `feat(spec-NNN)` commit).
+Spec **046**'s repository-side implementation lands with this update; its status stays `Draft` until
+the externally-verified criteria pass (see **In progress**).
+
+| Range | Area |
+|---|---|
+| 001–004 | Foundation: single Next.js app and env contract, design system, database and core data model, API standards |
+| 005–009 | Accounts: authentication, identity and role switching, onboarding/guest, sessions and privacy center, admin RBAC |
+| 010–014 | Marketplace: catalog, category/service pages, location, search, home and navigation |
+| 015–020 | Requests, availability, matching, offers and negotiation, booking state machine |
+| 021–024 | Payments, refunds, cancellation and no-show, payouts |
+| 025–027 | Messaging, notifications, file uploads |
+| 028–032 | Service execution, reviews, safety, disputes, support |
+| 033–036 | AI assistant, conversation/memory, MCP architecture and tool catalog |
+| 037–042 | Admin operations, moderation/fraud, audit logging, analytics, feature flags, i18n |
+| 046 | CI (`.github/workflows/ci.yml`), deploy workflows, `withCronRoute` + `cron_job_heartbeats`, `/api/v1/health/detailed`, `logEvent` and correlation IDs, the `ops-health-check` monitor, runbooks in `docs/operations/`, this file |
+
+## In progress
+
+- **Spec 046** — implemented in the repository; awaiting account-side verification before `Approved`:
+  AC-2 (the first staging and production deploys, which need the Vercel projects and GitHub
+  Environments, DEP-1/DEP-3), AC-6 (the first recorded Neon restore drill, DEP-2), and the
+  branch-protection half of AC-1 (DEP-3), plus the manual pipeline and monitor verification records
+  of §6.
+- **Spec 043** — Accessibility standards (next).
+- **Spec 044** — Frontend platform quality: performance, PWA, SEO (after 043).
+
+## Blocked
+
+- **Spec 045** — Demo mode and seed data. **Blocked by its DEP-1:** a hosted demo runs under
+  `NODE_ENV=production`, where every sandbox adapter (payments, payouts, notifications, files, AI)
+  refuses to start, and no real adapter exists. Changing that guard is owned by specs
+  021/024/026/027/033; spec 046 does not alter it.
+
+## Tested
+
+- Vitest (unit, integration, MCP, security/permission, route-level E2E) — see **Test status**.
+- Playwright browser runner (spec 046 §3.6): `browser/smoke.browser.ts` against `next start` on the
+  isolated `apuriva_browser_test` database.
+- Static checks: `npm run lint`, `npm run typecheck`, `check:env`, `check:schema-baseline`,
+  `check:openapi-drift`, `check:migration-pairing`, `check:no-workspace`, `check:build-status`.
+
+## Known limitations
+
+- **No production adapters.** Every sandbox adapter refuses `NODE_ENV=production`; staging and
+  production answer each affected domain's documented `503` until specs 021/024/026/027/033 add real
+  adapters. `/api/v1/health/detailed` reports `sandbox_in_production`.
+- **File storage** is `local` only; Vercel's filesystem is ephemeral, so production needs spec 027's
+  durable object-storage adapter.
+- **Rate limits are in-process** (spec 004): per serverless instance on Vercel (spec 046 R-3).
+- **Monitoring is a best-effort scheduled GitHub Actions check**, not 24/7 paging
+  ([docs/operations/monitoring.md](docs/operations/monitoring.md)).
+- **Docker** (`Dockerfile`, `docker-compose.yml`) is local/self-host development only; nothing
+  schedules the crons there.
+
+## Next recommended task
+
+Implement **spec 043** (accessibility) on the Playwright foundation, then **spec 044**.
+
+## Environment setup
+
+```bash
+npm ci
+cp .env.example .env            # every variable is documented there; check with `npm run check:env`
+docker compose up -d postgres   # local Postgres 16
+npm run db:migrate
+npm run dev                     # http://localhost:3000
+```
+
+- Tests: `npm test` — Vitest rewrites `DATABASE_URL` to the isolated `<name>_test` database; it never
+  touches the development database.
+- Browser tests: `npm run build && npm run test:browser` — Playwright uses `<name>_browser_test`.
+- Lint: `npm run lint` (ESLint with `eslint-suppressions.json`; prune fixed entries with
+  `npx eslint --prune-suppressions`).
+
+## External integrations
+
+| Integration | State |
+|---|---|
+| Vercel (`apuriva-staging`, `apuriva-production`, Pro plan, Git auto-deploy off) | **Not provisioned** (spec 046 DEP-1). Workflows are ready. |
+| Neon (production with 7-day PITR retention window; staging database) | **Not provisioned** (DEP-2). No restore drill yet ([docs/operations/restore-drills.md](docs/operations/restore-drills.md)). |
+| GitHub Environments `staging`, `production` (required reviewer), `monitor-staging`, `monitor-production`; `ops-alert` label; branch protection on `main` | **Not configured** (DEP-3). See [docs/operations/deploy-rollback.md](docs/operations/deploy-rollback.md). |
+| Payments, payouts, notifications (SMS/email/push), file storage, AI | Sandbox adapters only. |
+| Error tracking / log aggregation / paging vendor | None by decision (spec 046 D-10, D-11); Vercel runtime logs and structured events. |
+
+## Test status
+
+The committed baseline of pre-existing failures is
+[`test/known-failures.json`](test/known-failures.json) (spec 046 §3.5). CI fails on any failure not
+listed there and on any listed test that now passes. Entries belong to other specs and are reported to
+them; none was edited, skipped or weakened.
+
+**Captured 2026-09-28** by one clean full run on the committed tree, in Linux on Node 22 (CI's
+runtime) against an isolated `apuriva_test` database: **550 files, 502 passed, 48 failed**. Every
+failing file was then re-run alone on the spec 046 tree and on the previous commit without it:
+
+- **33 files passed alone** — timeouts from that run's CPU contention, not defects; not listed.
+- **15 files / 19 tests failed alone on both trees** — pre-existing and owned elsewhere; these are the
+  baseline's 19 entries:
+
+| Owner | Tests | Cause |
+|---|---|---|
+| spec 042 (`formatMoney`) | 12, in money-display tests of specs 021–024, 026, 033, 037, 042 | **environment**: Node 22's ICU/CLDR data gives PKR 0 fraction digits (`PKR 150,000`); Node 25 gives 2 (`PKR 1,500.00`) |
+| spec 003 | 5 (`schema-coverage`, `migrations`, `concurrency`, `schema-lint`) | stale table lists / fixtures, and jsonb allow-list entries not yet committed (spec 041 §8) |
+| spec 011 | 1 (service page "Ask Apuriva" empty state) | ambiguous text query: the label renders twice |
+| spec 007 | 1 (`seen-state` localStorage failure) | **environment**: Node 25 has a native `localStorage`, Node 22 does not |
+
+The **environment** entries fail only on Node 22. On a Node 25 developer machine they pass, so
+`check-test-baseline` there reports them as stale; CI (Node 22) is the reference runtime.
+
+Browser: `browser/smoke.browser.ts` 3/3 passed against `next start` (customer, provider and admin
+personas, the admin completing TOTP MFA).
+
+## Migration status
+
+- `drizzle/` holds 38 journal entries: `0001_baseline_schema` … `0038_add_cron_job_heartbeats`.
+- Each migration from spec 046 onward must ship with a hand-written `_down.sql` and its journal entry
+  in the same PR (`check:migration-pairing`). Migrations are expand/contract; `_down.sql` is run only by
+  a human ([docs/operations/deploy-rollback.md](docs/operations/deploy-rollback.md)).
+
+## Demo credentials
+
+None — per-visitor sessions; admin evaluators provisioned by operator (spec 045, which is blocked).
+
+## Known bugs
+
+- `check:openapi-drift` reports a mismatch between `lib/api/openapi-registry.ts`
+  (`/admin/categories/{categoryId}/subcategories`) and the route directory
+  (`app/api/v1/admin/categories/[id]/subcategories`). Pre-existing, owned by spec 010; it makes CI's
+  `static` job fail until fixed.
+- `check:env` fails on the committed tree: `lib/reviews/limits.ts` (spec 029) reads
+  `REVIEW_WINDOW_DAYS`, whose `.env.example` entry exists only as an uncommitted working-tree change.
+  Pre-existing, owned by spec 029; it makes CI's `static` job fail until that entry is committed.
+- Pre-existing failing tests: see **Test status**.

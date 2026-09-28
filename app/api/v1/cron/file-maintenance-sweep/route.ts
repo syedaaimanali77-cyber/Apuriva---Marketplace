@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { runFileMaintenanceSweep } from '@/lib/files';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,17 +14,10 @@ export const dynamic = 'force-dynamic';
  * assets soft-deleted past the grace period, rejected, or never finalized. A `legal_hold` asset is
  * never purged. A production deployment with only a sandbox adapter answers `503` and purges nothing.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
-  }
-
+export const GET = withCronRoute('file-maintenance-sweep', async () => {
   const result = await runFileMaintenanceSweep();
   return NextResponse.json(
     { status: result.storageUnavailable ? 'storage_unavailable' : 'ok', ...result },
     { status: result.storageUnavailable ? 503 : 200 },
   );
-}
+});

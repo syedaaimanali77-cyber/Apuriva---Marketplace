@@ -15,6 +15,7 @@
  * An entry carries no tool input: see `security-log.ts` for the same rule and its reason.
  */
 import { randomUUID } from 'node:crypto';
+import { logEvent } from '@/lib/observability/log';
 import type { AiProposedRiskTier } from '@/lib/ai-assistant/risk-policy';
 
 export interface McpAuditEntry {
@@ -35,18 +36,17 @@ export interface McpAuditSink {
 const DEFAULT_SINK: McpAuditSink = {
   async record(entry) {
     const auditId = randomUUID();
-    console.info(
-      JSON.stringify({
-        event: 'mcp.tool_call',
-        auditId,
-        tool: entry.toolName,
-        riskTier: entry.riskTier,
-        userId: entry.userId,
-        confirmed: entry.confirmed,
-        reversible: entry.reversible,
-        at: new Date().toISOString(),
-      }),
-    );
+    // Spec 046 §3.9 X-7: through `logEvent`, so the line carries the request's correlation ID and the
+    // AI request trace is queryable by it. (lib/mcp never imports lib/audit directly — spec 035's boundary.)
+    logEvent('info', 'mcp.tool_call', {
+      auditId,
+      tool: entry.toolName,
+      riskTier: entry.riskTier,
+      userId: entry.userId,
+      confirmed: entry.confirmed,
+      reversible: entry.reversible,
+      at: new Date().toISOString(),
+    });
     return auditId;
   },
 };

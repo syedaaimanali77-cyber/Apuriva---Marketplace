@@ -1,0 +1,218 @@
+# Spec 046 §3.4 (AC-1, AC-3) — the pull-request gate. Every job below is a REQUIRED status check on
+# `main` (branch protection, DEP-3); specs 043/044 later add `a11y`, `pwa` and `perf`.
+#
+# - `static`       lint, typecheck and the repository checks (env contract, schema baseline, OpenAPI drift,
+#                  migration pairing, no-workspace, BUILD_STATUS, test grouping) plus a gitleaks secret scan.
+# - `test-<group>` the Vitest suite split into master §114's stages by scripts/test-groups.ts — every test
+#                  file is in exactly one group. Each job fails on a failure that is not in the committed
+#                  baseline test/known-failures.json, and on a baseline entry that now passes (§3.5).
+# - `build`        `next build`, reused by `browser`.
+# - `browser`      Playwright (§3.6) against `next start` on the isolated `apuriva_browser_test` database.
+#
+# Coverage is uploaded as an artefact by every test job but is not a gate (§3.4).
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  # The Postgres service below; vitest.config.ts rewrites it to `apuriva_test`, playwright.config.ts to
+  # `apuriva_browser_test`. Neither ever touches a real database.
+  DATABASE_URL: postgresql://apuriva:apuriva@localhost:5432/apuriva
+  # Deterministic runs: the in-repo sandbox adapters, never a real vendor.
+  AI_PROVIDER: sandbox
+  CI: 'true'
+
+jobs:
+  static:
+    name: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # diff-based checks and the full-history secret scan need the history
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Environment file (the documented local defaults)
+        run: cp .env.example .env
+      - name: Base ref for diff-based checks
+        id: base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Lint (ESLint + eslint-suppressions.json ratchet)
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: check:env
+        run: npm run check:env
+      - name: check:schema-baseline
+        run: npm run check:schema-baseline
+      - name: check:openapi-drift
+        run: npm run check:openapi-drift
+      - name: check:migration-pairing
+        run: npm run check:migration-pairing -- --base "${{ steps.base.outputs.ref }}"
+      - name: check:no-workspace
+        run: npm run check:no-workspace
+      - name: check:build-status
+        run: npm run check:build-status -- --base "${{ steps.base.outputs.ref }}"
+      - name: Test grouping (every test file in exactly one group)
+        run: npx tsx scripts/test-groups.ts --check
+      - name: Secret scan (gitleaks)
+        env:
+          GITLEAKS_VERSION: 8.28.0
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ./gitleaks git --redact --verbose --log-opts="origin/${{ github.base_ref }}..HEAD" .
+          else
+            ./gitleaks git --redact --verbose .
+          fi
+
+  # One job definition, five required checks: `test-unit`, `test-integration (1/4)` … `(4/4)`, `test-mcp`,
+  # `test-security`, `test-e2e-route`. scripts/test-groups.ts decides which files each one runs.
+  test:
+    name: test-${{ matrix.group }}${{ matrix.shard && format(' ({0}/4)', matrix.shard) || '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: unit
+          - { group: integration, shard: 1 }
+          - { group: integration, shard: 2 }
+          - { group: integration, shard: 3 }
+          - { group: integration, shard: 4 }
+          - group: mcp
+          - group: security
+          - group: e2e-route
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: apuriva
+          POSTGRES_PASSWORD: apuriva
+          POSTGRES_DB: apuriva_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U apuriva"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: cp .env.example .env
+      - name: Run the group's files and compare with the known-failures baseline
+        env:
+          GROUP: ${{ matrix.group }}
+          SHARD: ${{ matrix.shard && format('--shard={0}/4', matrix.shard) || '' }}
+        run: |
+          npx tsx scripts/test-groups.ts "$GROUP" > group-files.txt
+          echo "$(wc -l < group-files.txt) file(s) in group $GROUP $SHARD"
+          set +e
+          # shellcheck disable=SC2046
+          npx vitest run $SHARD             --reporter=default --reporter=json --outputFile.json=vitest-report.json             --coverage.enabled --coverage.provider=v8 --coverage.reporter=json-summary --coverage.reporter=lcov             --coverage.reportsDirectory=coverage             $(cat group-files.txt)
+          echo "vitest exit code: $? (the baseline check below decides the job's result)"
+          set -e
+          npx tsx scripts/check-test-baseline.ts vitest-report.json
+      - name: Upload coverage and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.group }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}
+          path: |
+            coverage/
+            vitest-report.json
+          if-no-files-found: ignore
+
+  build:
+    name: build
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: cp .env.example .env
+      - run: npm run build
+      - name: Keep the build for the browser job
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build
+          include-hidden-files: true
+          path: |
+            .next/
+            !.next/cache/
+          retention-days: 1
+
+  browser:
+    name: browser
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: apuriva
+          POSTGRES_PASSWORD: apuriva
+          POSTGRES_DB: apuriva_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U apuriva"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: cp .env.example .env
+      - uses: actions/download-artifact@v4
+        with:
+          name: next-build
+          path: .next
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Playwright (migrates apuriva_browser_test, then next start on :3100)
+        env:
+          TMPDIR: ${{ runner.temp }} # browser/personas.ts writes sessions and the report under os.tmpdir()
+        run: npm run test:browser
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: ${{ runner.temp }}/apuriva-playwright/
+          if-no-files-found: ignore

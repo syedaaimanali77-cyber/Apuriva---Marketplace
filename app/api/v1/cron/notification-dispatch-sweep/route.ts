@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { dispatchAvailabilityNotifications } from '@/lib/availability/notify-dispatch';
 import { runNotificationDispatchSweep } from '@/lib/notifications';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,14 +14,7 @@ export const dynamic = 'force-dynamic';
  * 2. Due outbound deliveries are attempted, retried, fallen back and escalated.
  * A production deployment with only a sandbox adapter answers `503` and marks nothing delivered.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
-  }
-
+export const GET = withCronRoute('notification-dispatch-sweep', async () => {
   const availability = await dispatchAvailabilityNotifications();
   const result = await runNotificationDispatchSweep();
   return NextResponse.json(
@@ -31,4 +25,4 @@ export async function GET(request: NextRequest) {
     },
     { status: result.providerUnavailable ? 503 : 200 },
   );
-}
+});

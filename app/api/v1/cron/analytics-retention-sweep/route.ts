@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { sweepAnalyticsRetention } from '@/lib/analytics/retention';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,12 +10,7 @@ export const dynamic = 'force-dynamic';
  * OpenAPI. Deletes events past `ANALYTICS_EVENT_RETENTION_DAYS` and de-attributes events of deleted
  * accounts, batched — the next run continues.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
-  }
+export const GET = withCronRoute('analytics-retention-sweep', async () => {
   const { deleted, deattributed } = await sweepAnalyticsRetention();
   return NextResponse.json({ status: 'ok', eventsDeleted: deleted, eventsDeattributed: deattributed });
-}
+});

@@ -19,6 +19,7 @@ import { completeAi } from '@/lib/ai';
 import { validationError } from '@/lib/api/errors';
 import { idempotencyFingerprint } from '@/lib/api/idempotency';
 import { getDb } from '@/lib/db';
+import { logEvent } from '@/lib/observability/log';
 import { isUniqueViolation, queryRows } from '@/lib/offers/db';
 import type {
   AiMemoryEntry,
@@ -90,6 +91,34 @@ async function toMemoryProposal(entry: AiMemoryEntry | null): Promise<AiMemoryPr
  * reply with `200` and spends no AI quota.
  */
 export async function sendTurn(
+  ctx: AiActionContext,
+  idempotencyKey: string,
+  rawBody: unknown,
+): Promise<{ message: AiMessageDto; replayed: boolean }> {
+  // Spec 046 §3.9 X-7: the User -> AI and -> AI response steps of the AI request trace, correlated by the
+  // request's ID (logEvent adds it). Outcome and timing only — never the question or the reply text.
+  const startedAt = Date.now();
+  logEvent('info', 'ai.turn_started', { conversationId: ctx.conversationId });
+  try {
+    const result = await runTurn(ctx, idempotencyKey, rawBody);
+    logEvent('info', 'ai.turn_completed', {
+      conversationId: ctx.conversationId,
+      outcome: result.replayed ? 'replayed' : 'replied',
+      durationMs: Date.now() - startedAt,
+    });
+    return result;
+  } catch (err) {
+    logEvent('info', 'ai.turn_completed', {
+      conversationId: ctx.conversationId,
+      outcome: 'failed',
+      error: err instanceof Error ? err.name : 'unknown',
+      durationMs: Date.now() - startedAt,
+    });
+    throw err;
+  }
+}
+
+async function runTurn(
   ctx: AiActionContext,
   idempotencyKey: string,
   rawBody: unknown,

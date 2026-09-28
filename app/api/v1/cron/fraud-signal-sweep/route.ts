@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { runFraudSignalSweep } from '@/lib/moderation';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,14 +12,7 @@ export const dynamic = 'force-dynamic';
  * It evaluates the ACTIVE rules (those whose env thresholds are configured) and creates review items.
  * It restricts, suspends and bans no one: only a human admin, and for a ban a second admin, can.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
-  }
-
+export const GET = withCronRoute('fraud-signal-sweep', async () => {
   const result = await runFraudSignalSweep();
   return NextResponse.json({ status: 'ok', ...result });
-}
+});

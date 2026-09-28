@@ -16,6 +16,8 @@ export interface OpenApiRouteEntry {
 
 export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
   { method: 'GET', path: '/health', summary: 'Liveness/readiness check', tags: ['foundation'] },
+  // Spec 046 §3.7 X-4 — readiness/diagnostics for the ops-health-check monitor (MONITORING_TOKEN) or a Super Admin.
+  { method: 'GET', path: '/health/detailed', summary: 'Dependency-level health (monitoring)', tags: ['foundation'] },
   { method: 'GET', path: '/openapi.json', summary: 'Generated OpenAPI 3.x document', tags: ['foundation'] },
   { method: 'POST', path: '/auth/otp/request', summary: 'Request a phone OTP', tags: ['auth'] },
   { method: 'POST', path: '/auth/otp/verify', summary: 'Verify a phone OTP and establish a session', tags: ['auth'] },

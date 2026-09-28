@@ -56,7 +56,8 @@ export default defineConfig({
     // `e2e/*.spec.ts` is the filename spec 005 §6 names for end-to-end coverage; it does not match
     // the `*.test.*` convention every other suite uses, so it needs its own pattern.
     include: ['**/*.test.{ts,tsx}', 'e2e/**/*.spec.{ts,tsx}'],
-    exclude: ['node_modules', '.next', 'drizzle'],
+    // Spec 046 §3.6 X-5: `browser/**` is Playwright's (`*.browser.ts`, run by `npm run test:browser`), never Vitest's.
+    exclude: ['node_modules', '.next', 'drizzle', 'browser/**'],
     // The default 5000ms is tight for userEvent-driven component tests once the full suite runs
     // many files' worker threads concurrently in this sandboxed environment (same contention
     // `pool: 'threads'` above already works around) — those tests pass individually well under

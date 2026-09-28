@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { runOfferExpirySweep } from '@/lib/offers/expiry';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,14 +10,7 @@ export const dynamic = 'force-dynamic';
  * Persists `expired` on offers past `expires_at` with no client involved. Idempotent and retry-safe:
  * the next minute's run is the retry.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
-  }
-
+export const GET = withCronRoute('offer-expiry-sweep', async () => {
   const { expired } = await runOfferExpirySweep();
   return NextResponse.json({ status: 'ok', expired });
-}
+});

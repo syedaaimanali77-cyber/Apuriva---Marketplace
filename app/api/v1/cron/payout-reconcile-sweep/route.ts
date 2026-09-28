@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { runPayoutReconcileSweep } from '@/lib/payouts';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,14 +12,7 @@ export const dynamic = 'force-dynamic';
  * `getPayoutStatus` or `getPayoutStatusByIdempotencyKey` — so overlapping invocations can never pay
  * twice. Unresolved payouts are escalated to Finance, never auto-failed and never re-issued.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
-  }
-
+export const GET = withCronRoute('payout-reconcile-sweep', async () => {
   const result = await runPayoutReconcileSweep();
   return NextResponse.json({ status: 'ok', ...result });
-}
+});

@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { evaluateAiAbuseSignals, evaluateAiCostAlerts, sweepAiUsageRetention } from '@/lib/ai';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,14 +17,7 @@ export const dynamic = 'force-dynamic';
  * Retention runs first so neither evaluation reads rows that are already past their window. A pass
  * that throws is reported rather than masked; the next hourly run is the retry.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
-  }
-
+export const GET = withCronRoute('ai-usage-sweep', async () => {
   const { deleted } = await sweepAiUsageRetention();
   const abuse = await evaluateAiAbuseSignals();
   const { emitted } = await evaluateAiCostAlerts();
@@ -35,4 +29,4 @@ export async function GET(request: NextRequest) {
     abuseSignalsFlagged: abuse.flagged,
     costAlertsEmitted: emitted,
   });
-}
+});

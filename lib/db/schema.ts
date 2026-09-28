@@ -4346,3 +4346,31 @@ export const moderationAppeals = pgTable(
     ),
   ],
 );
+
+/**
+ * Spec 046 §3.8 (AC-5) — one row per Vercel Cron job, upserted by `withCronRoute`
+ * (`lib/cron/route.ts`). NOT a job queue and NOT a run history: per-item retry, backoff and
+ * dead-letter states stay with each domain's own durable rows (notification deliveries, file scans,
+ * payment/payout/refund reconciliation). This table covers only what those cannot: a sweep that
+ * fails as a whole or silently stops running, which Vercel Cron neither retries nor reports.
+ * `/api/v1/health/detailed` reads it. `job` is a `lib/cron/schedules.ts` name; `last_error_code`
+ * is a short code, never a message or payload.
+ */
+export const cronJobHeartbeats = pgTable(
+  'cron_job_heartbeats',
+  {
+    ...baseColumns(),
+    job: text('job').notNull(),
+    lastStartedAt: timestamp('last_started_at', { withTimezone: true }),
+    lastSucceededAt: timestamp('last_succeeded_at', { withTimezone: true }),
+    lastFailedAt: timestamp('last_failed_at', { withTimezone: true }),
+    lastErrorCode: text('last_error_code'),
+    consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex('cron_job_heartbeats_job_uq').on(t.job),
+    check('cron_job_heartbeats_job_shape_ck', sql`${t.job} ~ '^[a-z][a-z0-9]*(-[a-z0-9]+)*$' and char_length(${t.job}) <= 64`),
+    check('cron_job_heartbeats_consecutive_failures_ck', sql`${t.consecutiveFailures} >= 0`),
+    check('cron_job_heartbeats_error_code_length_ck', sql`${t.lastErrorCode} is null or char_length(${t.lastErrorCode}) <= 64`),
+  ],
+);

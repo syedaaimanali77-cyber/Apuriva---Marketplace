@@ -4,6 +4,7 @@ import { getOrCreateCorrelationId } from './correlation-id';
 import { ApiRouteError } from './errors';
 import { apiError } from './response';
 import { logForbiddenAttempt } from './security-log';
+import { logEvent } from '@/lib/observability/log';
 
 /**
  * Composes a Route Handler body with the standard envelope/error handling (spec 004 §3, AC-1
@@ -21,7 +22,21 @@ export function withApiRoute(
 ): (request: Request) => Promise<NextResponse> {
   return async (request: Request) => {
     const correlationId = getOrCreateCorrelationId(request);
+    const startedAt = Date.now();
+    const res = await handleWithEnvelope(request, correlationId);
+    // Spec 046 §3.9 X-2: one access line per request, correlated by the ID the caller received.
+    // Pathname only — a query string can carry search text or other user input.
+    logEvent('info', 'api.request', {
+      correlationId,
+      method: request.method,
+      path: new URL(request.url).pathname,
+      status: res.status,
+      durationMs: Date.now() - startedAt,
+    });
+    return res;
+  };
 
+  async function handleWithEnvelope(request: Request, correlationId: string): Promise<NextResponse> {
     try {
       return await runWithRequestContext({ correlationId }, () => handler(request, correlationId));
     } catch (err) {
@@ -47,5 +62,5 @@ export function withApiRoute(
       console.error(JSON.stringify({ event: 'api.unhandled_error', correlationId, error: String(err) }));
       return apiError('INTERNAL_ERROR', 'An unexpected error occurred.', correlationId);
     }
-  };
+  }
 }

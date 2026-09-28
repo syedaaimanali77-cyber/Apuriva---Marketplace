@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { runNoShowResponseSweep } from '@/lib/no-show';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,14 +14,7 @@ export const dynamic = 'force-dynamic';
  * and transitions no booking — silence is not an admission, and only a Trust & Safety admin ever
  * decides a no-show (master spec §51). A five-minute cadence is ample for a window measured in days.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
-  }
-
+export const GET = withCronRoute('no-show-response-sweep', async () => {
   const result = await runNoShowResponseSweep();
   return NextResponse.json({ status: 'ok', ...result });
-}
+});

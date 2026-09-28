@@ -260,6 +260,13 @@
       "when": 1790800700000,
       "tag": "0037_add_user_locale",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790800800000,
+      "tag": "0038_add_cron_job_heartbeats",
+      "breakpoints": true
     }
   ]
 }

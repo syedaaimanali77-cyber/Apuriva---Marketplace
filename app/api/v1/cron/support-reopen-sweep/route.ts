@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { runSupportReopenSweep } from '@/lib/support';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,17 +21,7 @@ export const dynamic = 'force-dynamic';
  * Cron routes are excluded from the OpenAPI contract by `scripts/check-openapi-drift.ts` (spec 001
  * §8 risk #1): they are platform infrastructure with their own auth, not public REST surface.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json(
-      { error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } },
-      { status: 401 },
-    );
-  }
-
+export const GET = withCronRoute('support-reopen-sweep', async () => {
   const result = await runSupportReopenSweep();
   return NextResponse.json({ status: 'ok', ...result });
-}
+});

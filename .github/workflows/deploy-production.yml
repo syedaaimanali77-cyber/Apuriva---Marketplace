@@ -1,0 +1,85 @@
+# Spec 046 §3.4 (AC-2) — the ONLY path to production. Started by hand with the commit to ship; that
+# commit must already be on `main`, have a green `ci` push run, and have been deployed to staging by
+# `deploy-staging`. The deploy job runs in the GitHub Environment `production`, whose required reviewer
+# must approve it before any secret is released: it migrates the production database, then builds and
+# deploys that exact commit to the `apuriva-production` Vercel project.
+#
+# Migrations are expand/contract (§3.4): a code rollback (Vercel Instant Rollback,
+# docs/operations/deploy-rollback.md) never needs a schema rollback, and `_down.sql` is human-only.
+#
+# GitHub Environment `production` (DEP-3, required reviewer) provides: VERCEL_PROJECT_ID_PRODUCTION and
+# PRODUCTION_DATABASE_URL. A job can read only one environment's secrets, so VERCEL_TOKEN and
+# VERCEL_ORG_ID must ALSO be readable here — set in `production` or as repository secrets (see
+# docs/operations/deploy-rollback.md, "Configuration").
+name: deploy-production
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full 40-character commit SHA already deployed to staging with green CI
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify commit is staged and green
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "sha must be a full 40-character lowercase commit SHA"; exit 1; fi
+          git merge-base --is-ancestor "$SHA" origin/main || { echo "$SHA is not on main"; exit 1; }
+          ci=$(gh run list --workflow ci.yml --commit "$SHA" --event push --status success --json databaseId --jq 'length')
+          [ "$ci" -gt 0 ] || { echo "no successful ci push run for $SHA"; exit 1; }
+          staged=$(gh run list --workflow deploy-staging.yml --commit "$SHA" --status success --json databaseId --jq 'length')
+          [ "$staged" -gt 0 ] || { echo "$SHA has not been deployed to staging"; exit 1; }
+          echo "OK — $SHA is on main, green in ci and deployed to staging."
+
+  deploy:
+    name: deploy-production
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production # required reviewer (DEP-3)
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_PRODUCTION }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Migrate the production database (before the code that needs it)
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: npm run db:migrate
+      - name: Build and deploy to apuriva-production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN" | tee deploy-url.txt
+          echo "Deployed ${{ inputs.sha }} to $(tail -n 1 deploy-url.txt)" >> "$GITHUB_STEP_SUMMARY"

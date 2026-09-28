@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import packageJson from '@/package.json';
 import { getPool } from '@/lib/db';
+import { logEvent } from '@/lib/observability/log';
 
 export const dynamic = 'force-dynamic';
 
 interface DbStatus {
   connected: boolean;
   latencyMs: number | null;
-  error?: string;
 }
 
 function describeDbError(err: unknown): string {
@@ -26,7 +26,9 @@ async function checkDb(): Promise<DbStatus> {
     await getPool().query('SELECT 1');
     return { connected: true, latencyMs: Date.now() - startedAt };
   } catch (err) {
-    return { connected: false, latencyMs: null, error: describeDbError(err) };
+    // Spec 046 X-1: the detail goes to the platform log, never to this unauthenticated response.
+    logEvent('warn', 'health.db_unreachable', { error: describeDbError(err) });
+    return { connected: false, latencyMs: null };
   }
 }
 

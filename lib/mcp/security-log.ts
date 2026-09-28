@@ -8,6 +8,7 @@
  * text or payment-sensitive data (spec 035 §4), so only the tool name, the check that failed and
  * the subject are recorded.
  */
+import { logEvent } from '@/lib/observability/log';
 
 /** Which of the eight checks refused the call. The order here is the order they run in. */
 export type McpCheckName =
@@ -26,16 +27,15 @@ export function logMcpAuthorizationFailure(params: {
   userId: string;
   reason: string;
 }): void {
-  console.warn(
-    JSON.stringify({
-      event: 'mcp.authorization_failed',
-      tool: params.toolName,
-      check: params.check,
-      userId: params.userId,
-      reason: params.reason,
-      at: new Date().toISOString(),
-    }),
-  );
+  // Spec 046 §3.9 X-7: through `logEvent`, so the line is correlated with the request that attempted
+  // the call. (lib/mcp never imports lib/audit directly — spec 035's boundary.)
+  logEvent('warn', 'mcp.authorization_failed', {
+    tool: params.toolName,
+    check: params.check,
+    userId: params.userId,
+    reason: params.reason,
+    at: new Date().toISOString(),
+  });
 }
 
 /**

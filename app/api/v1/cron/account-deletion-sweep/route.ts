@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { sweepDeletions } from '@/lib/privacy/deletion';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,14 +10,7 @@ export const dynamic = 'force-dynamic';
  * retry-safe, safe to pause/resume (lib/privacy/deletion.ts `sweepDeletions`) — never depends on
  * client execution.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
-  }
-
+export const GET = withCronRoute('account-deletion-sweep', async () => {
   const { processed } = await sweepDeletions();
   return NextResponse.json({ status: 'ok', processed });
-}
+});

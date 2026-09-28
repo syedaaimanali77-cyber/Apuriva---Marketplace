@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { runPaymentSweep } from '@/lib/payments';
+import { withCronRoute } from '@/lib/cron/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,14 +13,7 @@ export const dynamic = 'force-dynamic';
  * protection, fail expired unpaid `pending` bookings. Idempotent and retry-safe: the next minute's
  * run is the retry, and every pass re-checks its predicate under `FOR UPDATE SKIP LOCKED`.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
-  }
-
+export const GET = withCronRoute('payment-sweep', async () => {
   const result = await runPaymentSweep();
   return NextResponse.json({ status: 'ok', ...result });
-}
+});

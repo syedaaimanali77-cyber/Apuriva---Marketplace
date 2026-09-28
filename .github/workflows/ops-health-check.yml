@@ -1,0 +1,71 @@
+# Spec 046 §3.10 — the scheduled operational health check.
+#
+# WHAT THIS IS: a best-effort GitHub Actions schedule (every 5 minutes) that polls each deployment's
+# GET /api/v1/health/detailed. It is NOT 24/7 monitoring: runs can start late or be skipped under GitHub
+# load, there is no on-call rotation, escalation or guaranteed delivery, and it cannot alert on its own
+# absence — docs/operations/monitoring.md requires a weekly human check that these runs exist.
+#
+# Per environment it evaluates (scripts/ops-health-check.ts):
+#   0 fetch               the endpoint answered JSON within 20 s (the body is kept as a run artefact)
+#   1 app-database        HTTP 200, `database` up, `migrations` up (503 = database down)
+#   2 cron                every `cron:<job>` up (never_ran / stale / 3_consecutive_failures fail)
+#   3 kill-switch         every spec 041 kill switch on
+#   4 report-staleness    `checkedAt` within 120 s of this runner's clock (no cached/replayed report)
+#   5 production-adapters production only: no adapter reports sandbox_in_production
+# A failing check turns the run red and opens — or comments on — exactly one issue per environment and
+# check, `[ops-alert] <env>: <check>` labelled `ops-alert`; when it passes again the issue gets a
+# "Recovered at" comment and is closed.
+#
+# Each leg runs in the NON-approval-gated GitHub Environment `monitor-<env>` (§3.3), which holds only
+# MONITORING_TOKEN (secret) and BASE_URL (variable), so monitoring never waits on the production deploy
+# approval. The repository needs an `ops-alert` issue label (DEP-3).
+name: ops-health-check
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: health (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [staging, production]
+    environment:
+      name: monitor-${{ matrix.environment }}
+    concurrency:
+      group: ops-health-check-${{ matrix.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # The script uses only Node built-ins and a type-only import, so no `npm ci` is needed.
+      - name: Check /api/v1/health/detailed and sync [ops-alert] issues
+        env:
+          MONITORING_TOKEN: ${{ secrets.MONITORING_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          npx --yes tsx@4 scripts/ops-health-check.ts
+          --environment "${{ matrix.environment }}"
+          --base-url "${{ vars.BASE_URL }}"
+          --repo "${{ github.repository }}"
+          --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          --output "health-${{ matrix.environment }}.json"
+      - name: Keep the fetched report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-${{ matrix.environment }}
+          path: health-${{ matrix.environment }}.json
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,138 @@
+{
+  "$comment": "Spec 046 §3.5 — pre-existing failing tests owned by OTHER specs, captured by one clean full run on the committed tree. scripts/check-test-baseline.ts fails CI on any failure not listed here, and on any entry that now passes or no longer exists (remove it). Never add a failure caused by the change under review.",
+  "entries": [
+    {
+      "file": "app/admin/page.test.tsx",
+      "testName": "AdminOverviewPage (spec 037 §5, AC-1) > renders the live figures, per-currency revenue, the \"as of\" time and the alert with its link",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "app/admin/settings/ai-usage/page.test.tsx",
+      "testName": "AdminAiUsagePage (spec 033 §5/AC-6) > renders the success state: stat row plus per-task and per-provider tables",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "app/bookings/[id]/cancel/page.test.tsx",
+      "testName": "cancel booking screen (spec 023 AC-3) > shows the exact fee and refund, and which tier applies, before anything is confirmed",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "app/bookings/[id]/payment/page.test.tsx",
+      "testName": "booking payment page (spec 021 §5) > shows the exact amount and currency before approving a price change",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "app/bookings/_components/RefundSection.test.tsx",
+      "testName": "booking refund section (spec 022 §5) > shows a completed refund with its amount and the decided reason",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "app/explore/[category]/[service]/page.test.tsx",
+      "testName": "ServicePage (spec 011 §5/AC-2) > shows the \"Ask Apuriva\" empty state when there are no packages or FAQs",
+      "owningSpec": "011",
+      "classification": "pre-existing",
+      "reason": "The page renders \"Ask Apuriva\" twice, so the single-element text query is ambiguous."
+    },
+    {
+      "file": "app/provider/earnings/page.test.tsx",
+      "testName": "ProviderEarningsPage (spec 024 §5.1) > renders all eight figures exactly as served, with no client arithmetic",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "app/provider/earnings/page.test.tsx",
+      "testName": "ProviderEarningsPage (spec 024 §5.1) > shows a negative balance with its recovery items rather than hiding it",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "e2e/i18n.spec.ts",
+      "testName": "spec 042 Urdu journey, end to end (route level) > switches to ur, searches, creates a request in the market currency, and resolves error codes in Urdu",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "lib/db/concurrency.integration.test.ts",
+      "testName": "optimistic concurrency (integration, spec 003 AC-6) > a second write against the now-stale version matches zero rows — a concurrency conflict, not a silent overwrite",
+      "owningSpec": "003",
+      "classification": "pre-existing",
+      "reason": "Pins the table list / fixture shape as of spec 003; later specs added tables and NOT NULL columns (spec 041 §8 names these as stale). Not edited by spec 046."
+    },
+    {
+      "file": "lib/db/concurrency.integration.test.ts",
+      "testName": "optimistic concurrency (integration, spec 003 AC-6) > a write against the current version succeeds and increments version",
+      "owningSpec": "003",
+      "classification": "pre-existing",
+      "reason": "Pins the table list / fixture shape as of spec 003; later specs added tables and NOT NULL columns (spec 041 §8 names these as stale). Not edited by spec 046."
+    },
+    {
+      "file": "lib/db/migrations.integration.test.ts",
+      "testName": "0001_baseline_schema migration (integration) > creates all 80 tables (77 baseline + spec 009's 3 RBAC tables)",
+      "owningSpec": "003",
+      "classification": "pre-existing",
+      "reason": "Pins the table list / fixture shape as of spec 003; later specs added tables and NOT NULL columns (spec 041 §8 names these as stale). Not edited by spec 046."
+    },
+    {
+      "file": "lib/db/schema-coverage.test.ts",
+      "testName": "schema coverage (spec 003 AC-4) > has exactly the expected set of tables — nothing missing, nothing extra",
+      "owningSpec": "003",
+      "classification": "pre-existing",
+      "reason": "Pins the table list / fixture shape as of spec 003; later specs added tables and NOT NULL columns (spec 041 §8 names these as stale). Not edited by spec 046."
+    },
+    {
+      "file": "lib/db/schema-lint.test.ts",
+      "testName": "schema lint (spec 003) > AC-5: every jsonb column is an explicitly reviewed, documented exception — never a silent addition",
+      "owningSpec": "003",
+      "classification": "pre-existing",
+      "reason": "jsonb columns added by specs 010/011/034 are not yet registered in the committed allow-list (their entries exist only as an uncommitted working-tree change)."
+    },
+    {
+      "file": "lib/i18n/format.test.ts",
+      "testName": "formatMoney (spec 042 §3.6, AC-3) > always uses the value’s own currency code, whatever the locale",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "lib/i18n/format.test.ts",
+      "testName": "formatMoney (spec 042 §3.6, AC-3) > an unsupported locale formats as English",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "lib/i18n/format.test.ts",
+      "testName": "formatMoney (spec 042 §3.6, AC-3) > uses each currency’s REAL fraction digits: PKR/USD 2, JPY 0, KWD 3",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "lib/notifications/integration-seams.integration.test.ts",
+      "testName": "notification integration seams (spec 026, integration) > spec 023's cancellation and no-show events produce exactly one notification each",
+      "owningSpec": "042",
+      "classification": "environment",
+      "reason": "Money formatting depends on the runtime ICU/CLDR data: on Node 22 (CI, spec 046 §3.4) PKR resolves to 0 fraction digits (\"PKR 150,000\"), on Node 25 to 2 (\"PKR 1,500.00\"). Owned by spec 042's formatMoney."
+    },
+    {
+      "file": "lib/onboarding/seen-state.test.ts",
+      "testName": "onboarding seen-state (spec 007 §4/§8) > treats a localStorage failure as already-seen rather than re-showing forever",
+      "owningSpec": "007",
+      "classification": "environment",
+      "reason": "Depends on the runtime's localStorage: Node 25 has a native localStorage global, Node 22 (CI, spec 046 §3.4) does not."
+    }
+  ]
+}

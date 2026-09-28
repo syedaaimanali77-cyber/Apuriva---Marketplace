@@ -1,0 +1,58 @@
+# Spec 046 §3.4 (AC-2) — every commit on `main` whose `ci` run passed is migrated into, then deployed to,
+# the `apuriva-staging` Vercel project (§3.1). Staging is that project's PRODUCTION deployment, which is
+# why its Vercel Crons run (§3.2).
+#
+# Order matters and is why Vercel's Git auto-deploy is disabled on the project: migrations are applied
+# BEFORE the code that needs them, and must be backward-compatible with the code already deployed
+# (expand/contract), so rolling code back never needs a schema rollback. `_down.sql` is never run here.
+#
+# GitHub Environment `staging` (DEP-3) provides: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID_STAGING,
+# STAGING_DATABASE_URL.
+name: deploy-staging
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy-staging
+    # Only a green `ci` run for a PUSH to main — never a PR run, never a failed one.
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: staging
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_STAGING }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }} # exactly the commit CI passed
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Migrate the staging database (before the code that needs it)
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: npm run db:migrate
+      - name: Build and deploy to apuriva-staging
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN" | tee deploy-url.txt
+          echo "Deployed ${{ github.event.workflow_run.head_sha }} to $(tail -n 1 deploy-url.txt)" >> "$GITHUB_STEP_SUMMARY"
