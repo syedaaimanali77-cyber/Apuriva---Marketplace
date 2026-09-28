@@ -7,7 +7,9 @@
 #                  file is in exactly one group. Each job fails on a failure that is not in the committed
 #                  baseline test/known-failures.json, and on a baseline entry that now passes (§3.5).
 # - `build`        `next build`, reused by `browser`.
-# - `browser`      Playwright (§3.6) against `next start` on the isolated `apuriva_browser_test` database.
+# - `browser`      Playwright (§3.6) smoke test against `next start` on the isolated `apuriva_browser_test` database.
+# - `a11y`         spec 043: axe, focus, reduced-motion, keyboard and Urdu-parity checks on the audited routes a
+#                  change selects (scripts/a11y-changed-routes.ts), held against browser/a11y/baseline.json.
 #
 # Coverage is uploaded as an artefact by every test job but is not a gate (§3.4).
 name: ci
@@ -205,14 +207,88 @@ jobs:
           path: .next
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Playwright (migrates apuriva_browser_test, then next start on :3100)
+      - name: Playwright smoke (migrates apuriva_browser_test, then next start on :3100)
         env:
           TMPDIR: ${{ runner.temp }} # browser/personas.ts writes sessions and the report under os.tmpdir()
-        run: npm run test:browser
+        # The runner smoke test only: spec 043's accessibility suite is its own required job (`a11y`).
+        run: npm run test:browser -- browser/smoke.browser.ts
       - name: Upload the Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
+          path: ${{ runner.temp }}/apuriva-playwright/
+          if-no-files-found: ignore
+
+  # Spec 043 (AC-1, §3.4/§3.5) — the accessibility gate. A PR scans the manifest routes its changes select
+  # (docs-only → skipped with a reason; shared code → full manifest; route-local → those routes); a push to
+  # main always scans everything. Counts are held against browser/a11y/baseline.json: a count above its
+  # entry fails (new violation), a count below it fails too (stale — lower the entry). There is no update
+  # path here: A11Y_CAPTURE_BASELINE is refused under CI.
+  a11y:
+    name: a11y
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: apuriva
+          POSTGRES_PASSWORD: apuriva
+          POSTGRES_DB: apuriva_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U apuriva"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the changed-route selector diffs against the base branch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: cp .env.example .env
+      - name: Select audited routes
+        id: select
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx tsx scripts/a11y-changed-routes.ts --base "origin/${{ github.base_ref }}" | tee -a "$GITHUB_OUTPUT"
+          else
+            npx tsx scripts/a11y-changed-routes.ts --push | tee -a "$GITHUB_OUTPUT"
+          fi
+      - name: Skipped
+        if: steps.select.outputs.mode == 'skip'
+        run: echo "a11y skipped — ${{ steps.select.outputs.reason }}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/download-artifact@v4
+        if: steps.select.outputs.mode != 'skip'
+        with:
+          name: next-build
+          path: .next
+      - name: Install Chromium
+        if: steps.select.outputs.mode != 'skip'
+        run: npx playwright install --with-deps chromium
+      - name: Accessibility checks (axe, focus, reduced motion, keyboard, Urdu parity, 44px report)
+        if: steps.select.outputs.mode != 'skip'
+        env:
+          TMPDIR: ${{ runner.temp }}
+          A11Y_ROUTES: ${{ steps.select.outputs.routes }}
+        run: npm run test:browser -- browser/a11y
+      - name: Upload the 44px goal report (informational)
+        if: always() && steps.select.outputs.mode != 'skip'
+        uses: actions/upload-artifact@v4
+        with:
+          name: touch-target-44-report
+          path: browser/a11y/touch-target-44.report.json
+          if-no-files-found: ignore
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-playwright-report
           path: ${{ runner.temp }}/apuriva-playwright/
           if-no-files-found: ignore

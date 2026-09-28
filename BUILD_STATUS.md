@@ -4,7 +4,7 @@ Maintained per master specification §129–§130 and spec 046 §3.12 (AC-7). **
 same PR as every spec implementation** — CI's `check:build-status` fails a PR that moves a
 `docs/specs/*` status to `Approved` or `Implemented` without changing it.
 
-_Last updated: 2026-09-28 — spec 046 (Engineering Operations: CI/CD & Observability)._
+_Last updated: 2026-09-29 — spec 043 (Accessibility Standards)._
 
 ## Completed
 
@@ -32,7 +32,15 @@ the externally-verified criteria pass (see **In progress**).
   Environments, DEP-1/DEP-3), AC-6 (the first recorded Neon restore drill, DEP-2), and the
   branch-protection half of AC-1 (DEP-3), plus the manual pipeline and monitor verification records
   of §6.
-- **Spec 043** — Accessibility standards (next).
+- **Spec 043** — Accessibility standards: implemented (`browser/a11y/*`, the `a11y` CI job,
+  `scripts/a11y-*.ts`, `docs/accessibility/`, and the Linux-captured `browser/a11y/baseline.json`); status
+  stays `Draft` because three criteria depend on work outside this spec
+  ([checklist](docs/accessibility/checklist.md#open-items-not-passing-yet)):
+  AC-4 (`color-contrast`, 310 nodes — design-token colours, spec 002 DEP-3, wider than the five pairs in
+  §1), AC-8 (`apuriva-focus-visible`, 152 nodes — mostly the `Select`/`Input` primitives drawing their ring
+  on a wrapper) and AC-2/AC-3 (the manual NVDA/VoiceOver sign-offs, not performed). AC-1, AC-5, AC-6 and
+  AC-7 pass. The account-menu focus defect (specs 006/014) and the 375px overflow on Explore, Category,
+  Search, Login and Register were fixed in their owning components.
 - **Spec 044** — Frontend platform quality: performance, PWA, SEO (after 043).
 
 ## Blocked
@@ -47,6 +55,9 @@ the externally-verified criteria pass (see **In progress**).
 - Vitest (unit, integration, MCP, security/permission, route-level E2E) — see **Test status**.
 - Playwright browser runner (spec 046 §3.6): `browser/smoke.browser.ts` against `next start` on the
   isolated `apuriva_browser_test` database.
+- Accessibility gate (spec 043): `browser/a11y/*.browser.ts` — axe (WCAG 2.0–2.2 A/AA), focus visibility,
+  reduced motion, keyboard, Urdu parity and 375px overflow, plus the report-only 44px goal — held against
+  `browser/a11y/baseline.json` by the `a11y` CI job.
 - Static checks: `npm run lint`, `npm run typecheck`, `check:env`, `check:schema-baseline`,
   `check:openapi-drift`, `check:migration-pairing`, `check:no-workspace`, `check:build-status`.
 
@@ -65,7 +76,9 @@ the externally-verified criteria pass (see **In progress**).
 
 ## Next recommended task
 
-Implement **spec 043** (accessibility) on the Playwright foundation, then **spec 044**.
+Implement **spec 044** (frontend platform quality). For spec 043: spec 002 to regenerate the design
+tokens with AA values and move the field primitives' focus ring onto the focused control; then the
+manual NVDA/VoiceOver sign-offs.
 
 ## Environment setup
 
@@ -120,6 +133,12 @@ The **environment** entries fail only on Node 22. On a Node 25 developer machine
 
 Browser: `browser/smoke.browser.ts` 3/3 passed against `next start` (customer, provider and admin
 personas, the admin completing TOTP MFA).
+
+Accessibility (spec 043, 2026-09-29, Linux Node 22, 2 workers as on CI's 4-vCPU runner, full manifest):
+the capture pass ran 436/436 (every keyboard, `lang`/`dir` and 375px-overflow check passing) and produced
+the committed baseline; the `CI=true` gate then passed 436/436 against it on two consecutive runs. The
+spec 043 unit modules have 95.4% statement coverage (`scripts/a11y-baseline.ts`,
+`scripts/a11y-changed-routes.ts`; 39 tests).
 
 ## Migration status
 
