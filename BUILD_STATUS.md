@@ -4,7 +4,7 @@ Maintained per master specification §129–§130 and spec 046 §3.12 (AC-7). **
 same PR as every spec implementation** — CI's `check:build-status` fails a PR that moves a
 `docs/specs/*` status to `Approved` or `Implemented` without changing it.
 
-_Last updated: 2026-09-29 — spec 043 (Accessibility Standards)._
+_Last updated: 2026-09-29 — spec 044 (Frontend Platform Quality: PWA, performance, SEO)._
 
 ## Completed
 
@@ -41,7 +41,18 @@ the externally-verified criteria pass (see **In progress**).
   on a wrapper) and AC-2/AC-3 (the manual NVDA/VoiceOver sign-offs, not performed). AC-1, AC-5, AC-6 and
   AC-7 pass. The account-menu focus defect (specs 006/014) and the 375px overflow on Explore, Category,
   Search, Login and Register were fixed in their owning components.
-- **Spec 044** — Frontend platform quality: performance, PWA, SEO (after 043).
+- **Spec 044** — Frontend platform quality: implemented (`app/manifest.ts`, `public/sw.js` +
+  `public/sw-rules.js`, `/offline`, `OfflineBanner` and the offline-disabled critical writes, `lib/seo/*`,
+  `robots.txt`, `sitemap.xml`, per-segment metadata and JSON-LD, the `perf` CI job with
+  `lighthouserc.json`, `scripts/perf-budget.ts` and `browser/perf/inp.browser.ts`); status stays `Draft`:
+  - **AC-1** is open on **DEP-2**: the 192px, 512px and maskable 512px icon artwork has not been delivered
+    to `public/icons/`. The manifest, worker and offline launch pass; the icon test skips with that reason.
+  - **AC-4** is open: the `perf` gate is committed as specified and currently fails. Every budget route
+    already transfers 222–227 KB of JavaScript (budget 204,800 bytes; unchanged by 044), `/search` has
+    CLS 0.144, and LCP/INP breach too (measured on an under-powered host; CI gives the authoritative values).
+    The fixes belong to the owning specs (042's per-page dictionary, 013's `/search`, the shared chrome) —
+    see spec 044 §3.7.
+  - AC-2, AC-3, AC-5, AC-6 and AC-7 pass. Deployments must set `SITE_URL` (`.env.example`).
 
 ## Blocked
 
@@ -55,6 +66,10 @@ the externally-verified criteria pass (see **In progress**).
 - Vitest (unit, integration, MCP, security/permission, route-level E2E) — see **Test status**.
 - Playwright browser runner (spec 046 §3.6): `browser/smoke.browser.ts` against `next start` on the
   isolated `apuriva_browser_test` database.
+- PWA and SEO (spec 044): `browser/pwa/*.browser.ts` (manifest, worker registration, offline page with its
+  cached assets, no private data in Cache Storage, offline honesty); `lib/seo/*` and `lib/pwa/*` tests.
+- Performance budgets (spec 044): the `perf` job — Lighthouse CI (LCP, CLS, JS bytes) and
+  `browser/perf/inp.browser.ts` (INP) on six routes; currently failing (AC-4 open).
 - Accessibility gate (spec 043): `browser/a11y/*.browser.ts` — axe (WCAG 2.0–2.2 A/AA), focus visibility,
   reduced motion, keyboard, Urdu parity and 375px overflow, plus the report-only 44px goal — held against
   `browser/a11y/baseline.json` by the `a11y` CI job.
@@ -76,7 +91,8 @@ the externally-verified criteria pass (see **In progress**).
 
 ## Next recommended task
 
-Implement **spec 044** (frontend platform quality). For spec 043: spec 002 to regenerate the design
+The Account Profile & Preferences feature (not a numbered spec). For spec 044: the icon artwork (DEP-2)
+and the performance remediation in the owning specs (§3.7). For spec 043: spec 002 to regenerate the design
 tokens with AA values and move the field primitives' focus ring onto the focused control; then the
 manual NVDA/VoiceOver sign-offs.
 
@@ -139,6 +155,12 @@ the capture pass ran 436/436 (every keyboard, `lang`/`dir` and 375px-overflow ch
 the committed baseline; the `CI=true` gate then passed 436/436 against it on two consecutive runs. The
 spec 043 unit modules have 95.4% statement coverage (`scripts/a11y-baseline.ts`,
 `scripts/a11y-changed-routes.ts`; 39 tests).
+
+PWA/SEO (spec 044, 2026-09-29, Linux Node 22, production build): 56/56 targeted Vitest tests (SEO unit and
+integration, service-worker rules, offline components, and the untouched layout and branding tests), with
+98.4% statement coverage on `lib/seo/**` (lowest file 97.1%) and 100% on `public/sw-rules.js` and
+`lib/pwa/**`; smoke + PWA browser tests
+9 passed, 1 skipped (the icon test, DEP-2). The `perf` job fails as documented under **In progress** (AC-4).
 
 ## Migration status
 

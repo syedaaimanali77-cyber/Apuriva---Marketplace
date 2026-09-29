@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Alert, Badge, Button, ErrorState, FormField, PriceDisplay, Skeleton, Textarea } from '@/components';
 import { formatDateTime } from '@/lib/i18n/format';
 import type { NegotiationSenderRole, OfferMessageDto } from '@/lib/types/negotiation';
 import { useLocale } from './LocaleProvider';
+import { OfflineWriteNotice } from './OfflineWriteNotice';
+import { useNetworkStatus } from './useNetworkStatus';
 import styles from './request-message-thread.module.css';
 
 /** Spec 019 §5: no WebSocket layer exists — an open thread refetches this often (spec 018's cadence). */
@@ -130,6 +132,9 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
   const [messages, setMessages] = useState<M[]>([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  // Spec 044 §3.5 (X-5): message send is disabled while offline, with the offline notice.
+  const { online } = useNetworkStatus();
+  const offlineNoticeId = useId();
   const [sendError, setSendError] = useState<string | null>(null);
   const [closed, setClosed] = useState(!canSend);
   const [blocked, setBlocked] = useState(false);
@@ -436,10 +441,11 @@ export function RequestMessageThread<M extends ThreadMessage = OfferMessageDto>(
             />
           </FormField>
           <div className={styles.actions}>
-            <Button type="submit" variant="primary" loading={sending}>
+            <Button type="submit" variant="primary" loading={sending} disabled={!online} aria-describedby={online ? undefined : offlineNoticeId}>
               {t('thread.send')}
             </Button>
           </div>
+          <OfflineWriteNotice id={offlineNoticeId} />
         </form>
       )}
     </div>

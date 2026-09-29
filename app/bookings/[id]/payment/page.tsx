@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Badge, Button, Card, ConfirmDialog, ErrorState, Skeleton } from '@/components';
@@ -9,6 +9,8 @@ import type { PaymentDto, PriceAdjustmentDto } from '@/lib/types/payments';
 import { apiFetch, mutateHeaders, type ApiErrorBody } from '../../booking-client';
 import { CancellationPolicySection } from '../../_components/CancellationPolicySection';
 import { useLocale } from '@/app/_components/LocaleProvider';
+import { OfflineWriteNotice } from '@/app/_components/OfflineWriteNotice';
+import { useNetworkStatus } from '@/app/_components/useNetworkStatus';
 import type { MessageKey } from '@/lib/i18n/dictionaries/en';
 import { formatDateTime, formatMoney as formatLocaleMoney } from '@/lib/i18n/format';
 import styles from './payment.module.css';
@@ -50,6 +52,11 @@ export default function BookingPaymentPage() {
   const [failure, setFailure] = useState<ApiErrorBody | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<PriceAdjustmentDto | null>(null);
+  // Spec 044 §3.5 (X-5): payment is disabled while offline, with the offline notice (the failure state's
+  // retry is withheld too — ErrorState has no disabled retry).
+  const { online } = useNetworkStatus();
+  const offlineNoticeId = useId();
+  const offlineDescription = online ? undefined : offlineNoticeId;
 
   const load = useCallback(async () => {
     const bookingResult = await apiFetch<BookingDto>(`/api/v1/bookings/${bookingId}`);
@@ -190,10 +197,10 @@ export default function BookingPaymentPage() {
             <ErrorState
               title={t(PAYMENT_FAILED_HEADLINE)}
               description={failure.code === 'PAYMENT_FAILED' ? t(PAYMENT_FAILED_DETAIL) : errorText(failure.code, failure.message)}
-              onRetry={() => void pay()}
+              onRetry={online ? () => void pay() : undefined}
               retryLabel={t('payment.tryAgain')}
               secondaryAction={
-                <Button variant="secondary" onClick={() => void pay()} disabled={pending}>
+                <Button variant="secondary" onClick={() => void pay()} disabled={pending || !online} aria-describedby={offlineDescription}>
                   {t('payment.changeMethod')}
                 </Button>
               }
@@ -203,7 +210,7 @@ export default function BookingPaymentPage() {
           {!paid ? (
             failure ? null : (
               <div className={styles.actions}>
-                <Button onClick={() => void pay()} disabled={pending}>
+                <Button onClick={() => void pay()} disabled={pending || !online} aria-describedby={offlineDescription}>
                   {t('payment.payNow')}
                 </Button>
               </div>
@@ -211,6 +218,7 @@ export default function BookingPaymentPage() {
           ) : (
             <p className={styles.status}>{t('payment.confirmed')}</p>
           )}
+          {!paid ? <OfflineWriteNotice id={offlineNoticeId} /> : null}
 
           {payment?.protectionState ? (
             <p className={styles.protection}>
