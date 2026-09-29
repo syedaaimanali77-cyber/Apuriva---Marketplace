@@ -147,6 +147,7 @@ interface ParticipantRow {
   role: ConversationParticipantRole;
   last_read_at: Date | null;
   business_name: string | null;
+  display_name: string | null;
 }
 
 const iso = (value: Date | null): string | null => (value ? new Date(value).toISOString() : null);
@@ -154,16 +155,18 @@ const iso = (value: Date | null): string | null => (value ? new Date(value).toIS
 export async function loadParticipants(db: Executor, conversationId: string): Promise<ConversationParticipantDto[]> {
   const rows = await queryRows<ParticipantRow>(
     db,
-    sql`SELECT p.user_id, p.role, p.last_read_at, pp.business_name
+    sql`SELECT p.user_id, p.role, p.last_read_at, pp.business_name, cp.display_name
           FROM conversation_participants p
           LEFT JOIN provider_profiles pp ON p.role = 'provider' AND pp.user_id = p.user_id
+          LEFT JOIN customer_profiles cp ON p.role = 'customer' AND cp.user_id = p.user_id
          WHERE p.conversation_id = ${conversationId}
          ORDER BY p.role ASC`,
   );
   return rows.map((row) => ({
     userId: row.user_id,
     role: row.role,
-    displayName: row.role === 'provider' ? row.business_name : null,
+    // Spec 025's contract: the provider's business name, the customer's display name (Account → Profile).
+    displayName: row.role === 'provider' ? row.business_name : row.display_name,
     lastReadAt: iso(row.last_read_at),
   }));
 }
