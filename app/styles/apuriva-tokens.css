@@ -1,6 +1,6 @@
 /**
  * APURIVA Design System tokens — generated verbatim from ui/_ds_manifest.json (the design
- * system's own source of truth), which is authored/maintained outside this app.
+ * system's own source of truth) by scripts/generate-design-tokens.ts.
  *
  * Do not hand-edit token values here; regenerate from the manifest instead so this file never
  * drifts from ui/. --font-display / --font-sans / --font-mono / --font-urdu are intentionally
@@ -11,7 +11,7 @@
 :root {
   --teal-900: #073B3A;
   --teal-800: #075E5B;
-  --teal-700: #087F7A;
+  --teal-700: #087975;
   --teal-600: #0A918C;
   --teal-500: #16A6A0;
   --teal-400: #43BBB5;
@@ -25,6 +25,7 @@
   --navy-600: #275B78;
   --navy-100: #E6EEF3;
   --navy-50: #F2F6F8;
+  --amber-800: #884B00;
   --amber-700: #A85D00;
   --amber-600: #C87500;
   --amber-500: #E08A00;
@@ -37,16 +38,16 @@
   --gray-200: #E2E7E9;
   --gray-300: #CBD3D6;
   --gray-400: #98A4A8;
-  --gray-500: #6B777B;
+  --gray-500: #636E72;
   --gray-600: #4F5B5F;
   --gray-700: #354044;
   --gray-800: #202A2D;
   --gray-900: #11191C;
-  --success-600: #168A5B;
+  --success-600: #147E53;
   --success-50: #E8F7F0;
-  --warning-600: #B86B00;
+  --warning-600: #A35F00;
   --warning-50: #FFF3DC;
-  --error-600: #C43D45;
+  --error-600: #C23B43;
   --error-50: #FDEBEC;
   --info-600: #256D9B;
   --info-50: #EAF4FB;
@@ -215,7 +216,7 @@
   --text-heading: var(--navy-900);
   --text-body: var(--gray-700);
   --text-muted: var(--gray-500);
-  --text-subtle: var(--gray-400);
+  --text-subtle: var(--gray-500);
   --text-inverse: var(--white);
   --text-brand: var(--teal-700);
   --text-link: var(--teal-700);
@@ -238,9 +239,9 @@
   --border-strong: var(--gray-400);
   --border-brand: var(--teal-600);
   --border-inverse: var(--navy-700);
-  --action-primary-bg: var(--teal-600);
-  --action-primary-bg-hover: var(--teal-700);
-  --action-primary-bg-active: var(--teal-800);
+  --action-primary-bg: var(--teal-700);
+  --action-primary-bg-hover: var(--teal-800);
+  --action-primary-bg-active: var(--teal-900);
   --action-primary-fg: var(--white);
   --action-secondary-bg: var(--white);
   --action-secondary-bg-hover: var(--teal-50);
@@ -248,8 +249,8 @@
   --action-secondary-border: var(--teal-600);
   --action-ghost-fg: var(--navy-800);
   --action-ghost-bg-hover: var(--gray-100);
-  --action-accent-bg: var(--amber-600);
-  --action-accent-bg-hover: var(--amber-700);
+  --action-accent-bg: var(--amber-700);
+  --action-accent-bg-hover: var(--amber-800);
   --action-accent-fg: var(--white);
   --action-danger-bg: var(--error-600);
   --action-danger-bg-hover: #A62F36;

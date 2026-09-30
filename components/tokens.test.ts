@@ -1,13 +1,30 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import dsManifest from '@/ui/_ds_manifest.json';
+import { renderTokensCss, type DsManifestToken } from '@/scripts/generate-design-tokens';
 
 /**
  * Spec 002 AC-4: verifies the design token set against WCAG contrast requirements.
- * Values are read directly from app/styles/apuriva-tokens.css (generated verbatim from
- * ui/_ds_manifest.json) — never invented here. Two tiers apply per WCAG 2.1:
- *   - 4.5:1 for normal body/heading/label text (SC 1.4.3)
- *   - 3:1 for large text (>=18pt / >=14pt bold) and UI-component/graphical-object contrast
- *     (SC 1.4.11), which covers filled button/badge backgrounds against the page
+ * Values are read from ui/_ds_manifest.json (the source app/styles/apuriva-tokens.css is generated
+ * from) — never written here. Every pair below is rendered as normal-size text somewhere in the app
+ * (button labels are 13–16px semibold, badge labels 11–12px), so all of them are held to the 4.5:1
+ * tier of WCAG 2.1 SC 1.4.3; none qualifies for the 3:1 large-text tier.
  */
+
+const tokens = (dsManifest as { tokens: DsManifestToken[] }).tokens;
+const rootTokens = new Map(tokens.filter((t) => !t.scope).map((t) => [t.name, t.value]));
+
+/** A token's final hex value, following `var(--x)` aliases. */
+function resolve(name: string): string {
+  let value = rootTokens.get(name);
+  for (let depth = 0; value !== undefined && depth < 10; depth += 1) {
+    const alias = /^var\((--[\w-]+)\)$/.exec(value.trim());
+    if (!alias) return value;
+    value = rootTokens.get(alias[1]!);
+  }
+  throw new Error(`Design token ${name} does not resolve to a value in ui/_ds_manifest.json.`);
+}
 
 function hexToRgb(hex: string): [number, number, number] {
   const clean = hex.replace('#', '');
@@ -29,58 +46,69 @@ function contrastRatio(hexA: string, hexB: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-// Base palette — app/styles/apuriva-tokens.css, "Colors" section.
-const teal600 = '#0A918C';
-const navy900 = '#0A2338';
-const navy800 = '#10334D';
-const white = '#FFFFFF';
-const gray50 = '#F8FAFB';
-const gray500 = '#6B777B';
-const gray600 = '#4F5B5F';
-const gray700 = '#354044';
-const error600 = '#C43D45';
-const info600 = '#256D9B';
-const infoBg = '#EAF4FB';
-const neutralBg = '#F1F4F5';
-const brandBg = '#EFFBFA';
-const accentFg = '#A85D00';
-const accentBg = '#FFF8EB';
-
-// Semantic pairs resolved one level through app/styles/apuriva-tokens.css, "Semantic aliases".
-const AA_TEXT_PAIRS: Array<[string, string, string]> = [
-  ['--text-heading on --surface-page', navy900, gray50],
-  ['--text-body on --surface-page', gray700, gray50],
-  ['--text-heading on --surface-card', navy900, white],
-  ['--text-body on --surface-card', gray700, white],
-  ['--text-muted on --surface-card', gray600, white],
-  ['--text-link on --surface-page', '#087F7A', gray50], // --text-link: var(--teal-700)
-  ['--text-brand on --surface-page', '#087F7A', gray50], // --text-brand: var(--teal-700)
-  ['--action-secondary-fg on --action-secondary-bg', '#087F7A', white],
-  ['--action-ghost-fg on --surface-page', navy800, gray50],
-  ['--action-danger-fg on --action-danger-bg', white, error600],
-  ['--field-label on --surface-card', navy800, white],
-  ['--field-help on --surface-card', gray500, white],
-  ['--status-info-fg on --status-info-bg', info600, infoBg],
-  ['--status-neutral-fg on --status-neutral-bg', gray600, neutralBg],
-  ['--status-brand-fg on --status-brand-bg', '#087F7A', brandBg],
-  ['--status-accent-fg on --status-accent-bg', accentFg, accentBg],
+// Foreground token on background token.
+const AA_TEXT_PAIRS: Array<[string, string]> = [
+  ['--text-heading', '--surface-page'],
+  ['--text-body', '--surface-page'],
+  ['--text-heading', '--surface-card'],
+  ['--text-body', '--surface-card'],
+  ['--action-secondary-fg', '--action-secondary-bg'],
+  ['--action-ghost-fg', '--surface-page'],
+  ['--action-danger-fg', '--action-danger-bg'],
+  ['--action-danger-fg', '--action-danger-bg-hover'],
+  ['--field-label', '--surface-card'],
+  ['--field-help', '--surface-card'],
+  ['--field-help', '--surface-page'],
+  ['--status-info-fg', '--status-info-bg'],
+  ['--status-neutral-fg', '--status-neutral-bg'],
+  ['--status-brand-fg', '--status-brand-bg'],
+  ['--status-accent-fg', '--status-accent-bg'],
+  // Filled buttons and status badges: their labels are normal-size text (spec 043 §1's five pairs), in
+  // every state a label is read in.
+  ['--action-primary-fg', '--action-primary-bg'],
+  ['--action-primary-fg', '--action-primary-bg-hover'],
+  ['--action-primary-fg', '--action-primary-bg-active'],
+  ['--action-accent-fg', '--action-accent-bg'],
+  ['--action-accent-fg', '--action-accent-bg-hover'],
+  ['--status-success-fg', '--status-success-bg'],
+  ['--status-warning-fg', '--status-warning-bg'],
+  ['--status-error-fg', '--status-error-bg'],
 ];
 
-// Filled button/badge backgrounds — UI-component / large-semibold-text tier (3:1, SC 1.4.11).
-const UI_COMPONENT_PAIRS: Array<[string, string, string]> = [
-  ['--action-primary-fg on --action-primary-bg', white, teal600],
-  ['--action-accent-fg on --action-accent-bg', white, '#C87500'], // amber-600
-  ['--status-success-fg on --status-success-bg', '#168A5B', '#E8F7F0'],
-  ['--status-warning-fg on --status-warning-bg', '#B86B00', '#FFF3DC'],
-  ['--status-error-fg on --status-error-bg', error600, '#FDEBEC'],
+// Secondary text and links sit on any light surface the design system defines (page, card, sunken, the
+// brand/accent tints and the status tints), so each must pass on all of them.
+const LIGHT_SURFACES = [
+  '--surface-page',
+  '--surface-card',
+  '--surface-sunken',
+  '--surface-brand-subtle',
+  '--surface-accent-subtle',
+  '--status-success-bg',
+  '--status-warning-bg',
+  '--status-error-bg',
+  '--status-info-bg',
+];
+const TEXT_ON_ANY_LIGHT_SURFACE = ['--text-muted', '--text-subtle', '--text-link', '--text-brand'];
+
+const ALL_PAIRS: Array<[string, string]> = [
+  ...AA_TEXT_PAIRS,
+  ...TEXT_ON_ANY_LIGHT_SURFACE.flatMap((fg) => LIGHT_SURFACES.map((bg): [string, string] => [fg, bg])),
 ];
 
 describe('design token contrast (spec 002 AC-4)', () => {
-  it.each(AA_TEXT_PAIRS)('%s meets 4.5:1 (WCAG AA normal text)', (_label, fg, bg) => {
-    expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
+  it.each(ALL_PAIRS)('%s on %s meets 4.5:1 (WCAG AA normal text)', (fg, bg) => {
+    expect(contrastRatio(resolve(fg), resolve(bg))).toBeGreaterThanOrEqual(4.5);
   });
 
-  it.each(UI_COMPONENT_PAIRS)('%s meets 3:1 (WCAG AA large text / UI component)', (_label, fg, bg) => {
-    expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(3);
+  it('keeps each filled button state distinguishable from the one before it', () => {
+    expect(new Set(['--action-primary-bg', '--action-primary-bg-hover', '--action-primary-bg-active'].map(resolve)).size).toBe(3);
+    expect(resolve('--action-accent-bg-hover')).not.toBe(resolve('--action-accent-bg'));
+  });
+});
+
+describe('design token CSS (spec 002)', () => {
+  it('app/styles/apuriva-tokens.css is exactly what scripts/generate-design-tokens.ts derives from the manifest', () => {
+    const committed = readFileSync(path.resolve(__dirname, '../app/styles/apuriva-tokens.css'), 'utf8').replace(/\r\n/g, '\n');
+    expect(committed).toBe(renderTokensCss(tokens));
   });
 });
