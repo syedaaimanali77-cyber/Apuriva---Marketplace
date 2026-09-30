@@ -149,3 +149,50 @@ describe('form primitives (spec 002 AC-2 — focus is visibly indicated on the f
     expect(select.parentElement!.style.border).toContain('var(--field-border-error)');
   });
 });
+
+// The same rule for the choice controls: an opacity-0 native input with a decorative box beside it showed no focus
+// to keyboard users (spec 043 found it on /requests/new). The native input is now the visible control.
+describe('form primitives (spec 002 AC-2 — choice controls show focus on the focused input)', () => {
+  it('Radio: the focused native radio is visible and draws --ring-focus', async () => {
+    const user = userEvent.setup();
+    const onFocus = vi.fn();
+    render(
+      <RadioGroup legend="Budget">
+        <Radio name="budget" label="Fixed amount" checked onChange={() => undefined} onFocus={onFocus} />
+        <Radio name="budget" label="Open to offers" checked={false} onChange={() => undefined} />
+      </RadioGroup>,
+    );
+    const fixed = screen.getByRole('radio', { name: 'Fixed amount' });
+    expect(fixed.style.opacity).toBe('');
+    expect(fixed.style.appearance).toBe('none');
+    expect(fixed.style.border).toContain('var(--action-primary-bg)');
+    expect(screen.getByRole('radio', { name: 'Open to offers' }).style.border).toContain('var(--field-border)');
+    await user.tab();
+    expect(fixed).toHaveFocus();
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    expect(fixed.style.boxShadow).toBe('var(--ring-focus)');
+    await user.tab();
+    expect(fixed.style.boxShadow).toBe('none');
+  });
+
+  it('Checkbox: the focused native checkbox is visible, draws --ring-focus, and keeps its checked fill', async () => {
+    const user = userEvent.setup();
+    render(<Checkbox label="Bring materials" checked onChange={() => undefined} />);
+    const checkbox = screen.getByRole('checkbox', { name: 'Bring materials' });
+    expect(checkbox.style.opacity).toBe('');
+    expect(checkbox.style.appearance).toBe('none');
+    expect(checkbox.style.background).toBe('var(--action-primary-bg)');
+    await user.tab();
+    expect(checkbox).toHaveFocus();
+    expect(checkbox.style.boxShadow).toBe('var(--ring-focus)');
+    await user.tab();
+    expect(checkbox.style.boxShadow).toBe('none');
+  });
+
+  it('Checkbox: an indeterminate box keeps the filled state and sets the native indeterminate flag', () => {
+    render(<Checkbox label="Select all" checked={false} indeterminate onChange={() => undefined} />);
+    const checkbox = screen.getByRole('checkbox', { name: 'Select all' }) as HTMLInputElement;
+    expect(checkbox.indeterminate).toBe(true);
+    expect(checkbox.style.background).toBe('var(--action-primary-bg)');
+  });
+});
