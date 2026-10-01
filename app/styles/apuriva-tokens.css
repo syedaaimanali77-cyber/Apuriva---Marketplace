@@ -263,7 +263,7 @@
   --field-border-hover: var(--gray-400);
   --field-border-focus: var(--teal-600);
   --field-border-error: var(--error-600);
-  --field-placeholder: var(--gray-400);
+  --field-placeholder: var(--gray-500);
   --field-label: var(--navy-800);
   --field-help: var(--gray-500);
   --status-success-fg: var(--success-600);

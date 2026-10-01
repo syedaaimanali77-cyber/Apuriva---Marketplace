@@ -88,7 +88,8 @@ const LIGHT_SURFACES = [
   '--status-error-bg',
   '--status-info-bg',
 ];
-const TEXT_ON_ANY_LIGHT_SURFACE = ['--text-muted', '--text-subtle', '--text-link', '--text-brand'];
+// Placeholder text is read inside a field, but it is held to the same set so no surface is an exception.
+const TEXT_ON_ANY_LIGHT_SURFACE = ['--text-muted', '--text-subtle', '--text-link', '--text-brand', '--field-placeholder'];
 
 const ALL_PAIRS: Array<[string, string]> = [
   ...AA_TEXT_PAIRS,

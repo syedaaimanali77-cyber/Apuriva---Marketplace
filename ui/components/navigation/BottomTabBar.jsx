@@ -23,7 +23,7 @@ export function BottomTabBar({ items = [], activeId, onSelect, style }) {
               {it.badge ? <span aria-label={it.badge + ' new'} style={{
                 position: 'absolute', top: -3, insetInlineEnd: -7, minWidth: 16, height: 16, padding: '0 4px',
                 display: 'grid', placeItems: 'center', borderRadius: 'var(--radius-pill)',
-                background: 'var(--amber-600)', color: 'var(--white)', fontSize: 10, fontWeight: 700,
+                background: 'var(--action-accent-bg)', color: 'var(--action-accent-fg)', fontSize: 10, fontWeight: 700,
               }} data-numeric>{it.badge}</span> : null}
             </span>
             <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-2xs)', fontWeight: on ? 'var(--weight-semibold)' : 'var(--weight-medium)' }}>{it.label}</span>

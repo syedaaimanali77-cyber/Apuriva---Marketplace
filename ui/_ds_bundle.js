@@ -802,36 +802,48 @@ Object.assign(__ds_scope, { Badge });
 // components/core/Button.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// Borders are longhands (never the `border` shorthand) because the disabled state overrides
+// `borderColor` alone — mixing the two makes React drop the border when a button re-enables.
+const BORDER = {
+  borderWidth: 1,
+  borderStyle: 'solid'
+};
 const VARIANTS = {
   primary: {
     background: 'var(--action-primary-bg)',
     color: 'var(--action-primary-fg)',
-    border: '1px solid var(--action-primary-bg)'
+    ...BORDER,
+    borderColor: 'var(--action-primary-bg)'
   },
   secondary: {
     background: 'var(--action-secondary-bg)',
     color: 'var(--action-secondary-fg)',
-    border: '1px solid var(--action-secondary-border)'
+    ...BORDER,
+    borderColor: 'var(--action-secondary-border)'
   },
   ghost: {
     background: 'transparent',
     color: 'var(--action-ghost-fg)',
-    border: '1px solid transparent'
+    ...BORDER,
+    borderColor: 'transparent'
   },
   accent: {
     background: 'var(--action-accent-bg)',
     color: 'var(--action-accent-fg)',
-    border: '1px solid var(--action-accent-bg)'
+    ...BORDER,
+    borderColor: 'var(--action-accent-bg)'
   },
   danger: {
     background: 'var(--action-danger-bg)',
     color: 'var(--action-danger-fg)',
-    border: '1px solid var(--action-danger-bg)'
+    ...BORDER,
+    borderColor: 'var(--action-danger-bg)'
   },
   inverse: {
     background: 'var(--white)',
     color: 'var(--navy-900)',
-    border: '1px solid var(--white)'
+    ...BORDER,
+    borderColor: 'var(--white)'
   }
 };
 const HOVER = {
@@ -1994,6 +2006,8 @@ Object.assign(__ds_scope, { Toast, ToastViewport });
 // components/forms/Checkbox.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// The native <input> is the visible box and carries the focus ring itself (spec 043 D-7 checks the focused element,
+// and an opacity-0 input showed keyboard users no focus at all); the tick is drawn over it.
 function Checkbox({
   label,
   description,
@@ -2001,10 +2015,14 @@ function Checkbox({
   indeterminate = false,
   disabled = false,
   onChange,
+  onFocus,
+  onBlur,
   style,
   ...rest
 }) {
   const ref = React.useRef(null);
+  const [focus, setFocus] = React.useState(false);
+  const on = checked || indeterminate;
   React.useEffect(() => {
     if (ref.current) ref.current.indeterminate = indeterminate;
   }, [indeterminate]);
@@ -2035,24 +2053,36 @@ function Checkbox({
     disabled: disabled,
     onChange: onChange
   }, rest, {
+    onFocus: e => {
+      setFocus(true);
+      onFocus && onFocus(e);
+    },
+    onBlur: e => {
+      setFocus(false);
+      onBlur && onBlur(e);
+    },
     style: {
-      position: 'absolute',
-      inset: 0,
+      appearance: 'none',
+      WebkitAppearance: 'none',
       margin: 0,
-      opacity: 0,
-      cursor: 'inherit'
+      width: 20,
+      height: 20,
+      boxSizing: 'border-box',
+      borderRadius: 'var(--radius-xs)',
+      cursor: 'inherit',
+      background: on ? 'var(--action-primary-bg)' : 'var(--field-bg)',
+      border: `1px solid ${on ? 'var(--action-primary-bg)' : 'var(--field-border)'}`,
+      boxShadow: focus ? 'var(--ring-focus)' : 'none',
+      transition: 'background var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard)'
     }
   })), /*#__PURE__*/React.createElement("span", {
     "aria-hidden": "true",
     style: {
-      width: 20,
-      height: 20,
+      position: 'absolute',
+      inset: 0,
       display: 'grid',
       placeItems: 'center',
-      borderRadius: 'var(--radius-xs)',
-      background: checked || indeterminate ? 'var(--action-primary-bg)' : 'var(--field-bg)',
-      border: `1px solid ${checked || indeterminate ? 'var(--action-primary-bg)' : 'var(--field-border)'}`,
-      transition: 'background var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard)'
+      pointerEvents: 'none'
     }
   }, indeterminate ? /*#__PURE__*/React.createElement("span", {
     style: {
@@ -2170,6 +2200,11 @@ Object.assign(__ds_scope, { useFieldIds, FormField });
 // components/forms/Input.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// Adornments sit over the input's own padding, so the <input> itself is the whole field and carries the
+// focus ring (spec 043 D-7 checks the focused element). Icon "sm" is 16px; 8px is the adornment gap.
+const PAD_X = 12;
+const ICON_PX = 16;
+const GAP = 8;
 function Input({
   size = 'md',
   iconLeft,
@@ -2179,64 +2214,107 @@ function Input({
   disabled = false,
   fullWidth = true,
   style,
+  onFocus,
+  onBlur,
   ...rest
 }) {
   const [focus, setFocus] = React.useState(false);
+  const prefixRef = React.useRef(null);
+  const [prefixWidth, setPrefixWidth] = React.useState(0);
   const h = size === 'sm' ? 34 : size === 'lg' ? 48 : 40;
   const border = invalid ? 'var(--field-border-error)' : focus ? 'var(--field-border-focus)' : 'var(--field-border)';
+  const hasPrefix = prefix !== undefined && prefix !== null && prefix !== false;
+  React.useLayoutEffect(() => {
+    const el = prefixRef.current;
+    if (!el) return undefined;
+    const measure = () => setPrefixWidth(el.offsetWidth);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasPrefix]);
+  const hasStart = Boolean(iconLeft) || hasPrefix;
+  const startInset = PAD_X + (iconLeft ? ICON_PX + GAP : 0) + (hasPrefix ? prefixWidth + GAP : 0);
+  const endInset = PAD_X + (iconRight ? ICON_PX + GAP : 0);
+  const adornment = {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: GAP,
+    pointerEvents: 'none'
+  };
   return /*#__PURE__*/React.createElement("div", {
     style: {
+      position: 'relative',
       display: 'flex',
       alignItems: 'center',
-      gap: 8,
       height: h,
       width: fullWidth ? '100%' : undefined,
-      padding: '0 12px',
       background: disabled ? 'var(--field-bg-disabled)' : 'var(--field-bg)',
       border: `1px solid ${border}`,
       borderRadius: 'var(--radius-md)',
-      boxShadow: focus ? invalid ? 'var(--ring-error)' : 'var(--ring-focus)' : 'none',
-      transition: 'border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard)',
+      transition: 'border-color var(--duration-fast) var(--ease-standard)',
       ...style
+    }
+  }, /*#__PURE__*/React.createElement("input", _extends({
+    disabled: disabled,
+    "aria-invalid": invalid || undefined
+  }, rest, {
+    onFocus: e => {
+      setFocus(true);
+      onFocus && onFocus(e);
+    },
+    onBlur: e => {
+      setFocus(false);
+      onBlur && onBlur(e);
+    },
+    style: {
+      width: '100%',
+      minWidth: 0,
+      height: '100%',
+      boxSizing: 'border-box',
+      paddingBlock: 0,
+      paddingInlineStart: startInset,
+      paddingInlineEnd: endInset,
+      border: 'none',
+      outline: 'none',
+      background: 'transparent',
+      borderRadius: 'calc(var(--radius-md) - 1px)',
+      boxShadow: focus ? invalid ? 'var(--ring-error)' : 'var(--ring-focus)' : 'none',
+      transition: 'box-shadow var(--duration-fast) var(--ease-standard)',
+      fontFamily: 'var(--font-sans)',
+      fontSize: size === 'sm' ? 'var(--text-sm)' : 'var(--text-base)',
+      color: 'var(--text-heading)'
+    }
+  })), hasStart ? /*#__PURE__*/React.createElement("span", {
+    style: {
+      ...adornment,
+      insetInlineStart: PAD_X
     }
   }, iconLeft ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: iconLeft,
     size: "sm",
     color: "var(--text-subtle)"
-  }) : null, prefix ? /*#__PURE__*/React.createElement("span", {
+  }) : null, hasPrefix ? /*#__PURE__*/React.createElement("span", {
+    ref: prefixRef,
     style: {
       fontSize: 'var(--text-base)',
       color: 'var(--text-muted)',
       whiteSpace: 'nowrap'
     }
-  }, prefix) : null, /*#__PURE__*/React.createElement("input", _extends({
-    disabled: disabled,
-    "aria-invalid": invalid || undefined,
-    onFocus: e => {
-      setFocus(true);
-      rest.onFocus && rest.onFocus(e);
-    },
-    onBlur: e => {
-      setFocus(false);
-      rest.onBlur && rest.onBlur(e);
-    }
-  }, rest, {
+  }, prefix) : null) : null, iconRight ? /*#__PURE__*/React.createElement("span", {
     style: {
-      flex: 1,
-      minWidth: 0,
-      border: 'none',
-      outline: 'none',
-      background: 'transparent',
-      fontFamily: 'var(--font-sans)',
-      fontSize: size === 'sm' ? 'var(--text-sm)' : 'var(--text-base)',
-      color: 'var(--text-heading)',
-      height: '100%'
+      ...adornment,
+      insetInlineEnd: PAD_X
     }
-  })), iconRight ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: iconRight,
     size: "sm",
     color: "var(--text-subtle)"
-  }) : null);
+  })) : null);
 }
 Object.assign(__ds_scope, { Input });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/forms/Input.jsx", error: String((e && e.message) || e) }); }
@@ -2244,14 +2322,19 @@ Object.assign(__ds_scope, { Input });
 // components/forms/Radio.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// The native <input> is the visible circle and carries the focus ring itself (spec 043 D-7 checks the focused
+// element, and an opacity-0 input showed keyboard users no focus at all); the dot is drawn over it.
 function Radio({
   label,
   description,
   checked,
   disabled = false,
+  onFocus,
+  onBlur,
   style,
   ...rest
 }) {
+  const [focus, setFocus] = React.useState(false);
   return /*#__PURE__*/React.createElement("label", {
     style: {
       display: 'flex',
@@ -2277,24 +2360,36 @@ function Radio({
     checked: checked,
     disabled: disabled
   }, rest, {
+    onFocus: e => {
+      setFocus(true);
+      onFocus && onFocus(e);
+    },
+    onBlur: e => {
+      setFocus(false);
+      onBlur && onBlur(e);
+    },
     style: {
-      position: 'absolute',
-      inset: 0,
+      appearance: 'none',
+      WebkitAppearance: 'none',
       margin: 0,
-      opacity: 0,
-      cursor: 'inherit'
+      width: 20,
+      height: 20,
+      boxSizing: 'border-box',
+      borderRadius: 'var(--radius-circle)',
+      cursor: 'inherit',
+      background: 'var(--field-bg)',
+      border: `1px solid ${checked ? 'var(--action-primary-bg)' : 'var(--field-border)'}`,
+      boxShadow: focus ? 'var(--ring-focus)' : 'none',
+      transition: 'border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard)'
     }
   })), /*#__PURE__*/React.createElement("span", {
     "aria-hidden": "true",
     style: {
-      width: 20,
-      height: 20,
-      borderRadius: 'var(--radius-circle)',
+      position: 'absolute',
+      inset: 0,
       display: 'grid',
       placeItems: 'center',
-      background: 'var(--field-bg)',
-      border: `1px solid ${checked ? 'var(--action-primary-bg)' : 'var(--field-border)'}`,
-      transition: 'border-color var(--duration-fast) var(--ease-standard)'
+      pointerEvents: 'none'
     }
   }, checked ? /*#__PURE__*/React.createElement("span", {
     style: {
@@ -2455,6 +2550,7 @@ Object.assign(__ds_scope, { SearchField });
 // components/forms/Select.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// The <select> fills the field, so it carries the focus ring itself (spec 043 D-7 checks the focused element).
 function Select({
   options = [],
   size = 'md',
@@ -2462,6 +2558,8 @@ function Select({
   disabled = false,
   placeholder,
   style,
+  onFocus,
+  onBlur,
   ...rest
 }) {
   const [focus, setFocus] = React.useState(false);
@@ -2477,16 +2575,21 @@ function Select({
       background: disabled ? 'var(--field-bg-disabled)' : 'var(--field-bg)',
       border: `1px solid ${border}`,
       borderRadius: 'var(--radius-md)',
-      boxShadow: focus ? 'var(--ring-focus)' : 'none',
-      transition: 'border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard)',
+      transition: 'border-color var(--duration-fast) var(--ease-standard)',
       ...style
     }
   }, /*#__PURE__*/React.createElement("select", _extends({
     disabled: disabled,
-    "aria-invalid": invalid || undefined,
-    onFocus: () => setFocus(true),
-    onBlur: () => setFocus(false)
+    "aria-invalid": invalid || undefined
   }, rest, {
+    onFocus: e => {
+      setFocus(true);
+      onFocus && onFocus(e);
+    },
+    onBlur: e => {
+      setFocus(false);
+      onBlur && onBlur(e);
+    },
     style: {
       appearance: 'none',
       width: '100%',
@@ -2496,6 +2599,9 @@ function Select({
       outline: 'none',
       background: 'transparent',
       cursor: disabled ? 'not-allowed' : 'pointer',
+      borderRadius: 'calc(var(--radius-md) - 1px)',
+      boxShadow: focus ? 'var(--ring-focus)' : 'none',
+      transition: 'box-shadow var(--duration-fast) var(--ease-standard)',
       fontFamily: 'var(--font-sans)',
       fontSize: size === 'sm' ? 'var(--text-sm)' : 'var(--text-base)',
       color: 'var(--text-heading)'
@@ -3732,8 +3838,8 @@ function BottomTabBar({
         display: 'grid',
         placeItems: 'center',
         borderRadius: 'var(--radius-pill)',
-        background: 'var(--amber-600)',
-        color: 'var(--white)',
+        background: 'var(--action-accent-bg)',
+        color: 'var(--action-accent-fg)',
         fontSize: 10,
         fontWeight: 700
       },
