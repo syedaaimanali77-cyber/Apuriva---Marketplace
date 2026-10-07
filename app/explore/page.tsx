@@ -153,7 +153,7 @@ export default function ExplorePage() {
         </div>
 
         <div className={styles.cardGrid}>
-          {categories.map((category) => (
+          {categories.map((category, index) => (
             <Link key={category.id} href={`/explore/${category.id}`} className={styles.categoryLink}>
               <Card interactive padding={0} style={{ overflow: 'hidden', height: '100%' }}>
                 <div className={styles.categoryMedia}>
@@ -163,6 +163,9 @@ export default function ExplorePage() {
                     fill
                     sizes="(max-width: 640px) 100vw, 320px"
                     style={{ objectFit: 'cover' }}
+                    // The first tile is above the fold and is the page's LCP element: never lazy-load it.
+                    loading={index === 0 ? 'eager' : undefined}
+                    fetchPriority={index === 0 ? 'high' : undefined}
                   />
                 </div>
                 <div className={styles.categoryBody}>

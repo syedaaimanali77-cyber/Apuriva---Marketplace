@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Badge, Button, Card, ErrorState, FormField, Input, OfferCard, PriceDisplay, Skeleton, Textarea } from '@/components';
 import { OfferCountdown } from '@/app/_components/OfferCountdown';
-import { useLocale } from '@/app/_components/LocaleProvider';
+import { useLocale, type LocaleContextValue } from '@/app/_components/LocaleProvider';
 import type { MessageKey } from '@/lib/i18n/dictionaries/en';
-import { translateApiErrorWith, type Translator } from '@/lib/i18n/translator';
+import type { Translator } from '@/lib/i18n/translator-core';
 import { parseMajorAmountToMinorUnits } from '@/lib/offers/price-input';
 import type { OfferComparisonDto, OfferRevisionDto } from '@/lib/types/negotiation';
 import type { OfferDto, VisibleOfferStatus } from '@/lib/types/offers';
@@ -32,7 +32,12 @@ function isLive(offer: OfferDto): boolean {
 }
 
 /** Spec 018/019 §5 error copy — specific messages, never a generic failure (spec 042: in the reader's locale). */
-function describeOfferError(t: Translator, error: ApiErrorBody | undefined, fallback: string): string {
+function describeOfferError(
+  t: Translator,
+  errorText: LocaleContextValue['errorText'],
+  error: ApiErrorBody | undefined,
+  fallback: string,
+): string {
   switch (error?.code) {
     case 'OFFER_EXPIRED':
       return t('offers.errors.OFFER_EXPIRED');
@@ -48,7 +53,7 @@ function describeOfferError(t: Translator, error: ApiErrorBody | undefined, fall
       return t('offers.errors.THREAD_CLOSED');
     default:
       if (error?.errors?.length) return error.errors.map((e) => `${e.field} ${e.message}`).join(' ');
-      return translateApiErrorWith(t, error?.code, error?.message, fallback);
+      return errorText(error?.code, error?.message, fallback);
   }
 }
 
@@ -79,7 +84,7 @@ export interface OffersPanelProps {
  * offer row shown. After an accept this panel creates no booking — booking is spec 020's next step.
  */
 export function OffersPanel({ requestId, requestStatus, requestCreatedAt, onRequestChanged }: OffersPanelProps) {
-  const { t } = useLocale();
+  const { t, errorText } = useLocale();
   const [status, setStatus] = useState<'loading' | 'error' | 'ready'>('loading');
   const [offers, setOffers] = useState<OfferDto[]>([]);
   const [alert, setAlert] = useState<string | null>(null);
@@ -142,7 +147,7 @@ export function OffersPanel({ requestId, requestStatus, requestCreatedAt, onRequ
     });
     setPendingOfferId(null);
     if (!result.ok) {
-      setAlert(describeOfferError(t, result.error, t('offers.acceptFailed')));
+      setAlert(describeOfferError(t, errorText, result.error, t('offers.acceptFailed')));
     } else {
       setNotice({ title: t('offers.acceptedTitle'), text: t('offers.acceptedText') });
       onRequestChanged();
@@ -159,7 +164,7 @@ export function OffersPanel({ requestId, requestStatus, requestCreatedAt, onRequ
       headers: mutateHeaders(),
     });
     setPendingOfferId(null);
-    if (!result.ok) setAlert(describeOfferError(t, result.error, t('offers.declineFailed')));
+    if (!result.ok) setAlert(describeOfferError(t, errorText, result.error, t('offers.declineFailed')));
     await load();
   }
 
@@ -193,7 +198,7 @@ export function OffersPanel({ requestId, requestStatus, requestCreatedAt, onRequ
     });
     setPendingOfferId(null);
     if (!result.ok) {
-      setChangeError(describeOfferError(t, result.error, t('offers.changeFailed')));
+      setChangeError(describeOfferError(t, errorText, result.error, t('offers.changeFailed')));
       await load();
       return;
     }

@@ -119,6 +119,10 @@ export default function SearchPage() {
   const [suggestions, setSuggestions] = useState<AutocompleteSuggestionDto[]>([]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // AC-2: autocomplete answers what the user TYPES. A query pre-filled from a deep link (`/search?q=…`)
+  // already has its results requested, so it must not also open the suggestions card: that card would be
+  // inserted ~200ms later, above the results/empty state, and push them down (the page's layout shift).
+  const deepLinkedQueryRef = useRef<string | null>(null);
 
   const runSearch = useCallback(async (nextFilters: Filters, offset: number, append: boolean) => {
     if (append) setLoadingMore(true);
@@ -210,6 +214,7 @@ export default function SearchPage() {
     const categoryId = urlParams.get('categoryId') ?? undefined;
     const q = urlParams.get('q') ?? undefined;
     if (categoryId || q) {
+      deepLinkedQueryRef.current = q ?? '';
       setQueryText(q ?? '');
       const initial: Filters = { categoryId, q };
       setFilters(initial);
@@ -219,6 +224,7 @@ export default function SearchPage() {
   }, []);
 
   useEffect(() => {
+    if (deepLinkedQueryRef.current !== null && queryText === deepLinkedQueryRef.current) return;
     if (queryText.trim().length < 2) {
       setSuggestions([]);
       return;
@@ -302,7 +308,16 @@ export default function SearchPage() {
     <main className={styles.page}>
       <h1 className={styles.title}>{t('search.title')}</h1>
 
-      <SearchBar value={queryText} onChange={setQueryText} onSubmit={handleSearch} loading={status === 'loading'} />
+      <SearchBar
+        value={queryText}
+        onChange={(text) => {
+          // The user's first edit ends the deep-link exemption; from then on suggestions follow typing.
+          deepLinkedQueryRef.current = null;
+          setQueryText(text);
+        }}
+        onSubmit={handleSearch}
+        loading={status === 'loading'}
+      />
 
       {suggestions.length > 0 ? (
         <Card elevation="flat" padding={0} style={{ overflow: 'hidden' }}>

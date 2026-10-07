@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { branding } from '@/lib/config/branding';
-import { dictionaryFor } from '@/lib/i18n/dictionaries';
+import { clientMessagesFor } from '@/lib/i18n/client-messages';
 import { getRequestLocale } from '@/lib/i18n/server';
 import { siteUrl } from '@/lib/seo/site-url';
 import { AppHeader } from './components/AppHeader';
@@ -40,14 +40,16 @@ export const metadata: Metadata = {
  * Spec 042 §3.4 (X-1, AC-1): `lang`/`dir` are resolved on the SERVER, so the very first paint is already
  * right-to-left for Urdu — the `[lang="ur"]` token block switches the font stack and `[dir='rtl']` turns on
  * `--rtl-flip`. Reading the request's cookies and headers makes every route dynamic (accepted, R-1).
- * Only the resolved locale's dictionary is sent to the client.
+ * Only the resolved locale's dictionary is sent to the client (plus, for a locale other than English, the
+ * English entries it lacks), as data — the client JS bundle carries no dictionary of its own (§3.5).
  */
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const { locale, direction } = await getRequestLocale();
+  const { messages, fallbackMessages } = clientMessagesFor(locale);
   return (
     <html lang={locale} dir={direction} className={brandFontVariables}>
       <body>
-        <LocaleProvider locale={locale} messages={locale === 'en' ? undefined : dictionaryFor(locale)}>
+        <LocaleProvider locale={locale} messages={messages} fallbackMessages={fallbackMessages}>
           {/* Spec 044 §3.2/§3.3 (X-1): the service worker (production only) and the app-wide offline notice. */}
           <ServiceWorkerRegistrar />
           <OfflineBanner />

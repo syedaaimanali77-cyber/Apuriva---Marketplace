@@ -21,7 +21,6 @@ import type {
   AiTemporaryReplyDto,
 } from '@/lib/types/ai-assistant';
 import type { MessageKey } from '@/lib/i18n/dictionaries/en';
-import { createTranslator } from '@/lib/i18n/translator';
 import { aiMutation, isAiUnavailable, newIdempotencyKey, readAiResponse, type AiApiResult } from './ask-apuriva-client';
 import { useLocale } from './LocaleProvider';
 import styles from './ask-apuriva.module.css';
@@ -31,11 +30,6 @@ import styles from './ask-apuriva.module.css';
  * Spec 042: shown (and pre-filled) in the reader's locale; what the user then sends is their own input.
  */
 const STARTER_PROMPT_KEYS: MessageKey[] = ['ask.starters.nearMe', 'ask.starters.describe', 'ask.starters.booking'];
-const english = createTranslator('en');
-
-/** The English starter prompts and unavailability line (the canonical copy; rendered through `t()`). */
-export const STARTER_PROMPTS = STARTER_PROMPT_KEYS.map((key) => english(key));
-export const UNAVAILABLE_MESSAGE = english('ask.unavailable');
 
 type ApprovalState = 'pending' | 'approved' | 'denied' | 'failed';
 

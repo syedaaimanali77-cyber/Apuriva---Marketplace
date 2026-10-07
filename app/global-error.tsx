@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ErrorState } from '@/components/ErrorState';
 import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, isSupportedLocale, localeDefinition, localeDirection, type Locale } from '@/lib/i18n/config';
-import { dictionaryFor } from '@/lib/i18n/dictionaries';
+import type { Dictionary } from '@/lib/i18n/dictionaries/en';
 import { LocaleProvider } from './_components/LocaleProvider';
 import { brandFontVariables } from './fonts';
 import './styles/apuriva-tokens.css';
@@ -44,6 +44,27 @@ function useCookieLocale(): Locale {
 }
 
 /**
+ * Spec 042 §3.5 — `global-error` has no server to pass it a dictionary, and its chunk loads on EVERY route,
+ * so it fetches the dictionaries only when it actually renders. Until they arrive (or if they cannot load)
+ * `ErrorState` shows the design system's own English defaults, so the page is never blank.
+ */
+function useLazyMessages(locale: Locale): { messages?: Dictionary; fallbackMessages?: Dictionary } {
+  const [loaded, setLoaded] = useState<{ locale: Locale; messages: Dictionary; fallbackMessages: Dictionary } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    import('@/lib/i18n/dictionaries')
+      .then(({ dictionaryFor }) => {
+        if (!cancelled) setLoaded({ locale, messages: dictionaryFor(locale), fallbackMessages: dictionaryFor(DEFAULT_LOCALE) });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
+  return loaded?.locale === locale ? loaded : {};
+}
+
+/**
  * Root-layout error fallback. `global-error` replaces the root layout and doesn't inherit its
  * global styles or fonts, so it loads the DS tokens, base styles and brand fonts itself before
  * rendering the DS `ErrorState`.
@@ -55,10 +76,11 @@ export default function GlobalError({
   reset: () => void;
 }) {
   const locale = useCookieLocale();
+  const { messages, fallbackMessages } = useLazyMessages(locale);
   return (
     <html lang={locale} dir={localeDirection(locale)} className={brandFontVariables}>
       <body>
-        <LocaleProvider locale={locale} messages={locale === DEFAULT_LOCALE ? undefined : dictionaryFor(locale)}>
+        <LocaleProvider locale={locale} messages={messages} fallbackMessages={fallbackMessages}>
           <main style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 'var(--space-6)' }}>
             <ErrorState onRetry={() => reset()} />
           </main>
