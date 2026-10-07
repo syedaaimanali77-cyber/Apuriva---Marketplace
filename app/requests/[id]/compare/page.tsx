@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Alert, Badge, Button, Card, EmptyState, ErrorState, Icon, OfferCard, PriceDisplay, Skeleton, Table } from '@/components';
 import { OfferCountdown } from '@/app/_components/OfferCountdown';
-import { useLocale } from '@/app/_components/LocaleProvider';
+import { useLocale, type LocaleContextValue } from '@/app/_components/LocaleProvider';
 import type { MessageKey } from '@/lib/i18n/dictionaries/en';
 import { formatNumber } from '@/lib/i18n/format';
-import { translateApiErrorWith, type Translator } from '@/lib/i18n/translator';
+import type { Translator } from '@/lib/i18n/translator-core';
 import type { ComparedOfferDto, ComparisonUnavailableReason, OfferComparisonDto, WhyThisProviderReason } from '@/lib/types/negotiation';
 import type { OfferDto } from '@/lib/types/offers';
 import type { RequestDto } from '@/lib/types/requests';
@@ -43,7 +43,12 @@ function availabilityCopy(t: Translator, offer: ComparedOfferDto, hasPreferredTi
   return t('compare.notStated');
 }
 
-function describeError(t: Translator, error: ApiErrorBody | undefined, fallback: string): string {
+function describeError(
+  t: Translator,
+  errorText: LocaleContextValue['errorText'],
+  error: ApiErrorBody | undefined,
+  fallback: string,
+): string {
   switch (error?.code) {
     case 'OFFER_SUPERSEDED':
       return t('compare.errors.OFFER_SUPERSEDED');
@@ -54,7 +59,7 @@ function describeError(t: Translator, error: ApiErrorBody | undefined, fallback:
     case 'OFFER_NOT_COMPARABLE':
       return t('compare.errors.OFFER_NOT_COMPARABLE');
     default:
-      return translateApiErrorWith(t, error?.code, error?.message, fallback);
+      return errorText(error?.code, error?.message, fallback);
   }
 }
 
@@ -76,7 +81,7 @@ interface AttributeRow {
  * rank number — the server never sends one. Accept targets the exact offer row shown (spec 018's accept).
  */
 export default function CompareOffersPage() {
-  const { locale, t } = useLocale();
+  const { locale, t, errorText } = useLocale();
   const params = useParams<{ id: string }>();
   const requestId = String(params?.id ?? '');
   const [status, setStatus] = useState<'loading' | 'error' | 'ready'>('loading');
@@ -89,7 +94,7 @@ export default function CompareOffersPage() {
   const load = useCallback(async () => {
     const result = await apiFetch<OfferComparisonDto>(`/api/v1/requests/${encodeURIComponent(requestId)}/offers/compare`);
     if (!result.ok || !result.data) {
-      if (result.error?.code === 'OFFER_NOT_COMPARABLE') setAlert(describeError(t, result.error, ''));
+      if (result.error?.code === 'OFFER_NOT_COMPARABLE') setAlert(describeError(t, errorText, result.error, ''));
       setStatus((current) => (current === 'ready' ? current : 'error'));
       return;
     }
@@ -97,7 +102,7 @@ export default function CompareOffersPage() {
     setStatus('ready');
     const request = await apiFetch<RequestDto>(`/api/v1/requests/${encodeURIComponent(requestId)}`);
     if (request.ok && request.data) setHasPreferredTime(Boolean(request.data.preferredAt));
-  }, [requestId, t]);
+  }, [requestId, t, errorText]);
 
   useEffect(() => {
     load();
@@ -125,7 +130,7 @@ export default function CompareOffersPage() {
     });
     setPendingOfferId(null);
     if (result.ok) setNotice(t('compare.selected'));
-    else setAlert(describeError(t, result.error, t('compare.acceptFailed')));
+    else setAlert(describeError(t, errorText, result.error, t('compare.acceptFailed')));
     await load();
   }
 

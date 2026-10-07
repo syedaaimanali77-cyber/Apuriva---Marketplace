@@ -6,9 +6,10 @@ import SearchPage from './page';
 import { en } from '@/lib/i18n/dictionaries/en';
 
 const push = vi.fn();
+const urlState = vi.hoisted(() => ({ search: '' }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(urlState.search),
 }));
 vi.mock('next/link', () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
@@ -82,6 +83,7 @@ describe('SearchPage (spec 013 §5 UI states)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     push.mockClear();
+    urlState.search = '';
   });
 
   it('AC-3: renders a non-dead-end empty state with actionable next steps, never a permission prompt', async () => {
@@ -205,6 +207,43 @@ describe('SearchPage (spec 013 §5 UI states)', () => {
 
     expect(screen.getByLabelText('Search for a service')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /search by voice/i })).not.toBeInTheDocument();
+  });
+
+  describe('layout stability: a deep-linked query does not open the suggestions card (spec 044 CLS)', () => {
+    const SUGGESTION = { type: 'service', label: 'Deep cleaning', value: 'Deep cleaning' };
+    const suggestingAutocomplete: Handler = (url, init) =>
+      url.includes('/api/v1/search/autocomplete') && (!init?.method || init.method === 'GET') ? { ok: true, data: [SUGGESTION] } : undefined;
+    const autocompleteCalls = () => vi.mocked(fetch).mock.calls.filter(([input]) => String(input).includes('/api/v1/search/autocomplete'));
+
+    it('/search?q=cleaning: nothing is inserted above the empty state after it renders', async () => {
+      urlState.search = 'q=cleaning';
+      installFetchMock([searchHandler([]), recentHandler(), suggestingAutocomplete]);
+      vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+      render(<SearchPage />);
+
+      expect(await screen.findByText('No results found')).toBeInTheDocument();
+      expect(screen.getByLabelText('Search for a service')).toHaveValue('cleaning');
+      // Past the 200ms autocomplete debounce: the card that used to appear here, above the empty state,
+      // is what shifted the layout (0.143 CLS in the spec 044 Lighthouse run).
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(autocompleteCalls()).toHaveLength(0);
+      expect(screen.queryByRole('list', { name: en.search.suggestions })).not.toBeInTheDocument();
+      expect(screen.getByText('No results found')).toBeInTheDocument();
+    });
+
+    it('AC-2 is unchanged: once the user edits the deep-linked query, suggestions follow typing', async () => {
+      urlState.search = 'q=cleaning';
+      installFetchMock([searchHandler([]), recentHandler(), suggestingAutocomplete]);
+      vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+      const user = userEvent.setup();
+      render(<SearchPage />);
+
+      await screen.findByText('No results found');
+      await user.type(screen.getByLabelText('Search for a service'), ' deep');
+
+      expect(await screen.findByRole('list', { name: en.search.suggestions })).toHaveTextContent('Deep cleaning');
+      expect(autocompleteCalls().at(-1)?.[0]).toContain('q=cleaning%20deep');
+    });
   });
 
   it('a removable intent chip re-runs search without that filter', async () => {

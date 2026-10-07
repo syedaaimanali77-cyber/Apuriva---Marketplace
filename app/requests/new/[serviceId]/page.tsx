@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -17,7 +17,9 @@ import {
   Skeleton,
   Textarea,
 } from '@/components';
+import { OfflineWriteNotice } from '@/app/_components/OfflineWriteNotice';
 import { UrgencyEmergencyNotice } from '@/app/_components/UrgencyEmergencyNotice';
+import { useNetworkStatus } from '@/app/_components/useNetworkStatus';
 import { useLocale } from '@/app/_components/LocaleProvider';
 import { useLocales } from '@/app/_components/useLocales';
 import type { MessageKey } from '@/lib/i18n/dictionaries/en';
@@ -67,6 +69,9 @@ export default function NewRequestPage() {
   const params = useParams<{ serviceId: string }>();
   const router = useRouter();
   const serviceId = params.serviceId;
+  // Spec 044 §3.5 (X-5): request submission is disabled while offline, with the offline notice.
+  const { online } = useNetworkStatus();
+  const offlineNoticeId = useId();
 
   const [status, setStatus] = useState<PageStatus>('loading');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -418,10 +423,17 @@ export default function NewRequestPage() {
               {t('requestNew.cancel')}
             </Button>
           </Link>
-          <Button type="submit" variant="primary" loading={submitting} disabled={addresses.length === 0}>
+          <Button
+            type="submit"
+            variant="primary"
+            loading={submitting}
+            disabled={addresses.length === 0 || !online}
+            aria-describedby={online ? undefined : offlineNoticeId}
+          >
             {t('requestNew.send')}
           </Button>
         </div>
+        <OfflineWriteNotice id={offlineNoticeId} />
       </form>
     </main>
   );

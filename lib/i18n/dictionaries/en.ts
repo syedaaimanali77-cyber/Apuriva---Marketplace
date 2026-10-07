@@ -1588,6 +1588,20 @@ export const en = {
       closedForReplies: 'This request is {status}, so it is no longer open for replies.',
     },
   },
+  // Spec 044 §3.9 (X-2) — search-engine titles and descriptions. The catalog has no authored
+  // description, so category and service pages use these name-based templates (resolved with the user).
+  seo: {
+    exploreTitle: 'Explore services',
+    exploreDescription: 'Browse every service category on APURIVA and request help from providers.',
+    categoryDescription: 'Find {name} services and request offers from providers on APURIVA.',
+    serviceDescription: 'Request {name} on APURIVA and compare offers from providers.',
+  },
+  // Spec 044 §3.2/§5 — the offline page the service worker serves when a navigation cannot reach the server.
+  offline: {
+    heading: 'You are offline',
+    body: 'This page needs an internet connection. Check your connection and try again.',
+    retry: 'Try again',
+  },
 } as const;
 
 type Leaves<T, Prefix extends string = ''> = {

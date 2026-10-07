@@ -6,8 +6,14 @@
 import { configure, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { en } from '@/lib/i18n/dictionaries/en';
 import type { AiMessageDto, AiProactiveSuggestionDto } from '@/lib/types/ai-assistant';
-import { AskApuriva, AskApurivaPanel, STARTER_PROMPTS, UNAVAILABLE_MESSAGE } from './AskApurivaPanel';
+import { AskApuriva, AskApurivaPanel } from './AskApurivaPanel';
+
+// The canonical English copy, read from the source dictionary (spec 042). The component no longer exports
+// these: exporting them made it bundle the whole English dictionary into the client JS (spec 044).
+const STARTER_PROMPTS = [en.ask.starters.nearMe, en.ask.starters.describe, en.ask.starters.booking];
+const UNAVAILABLE_MESSAGE = en.ask.unavailable;
 
 configure({ asyncUtilTimeout: 10_000 });
 

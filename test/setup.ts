@@ -1,6 +1,12 @@
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
+import { setDefaultMessages } from '@/app/_components/LocaleProvider';
+import { en } from '@/lib/i18n/dictionaries/en';
+
+// Spec 042 §3.5: the client bundle carries no dictionary — production renders always receive theirs from
+// the root layout. Component tests render without that layout, so English is their default, as before.
+setDefaultMessages(en);
 
 // Not using vitest's `globals: true`, so @testing-library/react's automatic afterEach
 // detection never fires — register cleanup explicitly so DOM doesn't leak between tests.

@@ -1,6 +1,10 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { Card, Icon, ListRow } from '@/components';
+// The modules themselves, not the `@/components` barrel: a SERVER component importing the barrel makes every
+// `'use client'` component it re-exports a client reference of the route, so all of them would ship.
+import { Card } from '@/components/Card';
+import { Icon } from '@/components/Icon';
+import { ListRow } from '@/components/ListRow';
 import styles from './placeholder-page.module.css';
 
 export interface PlaceholderLink {

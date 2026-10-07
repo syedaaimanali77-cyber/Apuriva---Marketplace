@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import { Button, Card } from '@/components';
 import type { BookingDto, SlotAlternativeDto } from '@/lib/types/bookings';
 import { apiFetch, formatAlternative, mutateHeaders, slotConflictDetails } from '../booking-client';
 import { useLocale } from '@/app/_components/LocaleProvider';
+import { OfflineWriteNotice } from '@/app/_components/OfflineWriteNotice';
+import { useNetworkStatus } from '@/app/_components/useNetworkStatus';
 import styles from '../bookings.module.css';
 
 export interface ConfirmBookingPanelProps {
@@ -33,6 +35,10 @@ export function ConfirmBookingPanel({ offerId }: ConfirmBookingPanelProps) {
   const [alternatives, setAlternatives] = useState<SlotAlternativeDto[]>([]);
   const [nextAvailableDate, setNextAvailableDate] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
+  // Spec 044 §3.5 (X-5): booking confirmation is disabled while offline, with the offline notice.
+  const { online } = useNetworkStatus();
+  const offlineNoticeId = useId();
+  const offlineDescription = online ? undefined : offlineNoticeId;
 
   const confirm = useCallback(
     async (scheduledAt?: string) => {
@@ -79,10 +85,11 @@ export function ConfirmBookingPanel({ offerId }: ConfirmBookingPanelProps) {
       <p className={styles.hint}>{t('bookingParts.confirm.hint')}</p>
 
       <div className={styles.actions}>
-        <Button variant="primary" loading={pending} onClick={() => void confirm()}>
+        <Button variant="primary" loading={pending} disabled={!online} aria-describedby={offlineDescription} onClick={() => void confirm()}>
           {t('bookingParts.confirm.button')}
         </Button>
       </div>
+      <OfflineWriteNotice id={offlineNoticeId} />
 
       {error && (
         <p className={styles.hint} role="alert">
@@ -96,7 +103,12 @@ export function ConfirmBookingPanel({ offerId }: ConfirmBookingPanelProps) {
           <ul className={styles.alternatives} aria-label={t('bookingParts.confirm.alternatives')}>
             {alternatives.map((alternative) => (
               <li key={alternative.startAt}>
-                <Button variant="secondary" disabled={pending} onClick={() => void confirm(alternative.startAt)}>
+                <Button
+                  variant="secondary"
+                  disabled={pending || !online}
+                  aria-describedby={offlineDescription}
+                  onClick={() => void confirm(alternative.startAt)}
+                >
                   {formatAlternative(alternative, locale)}
                 </Button>
               </li>

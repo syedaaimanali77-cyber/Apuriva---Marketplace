@@ -10,13 +10,14 @@
 # - `browser`      Playwright (§3.6) smoke test against `next start` on the isolated `apuriva_browser_test` database.
 # - `a11y`         spec 043: axe, focus, reduced-motion, keyboard and Urdu-parity checks on the audited routes a
 #                  change selects (scripts/a11y-changed-routes.ts), held against browser/a11y/baseline.json.
+# - `perf`         spec 044 §3.7: the performance budgets (LCP, CLS and JS via Lighthouse CI; INP via Playwright).
 #
 # Coverage is uploaded as an artefact by every test job but is not a gate (§3.4).
 name: ci
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'ci-baseline/**']
   push:
     branches: [main]
 
@@ -207,11 +208,12 @@ jobs:
           path: .next
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Playwright smoke (migrates apuriva_browser_test, then next start on :3100)
+      - name: Playwright smoke and PWA (migrates apuriva_browser_test, then next start on :3100)
         env:
           TMPDIR: ${{ runner.temp }} # browser/personas.ts writes sessions and the report under os.tmpdir()
-        # The runner smoke test only: spec 043's accessibility suite is its own required job (`a11y`).
-        run: npm run test:browser -- browser/smoke.browser.ts
+        # The runner smoke test and spec 044's PWA/offline tests: spec 043's accessibility suite and spec 044's
+        # performance budgets are their own required jobs (`a11y`, `perf`).
+        run: npm run test:browser -- browser/smoke.browser.ts browser/pwa
       - name: Upload the Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
@@ -291,4 +293,56 @@ jobs:
         with:
           name: a11y-playwright-report
           path: ${{ runner.temp }}/apuriva-playwright/
+          if-no-files-found: ignore
+
+  # Spec 044 §3.7 (AC-4, D-3) — the performance budgets on /, /explore, a category, a service, /search and
+  # /login: LCP ≤ 2.5 s, CLS ≤ 0.1 and ≤ 204,800 bytes of compressed JavaScript (Lighthouse CI, mobile, simulated
+  # Slow 4G + 4× CPU, median of 3), and INP ≤ 200 ms (Playwright Event Timing, median of 3). Any breach fails;
+  # there is no baseline or exception mechanism.
+  perf:
+    name: perf
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: apuriva
+          POSTGRES_PASSWORD: apuriva
+          POSTGRES_DB: apuriva_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U apuriva"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: cp .env.example .env
+      - uses: actions/download-artifact@v4
+        with:
+          name: next-build
+          path: .next
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Lighthouse CI — LCP, CLS, JavaScript bytes (resets apuriva_browser_test, next start on :3100)
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: npx tsx scripts/perf-budget.ts
+      - name: INP (Playwright Event Timing)
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: npm run test:browser -- browser/perf
+      - name: Upload the Lighthouse results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-results
+          path: ${{ runner.temp }}/apuriva-lhci-*/reports/
           if-no-files-found: ignore
