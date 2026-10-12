@@ -47,11 +47,14 @@ the externally-verified criteria pass (see **In progress**).
   `lighthouserc.json`, `scripts/perf-budget.ts` and `browser/perf/inp.browser.ts`); status stays `Draft`:
   - **AC-1** is open on **DEP-2**: the 192px, 512px and maskable 512px icon artwork has not been delivered
     to `public/icons/`. The manifest, worker and offline launch pass; the icon test skips with that reason.
-  - **AC-4** is open: the `perf` gate is committed as specified and currently fails. Every budget route
-    already transfers 222–227 KB of JavaScript (budget 204,800 bytes; unchanged by 044), `/search` has
-    CLS 0.144, and LCP/INP breach too (measured on an under-powered host; CI gives the authoritative values).
-    The fixes belong to the owning specs (042's per-page dictionary, 013's `/search`, the shared chrome) —
-    see spec 044 §3.7.
+  - **AC-4** is closed on the two budgets 044 owns, by the 2026-10-08 ownership decision (spec 044 §3.7.1),
+    verified in CI run #4 (`37685787487`, commit `8b1dad0`): JS now passes on all six routes
+    (169,290–176,690 bytes, down from 221,129–226,563; budget 204,800), and CLS passes on all six
+    (`/search?q=cleaning` 0.144 → 0.001). **LCP does not pass** (4.3–5.3 s, at the baseline level; budget
+    2.5 s) and **INP was not reached in CI** (the job runs it after Lighthouse). Both thresholds stay at
+    `error`, so the `perf` job keeps failing. Their route remediation is tracked follow-up work for the
+    owning specs: the onboarding overlay (spec 007), and the client-rendered catalog, service and home pages
+    (specs 010/011, the home route, any future server-rendering work).
   - AC-2, AC-3, AC-5, AC-6 and AC-7 pass. Deployments must set `SITE_URL` (`.env.example`).
 
 ## Blocked

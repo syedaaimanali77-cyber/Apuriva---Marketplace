@@ -1,7 +1,7 @@
 # Spec: Frontend Platform Quality (PWA / Performance / SEO)
 
 **File:** `docs/specs/2026-08-28-044-frontend-platform-quality-pwa-performance-seo.md`
-**Status:** Draft
+**Status:** Draft — **AC-1 remains open** on DEP-2: the required PWA icon artwork has not been delivered. AC-4 is closed only on the two budgets this spec owns, JavaScript and CLS, both verified in CI run #4 (§3.7.1) under the 2026-10-08 ownership decision; **LCP fails on all six budget routes and INP was not reached in CI**, and both remain tracked follow-up work outside this spec's closure gate. AC-2, AC-3, AC-5 and AC-6 are verified by their §6 tests in CI run #4; AC-7 is verified by the §3.10 audit, not by CI.
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §103–§105, §108–§109, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §12, [docs/workflow.md](../workflow.md); specs 002 (primitives, tokens, branding), 004 (API envelope), 010/011 (public catalog pages), 015/020 (idempotency), 042 (locale resolution, dynamic rendering), 046 (CI, browser runner). See §8.
@@ -68,7 +68,7 @@ guarantees are only meaningful once the real screens (010–041) exist to measur
 | AC-1 | **Given** a supporting browser **When** the site is loaded **Then** it is installable: `app/manifest.ts` is served with name, short name, start URL `/`, `display: standalone`, theme/background colours and 192/512px (plus maskable) icons, and `public/sw.js` is registered. **When** the installed app is launched offline **Then** the cached offline page renders with its static assets, instead of a browser error |
 | AC-2 | **Given** the device is offline (`navigator.onLine === false`, or a request rejected as `NETWORK_ERROR`) **When** the user interacts **Then** the `OfflineBanner` is shown (distinct from a generic error); content already rendered in the open tab stays visible; a navigation shows the offline page; and no booking, payment, message or request is ever shown as succeeded without a `2xx` server response |
 | AC-3 | **Given** MVP scope **When** the device is offline **Then** no write is queued or replayed: the four critical write controls (§3.5) are disabled with the offline notice, and any other write fails with the existing `NETWORK_ERROR` message. **When** connectivity returns **Then** the banner clears and the route's server-rendered data is refreshed automatically (`router.refresh()`), while client-fetched views offer their existing retry. |
-| AC-4 | **Given** the budget routes (§3.7) under the defined slow-network lab profile, median of 3 runs **When** measured **Then** each route meets the Core Web Vitals "Good" thresholds, **LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1**, and the JavaScript budget, **≤ 200 KB (204,800 bytes) of compressed JavaScript transferred during initial load**. A breach of any of the four fails the CI job. |
+| AC-4 | **Given** the budget routes (§3.7) under the defined slow-network lab profile, median of 3 runs **When** measured **Then** each route meets **CLS ≤ 0.1** and the JavaScript budget, **≤ 200 KB (204,800 bytes) of compressed JavaScript transferred during initial load**. These are the two budgets this spec owns, and they are its closure gate. The Core Web Vitals "Good" targets **LCP ≤ 2.5 s** and **INP ≤ 200 ms** remain platform targets, measured by the same CI job at the same thresholds; their current route-level breaches are tracked follow-up work owned by the specs that own their cause (§3.7.1), not a condition of this spec's closure. This split is a deliberate acceptance and ownership decision (product owner, 2026-10-08). A breach of any of the four still fails the CI job. |
 | AC-5 | **Given** an indexable page (§3.8: `/`, `/explore`, `/explore/{categoryId}`, `/explore/{categoryId}/{serviceId}` for published entities) **When** crawled **Then** its HTML contains a specific title and description, a canonical URL built from `SITE_URL`, Open Graph and Twitter tags, and JSON-LD (`BreadcrumbList`; plus `Service` on service pages) |
 | AC-6 | **Given** any route outside the §3.8 indexable set **When** crawled **Then** its HTML carries `<meta name="robots" content="noindex, nofollow">` (`noindex, follow` for `/search`), and `sitemap.xml` lists exactly the indexable set and nothing else |
 | AC-7 | **Given** a content-heavy screen **When** loading **Then** it uses the `Skeleton` primitive (spec 002), and images use `next/image` with explicit dimensions, audited per §3.10 |
@@ -205,12 +205,12 @@ renders success on a non-`2xx` result.
   - `/search?q=cleaning`
   - `/login`
 
-| Metric | Threshold (CWV "Good" / JS cap) | Measured by | Level |
-|---|---|---|---|
-| **LCP** (Largest Contentful Paint) | **≤ 2.5 s** (2500 ms) | Lighthouse `largest-contentful-paint` | error |
-| **INP** (Interaction to Next Paint) | **≤ 200 ms** | `browser/perf/inp.browser.ts` (see below) | error |
-| **CLS** (Cumulative Layout Shift) | **≤ 0.1** | Lighthouse `cumulative-layout-shift` | error |
-| **JavaScript transferred** | **≤ 200 KB = 204,800 bytes**: the sum of compressed (on-the-wire) bytes of every script requested during the initial page load, per route, first-party and third-party | Lighthouse `resource-summary:script:size` | error |
+| Metric | Threshold (CWV "Good" / JS cap) | Measured by | Level | Spec 044 closure gate |
+|---|---|---|---|---|
+| **LCP** (Largest Contentful Paint) | **≤ 2.5 s** (2500 ms) | Lighthouse `largest-contentful-paint` | error | No — platform target; route remediation is follow-up work (§3.7.1) |
+| **INP** (Interaction to Next Paint) | **≤ 200 ms** | `browser/perf/inp.browser.ts` (see below) | error | No — platform target; route remediation is follow-up work (§3.7.1) |
+| **CLS** (Cumulative Layout Shift) | **≤ 0.1** | Lighthouse `cumulative-layout-shift` | error | **Yes** |
+| **JavaScript transferred** | **≤ 200 KB = 204,800 bytes**: the sum of compressed (on-the-wire) bytes of every script requested during the initial page load, per route, first-party and third-party | Lighthouse `resource-summary:script:size` | error | **Yes** |
 
 - **How INP is measured.** INP needs real interactions, which a Lighthouse navigation run does not
   perform. `browser/perf/inp.browser.ts` runs on spec 046's Playwright runner, in Chromium:
@@ -227,13 +227,19 @@ renders success on a non-`2xx` result.
 - TBT is still reported by Lighthouse as a diagnostic, but it is **not** a gate; INP is.
 
 - **CI behaviour:** any `error` assertion (Lighthouse) or an INP median above 200 ms (Playwright) fails
-  the `perf` job, which is a required check.
-- **No baseline or exception mechanism:** a route that cannot meet a budget is a defect in the route.
-  The first run during implementation shows whether the current pages meet it; any breach found then
-  is fixed or brought back to this spec for a decision, never silently loosened.
+  the `perf` job, which is a required check. All four thresholds stay at `error`, so the job keeps
+  failing while any LCP or INP breach remains. Its assertion output is read per metric: the JS and CLS
+  assertions are this spec's closure gate; the LCP and INP assertions report the platform targets.
+- **No baseline or exception mechanism:** no threshold is loosened, baselined or exempted per route; a
+  route that misses a budget is a defect in that route. For JS and CLS that defect blocks this spec. For
+  LCP and INP, this spec establishes the measurement and the thresholds, and remediating the current
+  route-level breaches is delegated to the specs that own their cause (§3.7.1). That is a deliberate
+  ownership decision, taken when the first measurements were brought back to this spec. It decides who
+  fixes those breaches; it does not change what passes.
 - **Spec 042 D-3:** every route is dynamic, so the budgets measure server-rendered dynamic
   responses. That is the product's real behaviour, and nothing here relaxes it.
-- **First measurement (implementation, 2026-09-29; Linux, Node 22, production build) — AC-4 is open.**
+- **First measurement (implementation, 2026-09-29; Linux, Node 22, production build) — AC-4 was open;
+  historical, superseded by the CI verification in §3.7.1.**
   The gate is committed exactly as specified and currently FAILS; per the decision taken with the product
   owner, the breaches are follow-up work for the owning specs, not a loosened budget.
   - **JavaScript (host-independent), every route over:** 222,141–226,563 bytes against 204,800. The same
@@ -246,6 +252,59 @@ renders success on a non-`2xx` result.
     worst), but the measuring host was flagged by Lighthouse as slower than it assumes (`benchmarkIndex`
     64–272), which inflates both under the 4× CPU throttle. Their authoritative values come from the CI
     `perf` job on a GitHub-hosted runner.
+
+### 3.7.1 CI verification and performance handoff (2026-10-08)
+
+**Authoritative run:** CI run #4,
+<https://github.com/syedaaimanali77-cyber/Apuriva---Marketplace/actions/runs/37685787487>, on commit
+`8b1dad0` (the spec 044 optimization commit), using the same draft-PR base and temporary CI commit as the
+earlier baseline run #3. Lighthouse, Slow 4G with 4× CPU, median of 3 runs:
+
+| Route | LCP | CLS | JS transferred (bytes) | TBT (diagnostic) |
+|---|---|---|---|---|
+| `/` | 4,300 ms | 0.009 | 176,690 | 53 ms |
+| `/explore` | 5,345 ms | 0.000 | 169,897 | 67 ms |
+| `/explore/{categoryId}` | 4,817 ms | 0.000 | 171,574 | 96 ms |
+| `/explore/{categoryId}/{serviceId}` | 5,037 ms | 0.000 | 174,982 | 54 ms |
+| `/login` | 4,659 ms | 0.000 | 169,290 | 41 ms |
+| `/search?q=cleaning` | 4,818 ms | 0.001 | 172,564 | 59 ms |
+
+- **JS ≤ 204,800 bytes: passes on all six routes** (169,290–176,690), down from 221,129–226,563 in
+  baseline run #3. The client bundle no longer carries a dictionary (spec 042 §3.5: the root layout
+  passes the resolved locale's dictionary as data), and routes no longer ship every component of the
+  `@/components` barrel.
+- **CLS ≤ 0.1: passes on all six routes.** `/search?q=cleaning` went from 0.144 in baseline run #3 to
+  0.001. The shift was the autocomplete suggestions card being inserted above the empty state after a
+  deep-linked query; autocomplete now answers typed input only (spec 013 AC-2).
+- **LCP ≤ 2.5 s: fails on all six routes** (4.3–5.3 s), at the level of baseline run #3 (4.6–5.3 s). The
+  breaches have causes outside this spec:
+  - `/login`, `/search?q=cleaning`, `/explore/{categoryId}`: the LCP element is the first-run
+    onboarding overlay's text, with 4.2–4.4 s of render delay. **Owner: spec 007.**
+  - `/explore`: the LCP element is the first category image, which now loads with
+    `loading="eager"` and `fetchpriority="high"` (Lighthouse's lazy-loaded-LCP check now passes). Its
+    LCP is dominated by 2.9–4.2 s of resource load delay: the page is client-rendered, so the image URL
+    only exists after the categories are fetched in the browser. **Owner: the catalog route (spec 010)
+    and any future server-rendering work.**
+  - `/explore/{categoryId}/{serviceId}`: the LCP element is the client-rendered service page's content,
+    with 4.6 s of render delay. **Owner: the service route (spec 011) and any future server-rendering
+    work.**
+  - `/`: the LCP element is the home hero image (about 1.8 s render delay and 1.3 s load delay on a
+    client-rendered page). **Owner: the home route's owning spec and any future server-rendering work.**
+- **INP ≤ 200 ms: not reached in CI.** The `perf` job runs INP after Lighthouse, so the LCP failure
+  skips it; it was skipped in baseline run #3 for the same reason. Local runs do not establish a pass:
+  on a development machine, one worker, the INP medians were 328–584 ms (`/login` 1,888 ms) on the tree
+  without these changes and 312–648 ms (`/login` 1,080 ms) with them. **Owner: follow-up work on the
+  affected routes.**
+- **This handoff does not claim that LCP or INP are satisfied.** Both keep their thresholds in
+  `lighthouserc.json` and `browser/perf/inp.browser.ts` at `error`, and the `perf` job fails until the
+  owning specs bring the routes within them.
+- **Other run #4 failures are outside this spec:** `a11y` has the same 44 failures as baseline run #3
+  (admin-page axe scans and `ur: bookings.payment`); `test-mcp` is a shared-database test-isolation race
+  in spec 034/035 tests that also reproduces on the code without these changes.
+- **Closure status:** AC-4 is closed on its owned gates, JS and CLS. AC-2, AC-3, AC-5 and AC-6 are
+  verified by their §6 tests in run #4, and AC-7 by the §3.10 audit. **AC-1 stays open on DEP-2**: the
+  icon artwork has not been delivered to `public/icons/`, and `browser/pwa/install.browser.ts` skips its
+  icon check until it is. The spec is approved once AC-1 is met.
 
 ### 3.8 Index policy (AC-5, AC-6, decision D-4)
 
@@ -416,7 +475,7 @@ None new. No migration. SEO content is read from the existing `categories`/`serv
 | AC-1 | `browser/pwa/install.browser.ts`; `browser/pwa/offline.browser.ts::installed app offline shows /offline` |
 | AC-2 | `browser/pwa/offline.browser.ts::never claims success without server confirmation`; `OfflineBanner.test.tsx` |
 | AC-3 | `browser/pwa/offline.browser.ts::no write is queued or replayed`; the `*.offline.test.tsx` component tests; `lib/pwa/sw-rules.test.ts::non-GET never intercepted` |
-| AC-4 | CI `perf` job: `lighthouserc.json` (LCP ≤ 2.5 s, CLS ≤ 0.1, JS ≤ 204,800 bytes) and `browser/perf/inp.browser.ts` (INP ≤ 200 ms); fails on any breach |
+| AC-4 | CI `perf` job: `lighthouserc.json` (JS ≤ 204,800 bytes and CLS ≤ 0.1, this spec's closure gate; LCP ≤ 2.5 s, platform target) and `browser/perf/inp.browser.ts` (INP ≤ 200 ms, platform target); the job fails on any breach. Verified in CI run #4 (§3.7.1) |
 | AC-5 | `lib/seo/seo.integration.test.ts::metadata, canonical, OG, JSON-LD`; `lib/seo/json-ld.test.ts` |
 | AC-6 | `lib/seo/route-policy.test.ts`; `lib/seo/seo.integration.test.ts::sitemap contains only indexable routes` |
 | AC-7 | the §3.10 audit checklist in the implementing PR |
@@ -477,7 +536,7 @@ X-4/X-5, `app/layout.test.tsx` and `app/layout.locale.test.tsx`.
 |---|---|
 | D-1 | A hand-written `public/sw.js` with no library. It caches only hashed static assets, public images, icons and a guest-rendered `/offline`. It never caches HTML otherwise, never `/api/*`, and never intercepts non-`GET` requests. Caches are versioned by `CACHE_VERSION`, and old versions are purged on activate. |
 | D-2 | No queued writes in MVP. The four critical write controls are disabled offline, other writes fail honestly with `NETWORK_ERROR`, and reconnect triggers one `router.refresh()`. |
-| D-3 | Budgets are the CWV "Good" thresholds, LCP ≤ 2.5 s, INP ≤ 200 ms and CLS ≤ 0.1, plus a JavaScript cap of 200 KB (204,800 bytes) compressed transfer on initial load. They are measured on six routes under Slow 4G with 4× CPU, median of 3: LCP, CLS and JS via Lighthouse CI, and INP via Playwright Event Timing. Blocking. |
+| D-3 | Budgets are the CWV "Good" thresholds, LCP ≤ 2.5 s, INP ≤ 200 ms and CLS ≤ 0.1, plus a JavaScript cap of 200 KB (204,800 bytes) compressed transfer on initial load. They are measured on six routes under Slow 4G with 4× CPU, median of 3: LCP, CLS and JS via Lighthouse CI, and INP via Playwright Event Timing. Blocking in CI. JS and CLS gate this spec's closure; remediating the current LCP and INP route breaches is follow-up work owned by the specs that own their cause (2026-10-08 ownership decision, §3.7.1). |
 | D-4 | Indexable = home, explore, and published category and service pages. Everything else is `noindex` via per-segment server layouts, with a completeness test. `robots.txt` only disallows `/api/`. |
 | D-5 | One canonical per page from `SITE_URL`; no `hreflang` (spec 042 has no locale URLs); catalog metadata as authored; static metadata through spec 042's `translate()`. |
 | D-6 | Provider-profile SEO is removed; there is no route or owner. |
@@ -487,7 +546,7 @@ X-4/X-5, `app/layout.test.tsx` and `app/layout.locale.test.tsx`.
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R-1 | The current dynamic pages may breach the budgets on first measurement | This is a real defect to fix in the owning route (§3.7); the budget is not loosened without a spec decision |
+| R-1 | The current dynamic pages may breach the budgets on first measurement | This is a real defect to fix in the owning route (§3.7); the budget is not loosened without a spec decision. Realized: the JS and CLS breaches were fixed under this spec; the LCP and INP breaches are handed to their owning specs at unchanged thresholds (§3.7.1) |
 | R-2 | Lab CI hardware variance makes the perf job noisy; lab INP from scripted interactions is not identical to field INP | Throttling plus the median of 3 runs; field INP monitoring is deferred (§6) |
 | R-3 | `navigator.onLine` false positives | `NETWORK_ERROR` stays authoritative; the banner is advisory |
 | R-4 | A worker bug serving stale content | HTML is never cached, versioned caches, and the documented kill-switch worker |
