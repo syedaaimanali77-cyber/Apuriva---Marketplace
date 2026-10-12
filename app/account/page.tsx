@@ -26,15 +26,21 @@ interface SettingsDestination {
   href?: string;
 }
 
-// Profile and Preferences have no page yet (no route, no spec); they're listed honestly as
-// "Coming soon" rows rather than links that would 404.
+// A destination without a page yet is listed honestly as a "Coming soon" row rather than a link that would 404.
 const SETTINGS_DESTINATIONS: SettingsDestination[] = [
-  { id: 'profile', title: 'account.destinations.profile.title', description: 'account.destinations.profile.description', icon: 'user' },
+  {
+    id: 'profile',
+    title: 'account.destinations.profile.title',
+    description: 'account.destinations.profile.description',
+    icon: 'user',
+    href: '/account/profile',
+  },
   {
     id: 'preferences',
     title: 'account.destinations.preferences.title',
     description: 'account.destinations.preferences.description',
     icon: 'settings',
+    href: '/account/preferences',
   },
   {
     id: 'addresses',

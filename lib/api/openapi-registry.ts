@@ -35,6 +35,20 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
     summary: 'Become a provider (idempotent; does not switch mode)',
     tags: ['users'],
   },
+  { method: 'GET', path: '/users/me/profile', summary: 'Account profile: display name, and email/phone read-only with verified state', tags: ['users'] },
+  {
+    method: 'PATCH',
+    path: '/users/me/profile',
+    summary: 'Set or clear the display name (trimmed, ≤ 60 characters, no control characters); expectedVersion; CSRF',
+    tags: ['users'],
+  },
+  { method: 'GET', path: '/providers/me/profile', summary: 'The provider business name; provider mode', tags: ['users'] },
+  {
+    method: 'PATCH',
+    path: '/providers/me/profile',
+    summary: 'Set or clear the business name (published immediately; ≤ 60 characters); provider mode; expectedVersion; CSRF',
+    tags: ['users'],
+  },
   {
     method: 'PATCH',
     path: '/users/me/active-mode',

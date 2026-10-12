@@ -1,0 +1,88 @@
+/*
+ * Account → Profile and Account → Preferences. Tokens only (app/styles/apuriva-tokens.css), the same page
+ * frame as the other account pages (app/account/addresses/addresses.module.css). No logo of its own: the
+ * global AppHeader is the page's one brand placement (CLAUDE.md).
+ */
+
+.page {
+  max-width: var(--container-content);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.intro {
+  margin: 0;
+  color: var(--text-body);
+}
+
+.section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.status {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-body);
+}
+
+.readOnlyList {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.readOnlyRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.readOnlyLabel {
+  font-size: var(--text-sm);
+  color: var(--text-body);
+}
+
+.readOnlyValue {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+  overflow-wrap: anywhere;
+}
+
+.link {
+  font-weight: var(--weight-semibold);
+}

@@ -160,6 +160,13 @@ export const customerProfiles = pgTable(
       .notNull()
       .unique()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /**
+     * The customer's display name (Account → Profile). The column has existed since migration 0003; it is
+     * declared here, not re-created. `NULL` = not set. Trimmed, at most 60 characters, no control characters
+     * — validated in the application (lib/account/profile.ts). Shown to the counterparty in messaging and
+     * booking lists; never a phone number or email.
+     */
+    displayName: text('display_name'),
     /** Spec 014 §4/§7 AC-7: opt out of home-feed personalization. Stops using history for
      * recommendations (falls back to `curated_popular`); does not itself delete the underlying
      * history — deletion is spec 008's separate, explicit flow. */
