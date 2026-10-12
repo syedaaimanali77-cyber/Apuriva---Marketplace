@@ -7,13 +7,12 @@
  */
 import { and, eq, gte, isNotNull, lt, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { aiUsageEvents } from '@/lib/db/schema';
+import { AI_TASKS, aiUsageEvents } from '@/lib/db/schema';
 import type { AiUsageSummaryDto, AiUsageTotals } from '@/lib/types/ai';
 import { AI_USAGE_RETENTION_BATCH_LIMIT, aiUsageRetentionDays } from './config';
 import { estimateAiCostMinorUnits, aiCostAlertThresholds } from './cost';
 import { aiCostCurrencyCode } from './config';
 import type { AiSubject, AiTask } from './types';
-import { subjectKey } from './types';
 
 export interface RecordAiUsageInput {
   task: AiTask;
@@ -89,25 +88,20 @@ export interface RollingUsage {
  * and contribute zero tokens (the DB CHECK guarantees `tokens_used = 0` when `cached`), which is
  * exactly the accounting spec 033 §3.8 specifies.
  *
- * Fails OPEN on a database error — an unreachable database must not become a platform-wide AI
- * outage. The rate limiter (in process) still bounds the caller in that case.
+ * THROWS on a database error rather than reporting zero usage. A quota that cannot be read is not
+ * a quota with room left, and `completeAi` step 4 turns that throw into `AI_QUOTA_EXCEEDED` —
+ * spec 033 §3.5's fail-closed policy. Reporting zeros here would silently suspend the daily
+ * request and token ceilings for exactly as long as the database was unreachable.
  */
 export async function rollingUsageSince(subject: AiSubject, since: Date): Promise<RollingUsage> {
-  try {
-    const [row] = await getDb()
-      .select({
-        requests: sql<number>`count(*)::int`,
-        tokens: sql<number>`coalesce(sum(${aiUsageEvents.tokensUsed}), 0)::int`,
-      })
-      .from(aiUsageEvents)
-      .where(and(subjectPredicate(subject), gte(aiUsageEvents.createdAt, since)));
-    return { requests: row?.requests ?? 0, tokens: row?.tokens ?? 0 };
-  } catch (err) {
-    console.error(
-      JSON.stringify({ event: 'ai.quota_read_failed', subject: subjectKey(subject), error: String(err) }),
-    );
-    return { requests: 0, tokens: 0 };
-  }
+  const [row] = await getDb()
+    .select({
+      requests: sql<number>`count(*)::int`,
+      tokens: sql<number>`coalesce(sum(${aiUsageEvents.tokensUsed}), 0)::int`,
+    })
+    .from(aiUsageEvents)
+    .where(and(subjectPredicate(subject), gte(aiUsageEvents.createdAt, since)));
+  return { requests: row?.requests ?? 0, tokens: row?.tokens ?? 0 };
 }
 
 /** Rejected attempts by this subject since `since` — abuse signal S2's input. */
@@ -176,7 +170,9 @@ export async function getAiUsageSummary(range: { from: Date; to: Date }): Promis
     .where(and(gte(aiUsageEvents.createdAt, range.from), lt(aiUsageEvents.createdAt, range.to)))
     .groupBy(aiUsageEvents.task, aiUsageEvents.providerName, aiUsageEvents.outcome, aiUsageEvents.cached);
 
-  const byTask: Record<string, AiUsageTotals> = {};
+  // Spec 033 §3.11 — `byTask` is TOTAL over the closed `AiTask` union: every key is seeded, so a
+  // task with no traffic in the range reports an honest zero instead of vanishing from the DTO.
+  const byTask = Object.fromEntries(AI_TASKS.map((task) => [task, EMPTY_TOTALS()])) as Record<AiTask, AiUsageTotals>;
   const byProvider: Record<string, AiUsageTotals> = {};
   let totalRequests = 0;
   let succeededRequests = 0;
@@ -193,7 +189,7 @@ export async function getAiUsageSummary(range: { from: Date; to: Date }): Promis
     else failedRequests += row.requests;
     if (row.cached) cachedRequests += row.requests;
 
-    const task = (byTask[row.task] ??= EMPTY_TOTALS());
+    const task = byTask[row.task];
     task.requests += row.requests;
     task.tokens += row.tokens;
 
