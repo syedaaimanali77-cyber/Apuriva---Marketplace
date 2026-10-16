@@ -26,6 +26,13 @@ export interface UserDto {
    * never chosen one. It is the preference as stored, not the resolved locale (see `PATCH /users/me/locale`).
    */
   locale: string | null;
+  /**
+   * Spec 045 X-7 — additive: `users.is_demo`, so the account page can offer "Reset demo" (X-4) to a demo
+   * user only. Never an authorization input: `POST /api/v1/demo/reset` re-reads the column itself.
+   * Optional because only `GET /users/me` (X-7) sets it; `PATCH /users/me/active-mode` (spec 006) builds the
+   * same DTO and is outside spec 045's authorized changes, so it omits the field (read as `false`).
+   */
+  isDemo?: boolean;
 }
 
 export interface ProviderProfileDto {

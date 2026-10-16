@@ -60,10 +60,12 @@ the externally-verified criteria pass (see **In progress**).
 
 ## Blocked
 
-- **Spec 045** — Demo mode and seed data. **Blocked by its DEP-1:** a hosted demo runs under
-  `NODE_ENV=production`, where every sandbox adapter (payments, payouts, notifications, files, AI)
-  refuses to start, and no real adapter exists. Changing that guard is owned by specs
-  021/024/026/027/033; spec 046 does not alter it.
+- **Spec 045** — Demo mode and seed data. Implemented and verified locally (spec 045 §10), with all
+  seven ACs passing against the isolated test database. **A hosted demo is blocked by its DEP-1:** a
+  hosted server runs under `NODE_ENV=production`, where every sandbox adapter (payments, payouts,
+  notifications, files, AI) refuses to start. Provisioning then fails with that refusal and writes
+  nothing, and no real adapter exists. Changing that guard is owned by specs 021/024/026/027/033; neither
+  spec 045 nor spec 046 alters it. The status stays Draft.
 
 ## Tested
 
@@ -175,7 +177,10 @@ integration, service-worker rules, offline components, and the untouched layout 
 
 ## Demo credentials
 
-None — per-visitor sessions; admin evaluators provisioned by operator (spec 045, which is blocked).
+None — `/demo` provisions a fresh per-visitor set (spec 045). Admin evaluators are provisioned with
+`npx tsx scripts/demo-create-admin.ts --email <email> --role <role>`, using a one-time password and MFA.
+This works only on a `_demo` database with `DEMO_MODE_ENABLED=true` and `APP_ENV` other than production,
+and is not hosted until DEP-1 is resolved.
 
 ## Known bugs
 

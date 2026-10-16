@@ -28,6 +28,19 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
   { method: 'POST', path: '/auth/mfa/verify', summary: 'Complete an MFA-pending admin login', tags: ['auth'] },
   { method: 'POST', path: '/auth/logout', summary: 'Invalidate the current session', tags: ['auth'] },
   { method: 'POST', path: '/auth/step-up', summary: 'Issue a step-up token for a sensitive action', tags: ['auth'] },
+  // Spec 045 X-8 — demo mode. Both refuse outside a demo environment (403 DEMO_NOT_AVAILABLE_IN_PRODUCTION / DEMO_MODE_DISABLED).
+  {
+    method: 'POST',
+    path: '/demo/login',
+    summary: 'Provision a fresh demo set and sign in as its customer or provider persona (guest; no admin persona)',
+    tags: ['demo'],
+  },
+  {
+    method: 'POST',
+    path: '/demo/reset',
+    summary: 'Reset a demo account: provision a new set for the same persona and replace the session; CSRF',
+    tags: ['demo'],
+  },
   { method: 'GET', path: '/users/me', summary: 'Current user: profiles and session active mode', tags: ['users'] },
   {
     method: 'POST',

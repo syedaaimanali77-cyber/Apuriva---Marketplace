@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 import Link from 'next/link';
 import { Alert, Badge, Button, DirectionalIcon, ErrorState, Icon, Skeleton } from '@/components';
+import { DemoResetAction } from '@/app/_components/DemoResetAction';
 import { LocaleSwitcher } from '@/app/_components/LocaleSwitcher';
 import { useLocale } from '@/app/_components/LocaleProvider';
 import { branding } from '@/lib/config/branding';
@@ -238,6 +239,9 @@ export default function AccountPage() {
       {/* Spec 042 §5.2: the signed-in language switcher (persists `users.locale`). Renders nothing while only
           one locale is available, i.e. while `urdu-locale` is off. */}
       <LocaleSwitcher mode="account" />
+
+      {/* Spec 045 §5 (X-4): "Reset demo", for a demo user only. */}
+      {user.isDemo ? <DemoResetAction provider={user.hasProviderProfile} /> : null}
 
       <nav className={styles.settings} aria-label={t('account.settingsNav')}>
         <section className={styles.group} aria-labelledby="settings-heading">

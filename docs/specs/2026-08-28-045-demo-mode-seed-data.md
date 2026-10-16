@@ -1,7 +1,7 @@
 # Spec: Demo Mode & Seed Data
 
 **File:** `docs/specs/2026-08-28-045-demo-mode-seed-data.md`
-**Status:** Draft
+**Status:** Draft — implemented and verified locally (2026-10-15, §10); **not ready for a hosted demo**: DEP-1 is unresolved, so on any hosted server (`NODE_ENV=production`) provisioning refuses with the sandbox adapters' own refusal.
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §110–§113, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §16, [docs/workflow.md](../workflow.md); specs 005 (sessions, mandatory admin MFA), 009 (admin roles), 010 (catalog seed), 021/024 (payment and payout adapters), 026 (notification channels), 033 (AI adapter), 039 (audit), 040 (analytics), 041 (feature flags, `APP_ENV`). See §8.
@@ -68,7 +68,7 @@ specs 003–041 — it can only be complete once those entities are finalized.
 
 | # | Criterion |
 |---|---|
-| AC-1 | **Given** a demo environment (§3.1) **When** a visitor clicks "Try as Customer" or "Try as Provider" **Then** `POST /api/v1/demo/login` provisions a fresh demo set for that visitor (§3.3) and signs them in as its persona user through `completeLogin()`, with no signup. `persona: 'admin'` is refused `422 VALIDATION_ERROR`. No endpoint creates an admin session without MFA. |
+| AC-1 | **Given** a demo environment (§3.1) **When** a visitor clicks "Try as Customer" or "Try as Provider" **Then** `POST /api/v1/demo/login` provisions a fresh demo set for that visitor (§3.3) and signs them in as its persona user through `completeLogin()`, with no signup. `persona: 'admin'` is refused `400 VALIDATION_ERROR` (spec 004 AC-3). No endpoint creates an admin session without MFA. |
 | AC-2 | **Given** a provisioned demo set **When** inspected **Then** it references the 8 categories and services seeded by migration 0006 (not re-created), and contains demo providers with packages and portfolio placeholders, reviews, requests, offers (including expired ones), bookings in every spec 020 status, notifications, and providers in each availability state (`available`, `busy`, `unavailable`) |
 | AC-3 | **Given** a demo environment **When** any page renders, for guests and signed-in users alike **Then** the `DemoModeBanner` is visible, and every seeded person's display name carries the "(Demo)" suffix |
 | AC-4 | **Given** a demo payment **When** processed **Then** it goes through spec 021's unchanged payment port and adapter selection (`PAYMENT_PROVIDER=sandbox`), and its outcome (success, failure/decline, requires-action/pending, cancellation/void) comes from the adapter's documented deterministic test amounts. No demo-specific branch exists in any payment, payout or notification code path. |
@@ -122,7 +122,7 @@ reset and reseed guards (§3.5), not the primary boundary.
 
 1. Run the §3.6 checks.
 2. Validate the body `{ persona }`: anything other than `'customer'` or `'provider'`
-   → `422 VALIDATION_ERROR` (field `persona`).
+   → `400 VALIDATION_ERROR` (field `persona`; spec 004 AC-3 owns this status).
 3. Provision a demo set (§3.3) in one transaction.
 4. Call `completeLogin(personaUserId, 'demo', { ipHash })` (X-1), then set the cookies the same way the
    existing login routes do.
@@ -243,7 +243,7 @@ and logs `demo.environment_reseeded`. Migrations re-seed the catalog (0006) and 
 | `403` | `FORBIDDEN` | D2 by a non-demo user |
 | `403` | `CSRF_TOKEN_INVALID` | D2 without a valid CSRF token (spec 005) |
 | `401` | `UNAUTHENTICATED` | D2 without a session |
-| `422` | `VALIDATION_ERROR` | D1 `persona` missing or not `customer`/`provider` |
+| `400` | `VALIDATION_ERROR` | D1 `persona` missing or not `customer`/`provider` (spec 004 AC-3) |
 | `429` | `RATE_LIMITED` | the `auth` bucket is exhausted |
 
 The checks run in the table's order, before any domain read or write.
@@ -336,7 +336,7 @@ regardless of the flag.
 
 **Route(s):**
 
-- `app/demo/page.tsx`: the entry point, a server component with "Try as Customer" and
+- `app/(auth)/demo/page.tsx` (URL `/demo`): the entry point, a server component with "Try as Customer" and
   "Try as Provider" buttons. With demo unavailable, it renders the unavailable state.
 - The `DemoModeBanner` is rendered from `app/layout.tsx` (X-3) when the server-side
   `isFeatureEnabled('demo-mode')` is true **and** `APP_ENV` is not `production`.
@@ -373,7 +373,7 @@ All strings go through spec 042's `t()`, with new `demo.*` keys in `lib/i18n/dic
 | **Boundary** | no `is_demo`/`demo` reference in `lib/payments/**`, `lib/payouts/**`, `lib/notifications/**` or `lib/ai/**`; no demo row inserted by any migration; `demo-mode` is registered exactly per §3.7 | `lib/demo/boundary.test.ts` |
 | **Integration** | 0039 up/down, CHECK, index, flag seeded off | `lib/demo/migration.integration.test.ts` |
 | **Script** | `demo-reseed` and `demo-create-admin` refuse outside the §3.1 conditions and when a non-demo user exists; `super_admin` refused | `scripts/demo-reseed.test.ts`, `scripts/demo-create-admin.test.ts` |
-| **Component** | banner renders with the flag on outside production and not otherwise; the entry page's loading, unavailable and error states | `app/_components/DemoModeBanner.test.tsx`, `app/demo/page.test.tsx` |
+| **Component** | banner renders with the flag on outside production and not otherwise; the entry page's loading, unavailable and error states | `app/_components/DemoModeBanner.test.tsx`, `app/(auth)/demo/page.test.tsx` |
 | **Route-level** | customer persona: demo login → search → request → offers → booking → sandbox payment → review, through the route handlers | `e2e/demo-mode.spec.ts` (Vitest route-level, the repository's `e2e/` convention) |
 
 All integration tests run on the isolated `*_test` database. A test that needs the `_demo` guard to
@@ -435,7 +435,7 @@ completeness (all required states represented) is the acceptance bar, not editor
 | X-3 | 002/042 | `app/layout.tsx` | Render `<DemoModeBanner />` inside `LocaleProvider` when §5's server-side condition holds. Nothing else. |
 | X-4 | 014 | `app/account/page.tsx` | A "Reset demo" `Button` plus `ConfirmDialog`, rendered only for `is_demo` users (requires X-7) |
 | X-5 | 042 | `lib/i18n/dictionaries/en.ts` | `demo.*` keys (`ur` falls back per spec 042 AC-6) |
-| X-6 | 041 (tests) | `lib/feature-flags/registry.test.ts` (the `APPROVED` list gains `demo-mode`, and `demo-mode` is removed from the key list of the D-8 test "registers none of the flags the owning specs removed or never defined"; `matching-fairness-exposure` and `marketing-notifications` stay in it), `app/api/v1/admin/feature-flags/routes.integration.test.ts` (the Super Admin list `toHaveLength(7)` → `8`), `lib/feature-flags/migration.integration.test.ts` (the description text only; its assertions already use the registry length) | accept the registered eighth flag. `resolve.test.ts` and `environment-isolation.integration.test.ts` need no edit, because `demo-mode` is not client-readable. These are the only spec 041 test edits. |
+| X-6 | 041 (tests) | `lib/feature-flags/registry.test.ts` (the `APPROVED` list gains `demo-mode`, and `demo-mode` is removed from the key list of the D-8 test "registers none of the flags the owning specs removed or never defined"; `matching-fairness-exposure` and `marketing-notifications` stay in it), `app/api/v1/admin/feature-flags/routes.integration.test.ts` (the Super Admin list `toHaveLength(7)` → `8`), `lib/feature-flags/migration.integration.test.ts` (its description text, and the 0036 file-level check's owning-spec exemption gains `045` beside spec 042's — later flags ship in their own migration) | accept the registered eighth flag. `resolve.test.ts` and `environment-isolation.integration.test.ts` need no edit, because `demo-mode` is not client-readable. These are the only spec 041 test edits. |
 | X-7 | 006 | `lib/types/users.ts`, `app/api/v1/users/me/route.ts` | Add `UserDto.isDemo: boolean` (additive), for the X-4 gate |
 | X-8 | 004 | `lib/api/openapi-registry.ts` | D1, D2 |
 | X-9 | 041 | `lib/feature-flags/registry.ts` | the `demo-mode` entry (§3.7) |
@@ -482,3 +482,50 @@ completeness (all required states represented) is the acceptance bar, not editor
 - **Observability:** the structured lines `demo.set_provisioned`, `demo.reset`,
   `demo.environment_reseeded` and `demo.misconfigured` (master §117). Demo usage is counted from these
   lines in the demo environment's logs, never mixed into production metrics (D-6).
+
+---
+
+## 10. Implementation notes and verification (2026-10-15)
+
+**Corrections made while implementing, each settled by an owning spec or the repository, not invented:**
+
+- **`400`, not `422`, for `VALIDATION_ERROR`.** Spec 004 AC-3 owns the error taxonomy and fixes `VALIDATION_ERROR` at `400`; every route follows it. AC-1, §3.2 and §3.6 are corrected to match.
+- **Entry page path.** The page lives at `app/(auth)/demo/page.tsx`, so the URL is exactly `/demo`. A new top-level `app/demo` segment would need an entry in spec 044's `lib/seo/route-policy.ts`, which is outside the X-list. The `(auth)` group already carries spec 044's `noindex` layout and the shared auth shell.
+- **`UserDto.isDemo` is optional in the type.** `PATCH /users/me/active-mode` (spec 006) builds the same DTO and is not in the X-list, so it omits the field, which is read as `false`. **Open:** after switching mode on `/account`, the "Reset demo" action stays hidden until the page reloads. Adding `isDemo` to that route needs a separate approval.
+- **Request statuses.** No owning spec seeds a transition into `expired` or `completed` (specs 018/026/028), so §3.3's rule that no state the real machine cannot produce may be written covers the six reachable statuses: `submitted`, `matching`, `offers_open`, `provider_selected`, `booking_created` and `cancelled`.
+- **"Cancellation/void" (AC-4).** The sandbox has no amount-driven void, and no application path calls `voidAuthorization`. Spec 023 only cancels a captured payment. Each set therefore shows cancellation through spec 023's fee ladder and spec 022's sandbox refund:
+  - 18 hours before the job: a 25% fee and a partial refund, so the booking stays `cancelled`;
+  - 72 hours before: a full refund, so the booking becomes `refunded`.
+- **One transaction.** The owning modules' public write functions each open their own transaction. The provisioner uses their transaction-composable primitives:
+  - spec 021's `record.ts` and state machine;
+  - spec 022's refund state machine;
+  - spec 023's `ensurePolicyAcceptance` and `computeCancellationConsequence`;
+  - spec 029's `resolveReviewEligibility` and `evaluateReviewSignals`;
+  - spec 026's `renderNotification`.
+
+  Everything else is the trigger-checked walk §3.3 prescribes. Payment, refund and attempt rows carry the provisioning instant, because `record.ts` uses `clock_timestamp()`. Booking, offer and request histories are back-dated.
+- **No phone numbers.** `users.phone_number` is unique, and the fictional range holds only 100 numbers, so seeded users have none. Nothing outside the range is ever used.
+- **Notifications are inbox rows only.** No `notification_deliveries` row is created, so nothing is ever dispatched.
+- **`demo-create-admin` credential.** The evaluator needs a credential for the normal login. The script generates a random one-time password, prints it once and stores only its scrypt hash. No MFA secret is touched. Both operator scripts also refuse while any non-demo user exists.
+
+**Verification (local, isolated `apuriva_test` database):**
+
+| Check | Result |
+|---|---|
+| Spec 045 suites (15 files, 99 tests): unit, integration, component, scripts, route-level e2e | pass |
+| Coverage of `lib/demo/**` (statements / branches / functions / lines) | 93.9% / 85.8% / 96.2% / 97.1% |
+| Feature-flag suites with the X-6 edits | pass |
+| `tsc --noEmit`, `check:env`, `check:schema-baseline` | pass |
+
+| AC | Status | Evidence |
+|---|---|---|
+| AC-1 | **Pass (local)** | `app/api/v1/demo/login/route.integration.test.ts`, `e2e/demo-mode.spec.ts` |
+| AC-2 | **Pass (local)** | `lib/demo/seed/coverage.integration.test.ts`; request statuses as noted above |
+| AC-3 | **Pass** | `app/_components/DemoModeBanner.test.tsx`, `lib/demo/identity.test.ts` |
+| AC-4 | **Pass locally; blocked for a hosted demo (DEP-1)** | `lib/demo/seed/payments.integration.test.ts`, `lib/demo/boundary.test.ts` |
+| AC-5 | **Pass (local)** | `app/api/v1/demo/reset/route.integration.test.ts` |
+| AC-6 | **Pass locally; blocked for a hosted demo (DEP-1)** | `lib/demo/identity.test.ts`, `lib/demo/boundary.test.ts`, the coverage suite's zero-delivery check |
+| AC-7 | **Pass** | `app/api/v1/demo/guards.integration.test.ts`, `lib/demo/guards.test.ts` |
+
+The status stays **Draft**. AC-4 and AC-6 cannot be met on a hosted deployment until the owning specs approve DEP-1.
+

@@ -1640,6 +1640,36 @@ export const en = {
     categoryDescription: 'Find {name} services and request offers from providers on APURIVA.',
     serviceDescription: 'Request {name} on APURIVA and compare offers from providers.',
   },
+  // Spec 045 §5 (X-5) — demo mode: the app-wide label, the /demo entry page and the account's reset action.
+  // `ur` falls back to these English strings (spec 042 AC-6).
+  demo: {
+    banner: {
+      label: 'Demo',
+      text: 'You are exploring a demo. Everything here is sample data: no real money moves and no messages are sent.',
+    },
+    entry: {
+      title: 'Try APURIVA',
+      description: 'Explore a private demo account filled with sample data. No signup, no real money, no real messages.',
+      tryCustomer: 'Try as Customer',
+      tryCustomerHint: 'Browse services, compare offers and manage your bookings.',
+      tryProvider: 'Try as Provider',
+      tryProviderHint: 'See incoming requests, send offers and track your jobs.',
+      loading: 'Setting up your demo...',
+      error: 'We could not set up your demo. Please try again.',
+      adminNote: 'Admin features are shown only through operator-provisioned accounts that use two-factor authentication.',
+      unavailableTitle: 'Demo is not available',
+      unavailableDescription: 'Demo mode is not enabled in this environment.',
+      logIn: 'Log in to your account',
+    },
+    reset: {
+      title: 'Demo account',
+      description: 'Start over with a fresh set of sample data. You will be signed in to a new demo account.',
+      button: 'Reset demo',
+      confirmTitle: 'Reset your demo?',
+      confirmDescription: 'You will be signed out of this demo account and into a fresh one with new sample data.',
+      error: 'We could not reset your demo. Please try again.',
+    },
+  },
   // Spec 044 §3.2/§5 — the offline page the service worker serves when a navigation cannot reach the server.
   offline: {
     heading: 'You are offline',
