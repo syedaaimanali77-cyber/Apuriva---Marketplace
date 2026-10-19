@@ -4,7 +4,7 @@ import { getDb } from '@/lib/db';
 import { queryRows } from '@/lib/offers/db';
 import { getAvailabilitySummary } from '@/lib/availability/summary';
 import { BOOKING_STATUSES } from '@/lib/db/schema';
-import { countRows, enterDemoEnvironment, isDatabaseReachable, stableNow } from '../demo-test-support';
+import { capturedWrites, enterDemoEnvironment, isDatabaseReachable, stableNow } from '../demo-test-support';
 import { isDemoDisplayName, isUndeliverableDemoEmail } from '../identity';
 import { provisionDemoSet, type ProvisionedDemoSet } from '../provision';
 
@@ -18,13 +18,15 @@ describe.skipIf(!dbReachable)('spec 045 AC-2 — a provisioned demo set spans ev
   let restore: () => void;
   const sets: Record<'customer' | 'provider', ProvisionedDemoSet> = {} as never;
   const now = stableNow();
-  let catalogBefore: number;
+  /** Every data-changing statement the two provisionings issued — parallel-safe, unlike global row counts. */
+  let provisioningWrites: string[] = [];
 
   beforeAll(async () => {
     restore = enterDemoEnvironment();
-    catalogBefore = (await countRows('categories')) + (await countRows('services')) + (await countRows('service_fields'));
-    sets.customer = await provisionDemoSet('customer', { now });
-    sets.provider = await provisionDemoSet('provider', { now });
+    provisioningWrites = await capturedWrites(async () => {
+      sets.customer = await provisionDemoSet('customer', { now });
+      sets.provider = await provisionDemoSet('provider', { now });
+    });
   }, 120_000);
 
   afterAll(() => restore?.());
@@ -136,8 +138,11 @@ describe.skipIf(!dbReachable)('spec 045 AC-2 — a provisioned demo set spans ev
   }
 
   it('references the eight categories and services seeded by migration 0006 and never inserts a catalog row (D-5)', async () => {
-    const after = (await countRows('categories')) + (await countRows('services')) + (await countRows('service_fields'));
-    expect(after).toBe(catalogBefore);
+    const catalogWrites = provisioningWrites.filter((statement) =>
+      /^\s*(insert\s+into|update|delete\s+from)\s+"?(categories|subcategories|services|service_fields|service_requirements|service_faqs)"?[\s(]/i.test(statement),
+    );
+    expect(provisioningWrites.length).toBeGreaterThan(0);
+    expect(catalogWrites).toEqual([]);
     const [used] = await queryRows<{ categories: number }>(
       getDb(),
       sql`SELECT count(DISTINCT s.category_id)::int AS categories FROM requests r

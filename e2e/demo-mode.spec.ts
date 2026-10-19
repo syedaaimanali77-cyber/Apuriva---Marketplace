@@ -142,11 +142,14 @@ describe.skipIf(!dbReachable)('e2e: spec 045 customer demo journey', { timeout: 
     expect(stored).toMatchObject({ provider_name: 'sandbox', booking_status: 'confirmed' });
     expect(stored!.provider_reference.startsWith('sandbox_')).toBe(true);
 
-    // Review (spec 029) the persona's seeded completed booking.
+    // Review (spec 029) the persona's seeded, still-unreviewed completed job. A platform sweep may already have
+    // moved it from `completed` to `protected` (spec 021) — both are reviewable within spec 029's window.
     const [completed] = await queryRows<{ id: string }>(
       getDb(),
       sql`SELECT b.id FROM bookings b JOIN customer_profiles cp ON cp.id = b.customer_profile_id
-           WHERE cp.user_id = ${customer.userId} AND b.status = 'completed' LIMIT 1`,
+           WHERE cp.user_id = ${customer.userId} AND b.status IN ('completed', 'protected')
+             AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.booking_id = b.id)
+           ORDER BY b.scheduled_at DESC LIMIT 1`,
     );
     const review = await data<{ rating: number; status: string }>(
       await CREATE_REVIEW(
