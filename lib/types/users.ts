@@ -29,10 +29,10 @@ export interface UserDto {
   /**
    * Spec 045 X-7 — additive: `users.is_demo`, so the account page can offer "Reset demo" (X-4) to a demo
    * user only. Never an authorization input: `POST /api/v1/demo/reset` re-reads the column itself.
-   * Optional because only `GET /users/me` (X-7) sets it; `PATCH /users/me/active-mode` (spec 006) builds the
-   * same DTO and is outside spec 045's authorized changes, so it omits the field (read as `false`).
+   * Set by both routes that build this DTO — `GET /users/me` and `PATCH /users/me/active-mode` — exactly as spec
+   * 042 X-4 added `locale`, so a mode switch (which replaces the client's copy) never drops it.
    */
-  isDemo?: boolean;
+  isDemo: boolean;
 }
 
 export interface ProviderProfileDto {

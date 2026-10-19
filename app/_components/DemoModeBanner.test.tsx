@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { en } from '@/lib/i18n/dictionaries/en';
+import RootLayout from '@/app/layout';
 import { DemoModeBanner } from './DemoModeBanner';
 
 const demo = vi.hoisted(() => ({ shouldShowDemoBanner: vi.fn() }));
@@ -27,7 +28,6 @@ describe('DemoModeBanner', () => {
 
   it('the root layout renders it on every page when the server-side condition holds (flag on, not production)', async () => {
     demo.shouldShowDemoBanner.mockResolvedValue(true);
-    const { default: RootLayout } = await import('@/app/layout');
     const markup = renderToStaticMarkup(await RootLayout({ children: <div>page</div> }));
     expect(markup).toContain('data-testid="demo-mode-banner"');
     expect(markup).toContain(en.demo.banner.text);
@@ -35,7 +35,6 @@ describe('DemoModeBanner', () => {
 
   it('the root layout renders no banner otherwise', async () => {
     demo.shouldShowDemoBanner.mockResolvedValue(false);
-    const { default: RootLayout } = await import('@/app/layout');
     const markup = renderToStaticMarkup(await RootLayout({ children: <div>page</div> }));
     expect(markup).not.toContain('demo-mode-banner');
   });

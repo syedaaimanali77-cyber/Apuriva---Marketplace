@@ -38,6 +38,23 @@ describe('DemoResetAction', () => {
     expect(screen.queryByRole('button', { name: en.demo.reset.button })).not.toBeInTheDocument();
   });
 
+  it('stays available after a mode switch on /account (the PATCH response carries isDemo too)', async () => {
+    const dual = { ...ME, hasProviderProfile: true, activeMode: 'provider', isDemo: true };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json(true, { data: dual }))
+      .mockResolvedValue(json(true, { data: { ...dual, activeMode: 'customer' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<AccountPage />);
+    expect(await screen.findByRole('button', { name: en.demo.reset.button })).toBeInTheDocument();
+
+    const switchButton = screen.getAllByRole('button').find((button) => /switch/i.test(button.textContent ?? ''))!;
+    await user.click(switchButton);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === '/api/v1/users/me/active-mode')).toBe(true));
+    expect(await screen.findByRole('button', { name: en.demo.reset.button })).toBeInTheDocument();
+  });
+
   it('confirms first, then calls D2 with the CSRF header and lands the customer persona on the home page', async () => {
     document.cookie = 'apuriva_csrf=csrf-token';
     const fetchMock = vi.fn().mockResolvedValue(json(true, { data: { userId: 'new', sessionId: 's', mfaRequired: false, roles: [] } }));
