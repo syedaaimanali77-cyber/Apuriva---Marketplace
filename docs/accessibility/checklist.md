@@ -33,31 +33,23 @@
 
 ## Open items (not passing yet)
 
-The committed `browser/a11y/baseline.json` was captured in Linux on Node 22 (CI's runtime) with CI's
-parallelism, and the gate then passed 436/436 against it. It holds **166 keys / 462 nodes** in two rules
-only — every entry below is an open failure, not accepted debt. Nothing else (no `target-size`, no other axe
-rule, no `apuriva-reduced-motion`, no keyboard, `lang`/`dir` or 375px-overflow failure) is outstanding.
+- **AC-2 and AC-3 are not signed.** The manual NVDA/VoiceOver reviews have not been performed (see the two
+  sign-off documents). They are the only open items.
 
-- **AC-4 is not met — `color-contrast`, 310 nodes.** All are design-token colours, so the fix is spec 002's:
-  regenerate the design-system export (`ui/_ds_manifest.json` → `app/styles/apuriva-tokens.css`) with AA
-  values (spec 043 DEP-3). Measured in context, the failures are wider than the five pairs spec 043 §1 lists:
+## Resolved by spec 002 (2026-10-01)
 
-  | Rendered pair | Ratio | Nodes |
-  |---|---|---|
-  | `--text-muted` #6b777b on the page surface #f8fafb | 4.40:1 | 132 |
-  | white on `--action-primary-bg` #0a918c (§1 pair) | 3.85:1 | 71 |
-  | subtle text #98a4a8 on white | 2.55:1 | 29 |
-  | `--text-muted` #6b777b on #effbfa | 4.36:1 | 8 |
-  | warning #b86b00 on #fff3dc (§1 pair) | 3.71:1 | 4 |
-  | success #168a5b on #e8f7f0 (§1 pair) | 3.94:1 | 4 |
-  | #087f7a on #eaf4fb | 4.35:1 | 2 |
-  | subtle text #98a4a8 on #f8fafb | 2.44:1 | 2 |
+`browser/a11y/baseline.json` is now **empty (`{}`)**: every audited route, viewport and `@ur` scope reports zero
+violations in every rule. It was refreshed with the documented mechanism, not by hand: a full capture on the
+spec 002 tree (`9a1a75a`, Linux, Node 22, CI's two workers — 436/436, 138 scopes per check, every count 0)
+folded in by `tsx scripts/a11y-baseline.ts merge`, after which the `CI=true` gate passed 436/436 against it.
 
-- **AC-8 is not met — `apuriva-focus-visible`, 152 nodes.** 116 are the design system's field primitives
-  (`ui/components/forms/Select.jsx`, `Input.jsx`): they set `outline: none` on the `<select>`/`<input>` and
-  draw `--ring-focus` on a wrapper `<div>`, so the focused element itself has no indicator (spec 043 D-7).
-  2 are focus landing on a visually hidden input. Owners: spec 002 (primitives) and the owning screens.
-- **AC-2 and AC-3 are not signed.** The manual NVDA/VoiceOver reviews have not been performed.
+- **AC-4 now passes — `color-contrast` 310 → 0 nodes.** Spec 002 regenerated its tokens from
+  `ui/_ds_manifest.json` with AA values (spec 043 DEP-3). The failing rendered pairs were `--text-muted` on the
+  page and brand-tint surfaces (4.36–4.40:1), white on `--action-primary-bg` (3.85:1), subtle text (2.44–2.55:1),
+  the warning and success badges (3.71 and 3.94:1) and the link colour on the info tint (4.35:1).
+- **AC-8 now passes — `apuriva-focus-visible` 152 → 0 nodes.** Spec 002 moved `--ring-focus` from a wrapper onto
+  the focused `<input>`/`<select>` (`Input.jsx`, `Select.jsx`), and made the native radio/checkbox the visible,
+  ringed control (`Radio.jsx`, `Checkbox.jsx`) — the "visually hidden input" focus stop on `/requests/new`.
 
 Fixed while landing the gate (in their owning components, not baselined): the account menu now moves focus
 into the menu when opened (specs 006/014); `/explore`, `/explore/[category]`, `/search`, `/login` and

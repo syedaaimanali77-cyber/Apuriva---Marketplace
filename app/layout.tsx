@@ -7,7 +7,9 @@ import { siteUrl } from '@/lib/seo/site-url';
 import { AppHeader } from './components/AppHeader';
 import { NavShell } from './components/NavShell';
 import navStyles from './components/nav-shell.module.css';
+import { shouldShowDemoBanner } from '@/lib/demo/guards';
 import { AuthGateResumer } from './_components/AuthGateResumer';
+import { DemoModeBanner } from './_components/DemoModeBanner';
 import { LocaleProvider } from './_components/LocaleProvider';
 import { OfflineBanner } from './_components/OfflineBanner';
 import { OnboardingOverlay } from './_components/OnboardingOverlay';
@@ -44,12 +46,14 @@ export const metadata: Metadata = {
  * English entries it lacks), as data — the client JS bundle carries no dictionary of its own (§3.5).
  */
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const { locale, direction } = await getRequestLocale();
+  const [{ locale, direction }, showDemoBanner] = await Promise.all([getRequestLocale(), shouldShowDemoBanner()]);
   const { messages, fallbackMessages } = clientMessagesFor(locale);
   return (
     <html lang={locale} dir={direction} className={brandFontVariables}>
       <body>
         <LocaleProvider locale={locale} messages={messages} fallbackMessages={fallbackMessages}>
+          {/* Spec 045 §5 (X-3, AC-3): the demo label on every page, decided server-side; never in production. */}
+          {showDemoBanner ? <DemoModeBanner /> : null}
           {/* Spec 044 §3.2/§3.3 (X-1): the service worker (production only) and the app-wide offline notice. */}
           <ServiceWorkerRegistrar />
           <OfflineBanner />

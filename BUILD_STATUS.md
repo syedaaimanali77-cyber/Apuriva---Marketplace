@@ -4,7 +4,7 @@ Maintained per master specification §129–§130 and spec 046 §3.12 (AC-7). **
 same PR as every spec implementation** — CI's `check:build-status` fails a PR that moves a
 `docs/specs/*` status to `Approved` or `Implemented` without changing it.
 
-_Last updated: 2026-09-29 — spec 044 (Frontend Platform Quality: PWA, performance, SEO)._
+_Last updated: 2026-09-29 — Account Profile & Preferences (feature work, not a numbered spec)._
 
 ## Completed
 
@@ -24,6 +24,7 @@ the externally-verified criteria pass (see **In progress**).
 | 033–036 | AI assistant, conversation/memory, MCP architecture and tool catalog |
 | 037–042 | Admin operations, moderation/fraud, audit logging, analytics, feature flags, i18n |
 | 046 | CI (`.github/workflows/ci.yml`), deploy workflows, `withCronRoute` + `cron_job_heartbeats`, `/api/v1/health/detailed`, `logEvent` and correlation IDs, the `ops-health-check` monitor, runbooks in `docs/operations/`, this file |
+| Account Profile & Preferences (feature, not a numbered spec) | `/account/profile` — the customer display name (`customer_profiles.display_name`, the migration-0003 column now declared in the schema) and, in provider mode, the business name, both editable (trimmed, ≤ 60 characters, any script, no control characters, `expectedVersion`); email and phone read-only with verified state. `GET/PATCH /api/v1/users/me/profile`, `GET/PATCH /api/v1/providers/me/profile`. `/account/preferences` — a hub reusing the existing language (042), marketing consent (026), Ask Apuriva suggestions (034) and home personalization (014) APIs. The customer display name now reaches the provider's booking list and the booking conversation (specs 020/025 contracts). No migration. |
 
 ## In progress
 
@@ -59,10 +60,12 @@ the externally-verified criteria pass (see **In progress**).
 
 ## Blocked
 
-- **Spec 045** — Demo mode and seed data. **Blocked by its DEP-1:** a hosted demo runs under
-  `NODE_ENV=production`, where every sandbox adapter (payments, payouts, notifications, files, AI)
-  refuses to start, and no real adapter exists. Changing that guard is owned by specs
-  021/024/026/027/033; spec 046 does not alter it.
+- **Spec 045** — Demo mode and seed data. Implemented and verified locally (spec 045 §10), with all
+  seven ACs passing against the isolated test database. **A hosted demo is blocked by its DEP-1:** a
+  hosted server runs under `NODE_ENV=production`, where every sandbox adapter (payments, payouts,
+  notifications, files, AI) refuses to start. Provisioning then fails with that refusal and writes
+  nothing, and no real adapter exists. Changing that guard is owned by specs 021/024/026/027/033; neither
+  spec 045 nor spec 046 alters it. The status stays Draft.
 
 ## Tested
 
@@ -94,7 +97,7 @@ the externally-verified criteria pass (see **In progress**).
 
 ## Next recommended task
 
-The Account Profile & Preferences feature (not a numbered spec). For spec 044: the icon artwork (DEP-2)
+For spec 044: the icon artwork (DEP-2)
 and the performance remediation in the owning specs (§3.7). For spec 043: spec 002 to regenerate the design
 tokens with AA values and move the field primitives' focus ring onto the focused control; then the
 manual NVDA/VoiceOver sign-offs.
@@ -174,7 +177,10 @@ integration, service-worker rules, offline components, and the untouched layout 
 
 ## Demo credentials
 
-None — per-visitor sessions; admin evaluators provisioned by operator (spec 045, which is blocked).
+None — `/demo` provisions a fresh per-visitor set (spec 045). Admin evaluators are provisioned with
+`npx tsx scripts/demo-create-admin.ts --email <email> --role <role>`, using a one-time password and MFA.
+This works only on a `_demo` database with `DEMO_MODE_ENABLED=true` and `APP_ENV` other than production,
+and is not hosted until DEP-1 is resolved.
 
 ## Known bugs
 

@@ -56,9 +56,15 @@ describe.skipIf(!dbReachable)('AI usage accounting (spec 033, integration)', () 
     expect(summary.totalTokens).toBe(2_000);
     expect(summary.estimatedCostMinorUnits).toBe(200);
     expect(summary.currencyCode).toBe('PKR');
+    // `byTask` is TOTAL over the closed AiTask union (spec 033 §3.11): the three untrafficked
+    // tasks report an honest zero rather than being absent, so spec 040 can reuse this DTO
+    // without handling a missing key.
     expect(summary.byTask).toEqual({
       search_intent: { requests: 3, tokens: 1_000 },
       conversation: { requests: 3, tokens: 1_000 },
+      faq_draft: { requests: 0, tokens: 0 },
+      summarization: { requests: 0, tokens: 0 },
+      translation: { requests: 0, tokens: 0 },
     });
     // Five sandbox rows (two billed search_intent, one cached, one rejected, one failed) and the
     // single `other-vendor` row — a rejected or failed attempt is still attributed to the provider
@@ -110,7 +116,15 @@ describe.skipIf(!dbReachable)('AI usage accounting (spec 033, integration)', () 
     expect(summary.totalRequests).toBe(0);
     expect(summary.totalTokens).toBe(0);
     expect(summary.estimatedCostMinorUnits).toBe(0);
-    expect(summary.byTask).toEqual({});
+    // Every task key is still present, each an honest zero — an empty period is reported, not
+    // omitted. `byProvider` stays open-ended, so a provider with no traffic is simply absent.
+    expect(summary.byTask).toEqual({
+      search_intent: { requests: 0, tokens: 0 },
+      faq_draft: { requests: 0, tokens: 0 },
+      conversation: { requests: 0, tokens: 0 },
+      summarization: { requests: 0, tokens: 0 },
+      translation: { requests: 0, tokens: 0 },
+    });
     expect(summary.byProvider).toEqual({});
   });
 

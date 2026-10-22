@@ -3,6 +3,7 @@ import { apiSuccess } from '@/lib/api/response';
 import { requireSession } from '@/lib/auth/require-session';
 import { isAdminUser } from '@/lib/auth/session';
 import { getProfileFlags } from '@/lib/auth/profiles';
+import { isDemoUser } from '@/lib/demo/users';
 import { readSavedUserLocale } from '@/lib/i18n/server';
 import type { ActiveMode, UserDto } from '@/lib/types/users';
 
@@ -11,10 +12,11 @@ import type { ActiveMode, UserDto } from '@/lib/types/users';
 export const GET = withApiRoute(async (request, correlationId) => {
   const session = await requireSession(request, { allowModeratedAccount: true }); // spec 038 §3.5 allow-list
 
-  const [flags, isAdmin, locale] = await Promise.all([
+  const [flags, isAdmin, locale, isDemo] = await Promise.all([
     getProfileFlags(session.userId),
     isAdminUser(session.userId),
     readSavedUserLocale(session.userId), // spec 042 X-4
+    isDemoUser(session.userId), // spec 045 X-7
   ]);
 
   const dto: UserDto = {
@@ -24,6 +26,7 @@ export const GET = withApiRoute(async (request, correlationId) => {
     activeMode: session.activeMode as ActiveMode,
     isAdmin,
     locale,
+    isDemo,
   };
   return apiSuccess(dto, correlationId);
 });
