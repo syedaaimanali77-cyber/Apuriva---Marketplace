@@ -526,21 +526,39 @@ completeness (all required states represented) is the acceptance bar, not editor
 | `check:openapi-drift` | **fails**: spec 010's admin subcategory routes use `{id}` in `app/api/v1/**` and `{categoryId}` in the registry. Both demo routes match the registry. |
 | Coverage of `lib/demo/**` (statements / branches / functions / lines) | 93.9% / 85.8% / 96.2% / 97.1%, measured 2026-10-15 and not re-measured |
 
-**Full suite.** One complete run at `ee18ded` (2026-10-23, `vitest run --maxWorkers=2`, database up): 591 files and 4,753 tests, with 13 tests failing in 9 files.
+**Full suite.** Two complete runs, each with `vitest run --maxWorkers=2` and the database up. **No clean full-suite pass has been established.**
 
-- **Listed in `test/known-failures.json` (7 tests):**
-  - `lib/db/concurrency.integration.test.ts` (2 tests)
-  - `lib/db/migrations.integration.test.ts`
-  - `lib/db/schema-coverage.test.ts`
-  - `lib/db/schema-lint.test.ts`
-  - `app/explore/[category]/[service]/page.test.tsx`
-- **Not listed (6 tests), each passing when its file was rerun alone with one worker:**
-  - the AC-5 reset test (fixed as noted above);
-  - `lib/payments/protection-window.integration.test.ts` (3 tests);
-  - `lib/payments/sweep.integration.test.ts` (2 tests);
-  - `lib/reviews/routes.integration.test.ts` (1 test).
-- **The payment and review tests** are owned by specs 021 and 029, and Spec 045 does not modify them. Under the parallel run, a concurrent sweep or another file's queue rows made them see 0 rows or a full first page. Whether they also fail at the base commit has not been established.
-- **No clean full-suite pass has been established**, and the full suite has not been rerun since the reset-suite fix.
+- **At `f076c8e` (2026-10-27/28):** 591 files and 4,754 tests, with 19 tests failing in 12 files. The run took 2.9 hours under heavy machine load, against about 1 hour for the earlier run. **No Spec 045, demo or e2e test failed**, including the AC-5 reset test.
+  - **Listed in `test/known-failures.json` (7 tests):**
+    - `lib/db/concurrency.integration.test.ts` (2 tests)
+    - `lib/db/migrations.integration.test.ts`
+    - `lib/db/schema-coverage.test.ts`
+    - `lib/db/schema-lint.test.ts`
+    - `app/explore/[category]/[service]/page.test.tsx`
+  - **Not listed and not verified (12 tests):**
+
+    | File | Owner | Failing tests | How they failed |
+    |---|---|---|---|
+    | `app/api/v1/requests/negotiation.integration.test.ts` | spec 019 | 6 | 60-second timeouts, failed sign-ups, a missing `429` |
+    | `lib/ai-assistant/activity.integration.test.ts` | spec 034 | 2 | timeout, failed sign-up |
+    | `app/api/v1/admin/roles.integration.test.ts` | spec 009 | 1 | |
+    | `lib/bookings/evidence.integration.test.ts` | spec 028 | 1 | timeout |
+    | `lib/feature-flags/environment-isolation.integration.test.ts` | spec 041 | 1 | |
+    | `lib/payments/sweep.integration.test.ts` | spec 021 | 1 | its idempotency check failed 29 other bookings on the second sweep |
+    | `lib/reviews/routes.integration.test.ts` | spec 029 | 1 | |
+
+  - **Not attributed to Spec 045 or ruled out.** None of these was rerun alone. Spec 045 does not modify their files. Two are worth noting:
+    - The feature-flag suite is in an area Spec 045 edits (X-6, the `demo-mode` flag).
+    - The extra bookings the sweep picked up may include demo-seeded `pending` bookings.
+
+    Both passed in the `ee18ded` run.
+- **At `ee18ded` (2026-10-23):** 591 files and 4,753 tests, with 13 tests failing in 9 files.
+  - The same 7 listed failures.
+  - 6 unlisted failures, each of which passed when its file was rerun alone with one worker:
+    - the AC-5 reset test (fixed as noted above);
+    - `lib/payments/protection-window` (3 tests);
+    - `lib/payments/sweep` (2 tests);
+    - `lib/reviews/routes` (1 test).
 
 | AC | Status | Evidence |
 |---|---|---|
@@ -552,5 +570,8 @@ completeness (all required states represented) is the acceptance bar, not editor
 | AC-6 | **Pass locally; blocked for a hosted demo (DEP-1)** | `lib/demo/identity.test.ts`, `lib/demo/boundary.test.ts`, the coverage suite's zero-delivery check |
 | AC-7 | **Pass** | `app/api/v1/demo/guards.integration.test.ts`, `lib/demo/guards.test.ts` |
 
-The status stays **Draft**. AC-4 and AC-6 cannot be met on a hosted deployment until the owning specs approve DEP-1, and a clean full-suite pass is still outstanding.
+The status stays **Draft**. Spec 045's implementation and local verification are complete, with its focused suites passing. Two things remain open:
+
+- **A clean full-suite pass** is still outstanding.
+- **DEP-1 is an external blocker** owned by specs 021, 024, 026 and 033, and not resolved by this spec. Until those specs approve it, AC-4 and AC-6 cannot be met on a hosted deployment.
 
