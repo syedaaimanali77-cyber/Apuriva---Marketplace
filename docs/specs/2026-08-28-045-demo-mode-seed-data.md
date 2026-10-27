@@ -1,7 +1,7 @@
 # Spec: Demo Mode & Seed Data
 
 **File:** `docs/specs/2026-08-28-045-demo-mode-seed-data.md`
-**Status:** Draft — implemented and verified locally (2026-10-15, §10); **not ready for a hosted demo**: DEP-1 is unresolved, so on any hosted server (`NODE_ENV=production`) provisioning refuses with the sandbox adapters' own refusal.
+**Status:** Draft — implemented; focused suites re-verified locally 2026-10-27 (§10); **no clean full-suite pass established**; **not ready for a hosted demo**: DEP-1 is unresolved, so on any hosted server (`NODE_ENV=production`) provisioning refuses with the sandbox adapters' own refusal.
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §110–§113, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §16, [docs/workflow.md](../workflow.md); specs 005 (sessions, mandatory admin MFA), 009 (admin roles), 010 (catalog seed), 021/024 (payment and payout adapters), 026 (notification channels), 033 (AI adapter), 039 (audit), 040 (analytics), 041 (feature flags, `APP_ENV`). See §8.
@@ -485,7 +485,7 @@ completeness (all required states represented) is the acceptance bar, not editor
 
 ---
 
-## 10. Implementation notes and verification (2026-10-15)
+## 10. Implementation notes and verification (2026-10-15; re-verified 2026-10-27)
 
 **Corrections made while implementing, each settled by an owning spec or the repository, not invented:**
 
@@ -507,15 +507,40 @@ completeness (all required states represented) is the acceptance bar, not editor
 - **No phone numbers.** `users.phone_number` is unique, and the fictional range holds only 100 numbers, so seeded users have none. Nothing outside the range is ever used.
 - **Notifications are inbox rows only.** No `notification_deliveries` row is created, so nothing is ever dispatched.
 - **`demo-create-admin` credential.** The evaluator needs a credential for the normal login. The script generates a random one-time password, prints it once and stores only its scrypt hash. No MFA secret is touched. Both operator scripts also refuse while any non-demo user exists.
+- **Parallel-safe "wrote nothing" checks.** A global before/after row diff fails whenever another test file writes in parallel. Two such false failures appeared in full-suite runs:
+  - the catalog check in the coverage suite (fixed in `ee18ded`);
+  - AC-5's deletion check in the reset suite: another file deleted its own `cron_job_heartbeats` rows mid-reset.
 
-**Verification (local, isolated `apuriva_test` database):**
+  Both now judge only what the provisioning itself did. They check the statements it issued (`capturedWrites` in `lib/demo/demo-test-support.ts`), and the reset suite still attributes updates by the provisioning transaction's `xmin`. The reset suite has a deterministic regression test: an outside connection deletes a row during the reset and is not counted, while a delete through the suite's own pool is caught.
 
-| Check | Result |
+**Verification (local, isolated `apuriva_test` database, on a clean checkout of the branch):**
+
+| Check | Result (2026-10-27) |
 |---|---|
-| Spec 045 suites (15 files, 99 tests): unit, integration, component, scripts, route-level e2e | pass |
-| Coverage of `lib/demo/**` (statements / branches / functions / lines) | 93.9% / 85.8% / 96.2% / 97.1% |
-| Feature-flag suites with the X-6 edits | pass |
-| `tsc --noEmit`, `check:env`, `check:schema-baseline` | pass |
+| Spec 045 suites (19 files, 125 tests): unit, integration, component, scripts, route-level e2e, and the feature-flag suites with the X-6 edits | **pass**, run with one worker |
+| `tsc --noEmit` | pass |
+| `eslint .` | 0 errors; no warnings in Spec 045 files |
+| `check:schema-money-lint`, `check:no-workspace` | pass |
+| `check:schema-checksum` | fails on a Windows CRLF checkout only. The committed `0001_baseline_schema.sql` blob matches the recorded hash, and Spec 045 does not touch the file. |
+| `check:env` | **fails**: `REVIEW_WINDOW_DAYS` (spec 029, `lib/reviews/limits.ts`) is missing from `.env.example`. Already missing at this spec's base `642b42e`; not a Spec 045 variable. |
+| `check:openapi-drift` | **fails**: spec 010's admin subcategory routes use `{id}` in `app/api/v1/**` and `{categoryId}` in the registry. Both demo routes match the registry. |
+| Coverage of `lib/demo/**` (statements / branches / functions / lines) | 93.9% / 85.8% / 96.2% / 97.1%, measured 2026-10-15 and not re-measured |
+
+**Full suite.** One complete run at `ee18ded` (2026-10-23, `vitest run --maxWorkers=2`, database up): 591 files and 4,753 tests, with 13 tests failing in 9 files.
+
+- **Listed in `test/known-failures.json` (7 tests):**
+  - `lib/db/concurrency.integration.test.ts` (2 tests)
+  - `lib/db/migrations.integration.test.ts`
+  - `lib/db/schema-coverage.test.ts`
+  - `lib/db/schema-lint.test.ts`
+  - `app/explore/[category]/[service]/page.test.tsx`
+- **Not listed (6 tests), each passing when its file was rerun alone with one worker:**
+  - the AC-5 reset test (fixed as noted above);
+  - `lib/payments/protection-window.integration.test.ts` (3 tests);
+  - `lib/payments/sweep.integration.test.ts` (2 tests);
+  - `lib/reviews/routes.integration.test.ts` (1 test).
+- **The payment and review tests** are owned by specs 021 and 029, and Spec 045 does not modify them. Under the parallel run, a concurrent sweep or another file's queue rows made them see 0 rows or a full first page. Whether they also fail at the base commit has not been established.
+- **No clean full-suite pass has been established**, and the full suite has not been rerun since the reset-suite fix.
 
 | AC | Status | Evidence |
 |---|---|---|
@@ -523,9 +548,9 @@ completeness (all required states represented) is the acceptance bar, not editor
 | AC-2 | **Pass (local)** | `lib/demo/seed/coverage.integration.test.ts`; request statuses as noted above |
 | AC-3 | **Pass** | `app/_components/DemoModeBanner.test.tsx`, `lib/demo/identity.test.ts` |
 | AC-4 | **Pass locally; blocked for a hosted demo (DEP-1)** | `lib/demo/seed/payments.integration.test.ts`, `lib/demo/boundary.test.ts` |
-| AC-5 | **Pass (local)** | `app/api/v1/demo/reset/route.integration.test.ts` |
+| AC-5 | **Pass (local)** | `app/api/v1/demo/reset/route.integration.test.ts`, including the parallel-deletion regression test |
 | AC-6 | **Pass locally; blocked for a hosted demo (DEP-1)** | `lib/demo/identity.test.ts`, `lib/demo/boundary.test.ts`, the coverage suite's zero-delivery check |
 | AC-7 | **Pass** | `app/api/v1/demo/guards.integration.test.ts`, `lib/demo/guards.test.ts` |
 
-The status stays **Draft**. AC-4 and AC-6 cannot be met on a hosted deployment until the owning specs approve DEP-1.
+The status stays **Draft**. AC-4 and AC-6 cannot be met on a hosted deployment until the owning specs approve DEP-1, and a clean full-suite pass is still outstanding.
 

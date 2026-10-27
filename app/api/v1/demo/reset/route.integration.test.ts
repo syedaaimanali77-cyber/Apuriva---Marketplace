@@ -1,11 +1,13 @@
 import { sql } from 'drizzle-orm';
+import { Client } from 'pg';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { queryRows } from '@/lib/offers/db';
 import { resetRateLimitState } from '@/lib/api/rate-limit';
 import { authenticatedRequest, csrfCookieFrom, sessionCookieFrom } from '@/app/api/v1/auth/test-support';
-import { enterDemoEnvironment, isDatabaseReachable } from '@/lib/demo/demo-test-support';
+import { capturedWrites, enterDemoEnvironment, isDatabaseReachable } from '@/lib/demo/demo-test-support';
 import { BASE, loginAs, type DemoVisitor } from '../demo-route-test-support';
 import { POST } from './route';
 
@@ -65,6 +67,24 @@ async function setRows(userId: string): Promise<string[]> {
   return rows.map((row) => row.hash);
 }
 
+/**
+ * The DELETE/TRUNCATE statements among `writes`. A deleted row leaves no `xmin` to attribute, so AC-5's "no row
+ * is deleted" is checked on the statements the reset itself issued (`capturedWrites`), never on a global
+ * before/after row diff, which another test file deleting its own rows in parallel would trip.
+ */
+const deletions = (writes: string[]) => writes.filter((statement) => /^\s*(delete|truncate)\b/i.test(statement));
+
+/** A connection outside this file's pool — what another test file's worker is to `capturedWrites`. */
+async function withOutsideConnection<T>(run: (client: Client) => Promise<T>): Promise<T> {
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    return await run(client);
+  } finally {
+    await client.end();
+  }
+}
+
 function resetRequest(visitor: DemoVisitor): Request {
   const req = authenticatedRequest(`${BASE}/demo/reset`, visitor.sessionId, visitor.csrfToken, { method: 'POST', body: {} });
   req.headers.set('x-forwarded-for', '203.0.113.90');
@@ -87,7 +107,10 @@ describe.skipIf(!dbReachable)('POST /api/v1/demo/reset (spec 045 D2, AC-5)', () 
     const otherBefore = await setRows(other.userId);
     const before = await fingerprint();
 
-    const res = (await POST(resetRequest(visitor))) as NextResponse;
+    let res!: NextResponse;
+    const writes = await capturedWrites(async () => {
+      res = (await POST(resetRequest(visitor))) as NextResponse;
+    });
     expect(res.status).toBe(200);
     const { data } = (await res.json()) as { data: { userId: string; sessionId: string } };
 
@@ -114,12 +137,16 @@ describe.skipIf(!dbReachable)('POST /api/v1/demo/reset (spec 045 D2, AC-5)', () 
     expect(old!.revoked_reason).toBe('demo_reset');
 
     // AC-5: no pre-existing row is deleted, and none is updated by the reset. The only allowed change is the
-    // caller's own session. Rows other test files update in parallel carry their own transaction ids; the
-    // provisioning transaction's id (the new set's `xmin`) must appear on NO pre-existing row.
+    // caller's own session.
+    // - Deleted: the reset issued no DELETE or TRUNCATE at all (it did write: the new set's inserts).
+    // - Updated: rows other test files update in parallel carry their own transaction ids; the provisioning
+    //   transaction's id (the new set's `xmin`) must appear on NO pre-existing row that is still there.
+    expect(writes.length).toBeGreaterThan(0);
+    expect(deletions(writes)).toEqual([]);
     const after = await fingerprint();
-    const deleted = [...before.keys()].filter((key) => !after.has(key));
-    expect(deleted).toEqual([]);
-    const changed = [...before.entries()].filter(([key, value]) => after.get(key)!.hash !== value.hash).map(([key]) => key);
+    const changed = [...before.entries()]
+      .filter(([key, value]) => after.has(key) && after.get(key)!.hash !== value.hash)
+      .map(([key]) => key);
     const writtenByReset: string[] = [];
     for (const key of changed) {
       if (key === `sessions:${visitor.sessionId}`) continue;
@@ -131,6 +158,30 @@ describe.skipIf(!dbReachable)('POST /api/v1/demo/reset (spec 045 D2, AC-5)', () 
     expect(await setRows(other.userId)).toEqual(otherBefore);
     const [previous] = await queryRows<{ n: number }>(getDb(), sql`SELECT count(*)::int AS n FROM users WHERE demo_set_id = ${sets!.old_set}`);
     expect(previous!.n).toBeGreaterThan(0);
+  }, 120_000);
+
+  it('attributes deletions to the reset alone: a parallel delete elsewhere is not counted, its own would be', async () => {
+    // The full-suite false failure: another test file deleted `cron_job_heartbeats` rows mid-reset. Reproduced
+    // deterministically by an outside connection deleting a row this test owns inside the observed window.
+    const job = `demo-reset-${randomUUID().slice(0, 8)}`;
+    await getDb().execute(sql`INSERT INTO cron_job_heartbeats (job) VALUES (${job})`);
+    const visitor = await loginAs('customer', '203.0.113.84');
+    resetRateLimitState();
+
+    let status = 0;
+    const writes = await capturedWrites(async () => {
+      await withOutsideConnection((client) => client.query('DELETE FROM cron_job_heartbeats WHERE job = $1', [job]));
+      status = (await POST(resetRequest(visitor))).status;
+    });
+    expect(status).toBe(200);
+    const [gone] = await queryRows<{ n: number }>(getDb(), sql`SELECT count(*)::int AS n FROM cron_job_heartbeats WHERE job = ${job}`);
+    expect(gone!.n).toBe(0);
+    expect(deletions(writes)).toEqual([]);
+
+    // The control: a delete issued through this file's own pool — as the reset's would be — IS caught.
+    await getDb().execute(sql`INSERT INTO cron_job_heartbeats (job) VALUES (${job})`);
+    const own = await capturedWrites(() => getDb().execute(sql`DELETE FROM cron_job_heartbeats WHERE job = ${job}`));
+    expect(deletions(own)).toHaveLength(1);
   }, 120_000);
 
   it('the replaced session no longer works: a second reset with it is 401', async () => {

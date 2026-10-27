@@ -60,8 +60,9 @@ the externally-verified criteria pass (see **In progress**).
 
 ## Blocked
 
-- **Spec 045** — Demo mode and seed data. Implemented and verified locally (spec 045 §10), with all
-  seven ACs passing against the isolated test database. **A hosted demo is blocked by its DEP-1:** a
+- **Spec 045** — Demo mode and seed data. Implemented; its focused suites pass locally (spec 045 §10), with
+  all seven ACs passing against the isolated test database. No clean full-suite pass has been established
+  yet (§10 lists the open failures). **A hosted demo is blocked by its DEP-1:** a
   hosted server runs under `NODE_ENV=production`, where every sandbox adapter (payments, payouts,
   notifications, files, AI) refuses to start. Provisioning then fails with that refusal and writes
   nothing, and no real adapter exists. Changing that guard is owned by specs 021/024/026/027/033; neither
