@@ -1,7 +1,7 @@
 /**
  * Spec 041 §3.3 (AC-5) — THE flag registry: a closed, typed list and the source of truth for keys,
  * classification and defaults. Migration 0036 seeds the first six rows and each later flag's own
- * migration seeds its row (0037: `urdu-locale`, spec 042); `registry.test.ts` and
+ * migration seeds its row (0037: `urdu-locale`, spec 042; 0039: `demo-mode`, spec 045); `registry.test.ts` and
  * `migration.integration.test.ts` assert the two agree.
  *
  * Every default is the one its owning spec documents. `readOverride` reads the spec's pre-041
@@ -107,6 +107,21 @@ export const FEATURE_FLAG_REGISTRY = [
     defaults: everywhere(false),
     overrideVar: null,
     readOverride: () => undefined,
+  },
+  {
+    // Spec 045 §3.7 (X-9, D-7): seeded OFF by migration 0039. It gates an unauthenticated,
+    // account-creating endpoint, so it is a developer flag; it is never client-readable (the banner is
+    // rendered server-side). A demo deployment sets DEMO_MODE_ENABLED=true; APP_ENV=production and a
+    // database name not ending in `_demo` still refuse regardless (spec 045 §3.1).
+    key: 'demo-mode',
+    owningSpec: '045',
+    description: 'Enables one-click demo logins and the demo banner. Only effective outside production on a `_demo` database (spec 045).',
+    controlledBy: 'developer',
+    isKillSwitch: false,
+    clientReadable: false,
+    defaults: everywhere(false),
+    overrideVar: 'DEMO_MODE_ENABLED',
+    readOverride: () => process.env.DEMO_MODE_ENABLED,
   },
 ] as const satisfies readonly FeatureFlagDefinition[];
 

@@ -267,6 +267,13 @@
       "when": 1790800800000,
       "tag": "0038_add_cron_job_heartbeats",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790800900000,
+      "tag": "0039_add_demo_mode",
+      "breakpoints": true
     }
   ]
 }

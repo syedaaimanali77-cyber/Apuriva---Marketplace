@@ -28,11 +28,38 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
   { method: 'POST', path: '/auth/mfa/verify', summary: 'Complete an MFA-pending admin login', tags: ['auth'] },
   { method: 'POST', path: '/auth/logout', summary: 'Invalidate the current session', tags: ['auth'] },
   { method: 'POST', path: '/auth/step-up', summary: 'Issue a step-up token for a sensitive action', tags: ['auth'] },
+  // Spec 045 X-8 — demo mode. Both refuse outside a demo environment (403 DEMO_NOT_AVAILABLE_IN_PRODUCTION / DEMO_MODE_DISABLED).
+  {
+    method: 'POST',
+    path: '/demo/login',
+    summary: 'Provision a fresh demo set and sign in as its customer or provider persona (guest; no admin persona)',
+    tags: ['demo'],
+  },
+  {
+    method: 'POST',
+    path: '/demo/reset',
+    summary: 'Reset a demo account: provision a new set for the same persona and replace the session; CSRF',
+    tags: ['demo'],
+  },
   { method: 'GET', path: '/users/me', summary: 'Current user: profiles and session active mode', tags: ['users'] },
   {
     method: 'POST',
     path: '/users/me/provider-profile',
     summary: 'Become a provider (idempotent; does not switch mode)',
+    tags: ['users'],
+  },
+  { method: 'GET', path: '/users/me/profile', summary: 'Account profile: display name, and email/phone read-only with verified state', tags: ['users'] },
+  {
+    method: 'PATCH',
+    path: '/users/me/profile',
+    summary: 'Set or clear the display name (trimmed, ≤ 60 characters, no control characters); expectedVersion; CSRF',
+    tags: ['users'],
+  },
+  { method: 'GET', path: '/providers/me/profile', summary: 'The provider business name; provider mode', tags: ['users'] },
+  {
+    method: 'PATCH',
+    path: '/providers/me/profile',
+    summary: 'Set or clear the business name (published immediately; ≤ 60 characters); provider mode; expectedVersion; CSRF',
     tags: ['users'],
   },
   {

@@ -10,7 +10,7 @@ export type ConversationParticipantRole = 'customer' | 'provider';
 export interface ConversationParticipantDto {
   userId: string;
   role: ConversationParticipantRole;
-  /** Business name for the provider. Customers have no display name in this schema, so `null`. Never a phone or email. */
+  /** Business name for the provider, display name for the customer (`null` when not set). Never a phone or email. */
   displayName: string | null;
   lastReadAt: string | null;
 }

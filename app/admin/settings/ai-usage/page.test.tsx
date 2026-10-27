@@ -3,7 +3,17 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AdminAiUsagePage from './page';
-import type { AiUsageSummaryDto } from '@/lib/types/ai';
+import type { AiTask, AiUsageSummaryDto, AiUsageTotals } from '@/lib/types/ai';
+
+/** `byTask` is total over the closed AiTask union (spec 033 §3.11), so an empty period still
+ *  carries every key as an honest zero rather than omitting it. */
+const EMPTY_BY_TASK: Record<AiTask, AiUsageTotals> = {
+  search_intent: { requests: 0, tokens: 0 },
+  faq_draft: { requests: 0, tokens: 0 },
+  conversation: { requests: 0, tokens: 0 },
+  summarization: { requests: 0, tokens: 0 },
+  translation: { requests: 0, tokens: 0 },
+};
 
 const SUMMARY: AiUsageSummaryDto = {
   from: '2026-08-19T00:00:00.000Z',
@@ -19,6 +29,9 @@ const SUMMARY: AiUsageSummaryDto = {
   byTask: {
     search_intent: { requests: 900, tokens: 180_000 },
     conversation: { requests: 350, tokens: 140_000 },
+    faq_draft: { requests: 0, tokens: 0 },
+    summarization: { requests: 0, tokens: 0 },
+    translation: { requests: 0, tokens: 0 },
   },
   byProvider: { sandbox: { requests: 1_100, tokens: 300_000 }, 'other-vendor': { requests: 150, tokens: 20_000 } },
   costAlertThresholds: { dailyMinorUnits: 500_000, monthlyMinorUnits: 10_000_000, dailyTokens: 500_000 },
@@ -86,7 +99,16 @@ describe('AdminAiUsagePage (spec 033 §5/AC-6)', () => {
     stubFetch({
       ok: true,
       status: 200,
-      body: { data: { ...SUMMARY, totalRequests: 0, totalTokens: 0, estimatedCostMinorUnits: 0, byTask: {}, byProvider: {} } },
+      body: {
+        data: {
+          ...SUMMARY,
+          totalRequests: 0,
+          totalTokens: 0,
+          estimatedCostMinorUnits: 0,
+          byTask: EMPTY_BY_TASK,
+          byProvider: {},
+        },
+      },
     });
     render(<AdminAiUsagePage />);
 
