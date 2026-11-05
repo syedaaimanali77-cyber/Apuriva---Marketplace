@@ -55,14 +55,29 @@ describe.skipIf(!dbReachable)('spec 045 AC-2 — a provisioned demo set spans ev
       });
 
       it('has bookings in every spec 020 status', async () => {
-        const rows = await queryRows<{ status: string }>(
+        // The status each booking had when the provisioning transaction committed: the end of the chain of
+        // history rows that transaction wrote (`xmin` of the booking's `NULL -> pending` row). A spec 021 sweep
+        // in another test file may legitimately move a booking on afterwards (`completed -> protected`); its
+        // rows carry another transaction id, so they do not hide what provisioning created. History is
+        // append-only (spec 020 S6) and provisioning is one transaction, so every set booking must appear.
+        const rows = await queryRows<{ booking_id: string; status: string }>(
           getDb(),
-          sql`SELECT DISTINCT b.status FROM bookings b
-                JOIN customer_profiles cp ON cp.id = b.customer_profile_id
-                JOIN users u ON u.id = cp.user_id
-               WHERE u.demo_set_id = ${set().setId}`,
+          sql`WITH set_bookings AS (
+                SELECT b.id FROM bookings b
+                  JOIN customer_profiles cp ON cp.id = b.customer_profile_id
+                  JOIN users u ON u.id = cp.user_id
+                 WHERE u.demo_set_id = ${set().setId}),
+              provisioned AS (
+                SELECT h.booking_id, h.from_status, h.to_status FROM bookings_status_history h
+                 WHERE h.booking_id IN (SELECT id FROM set_bookings)
+                   AND h.xmin::text = (SELECT c.xmin::text FROM bookings_status_history c
+                                        WHERE c.booking_id = h.booking_id AND c.from_status IS NULL))
+              SELECT p.booking_id, p.to_status AS status FROM provisioned p
+               WHERE NOT EXISTS (SELECT 1 FROM provisioned q WHERE q.booking_id = p.booking_id AND q.from_status = p.to_status)`,
         );
-        expect(rows.map((row) => row.status).sort()).toEqual([...BOOKING_STATUSES].sort());
+        expect(rows).toHaveLength(Object.keys(set().bookingIds).length);
+        expect(new Set(rows.map((row) => row.booking_id)).size).toBe(rows.length);
+        expect([...new Set(rows.map((row) => row.status))].sort()).toEqual([...BOOKING_STATUSES].sort());
       });
 
       it('has requests in every reachable customer-visible status, and offers in every status including expired', async () => {
