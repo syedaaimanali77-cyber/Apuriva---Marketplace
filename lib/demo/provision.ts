@@ -45,7 +45,7 @@ import {
   type RecordedPayment,
 } from './seed/payments';
 import { placeholderImageBytes, PLACEHOLDER_IMAGE_MIME } from './seed/placeholder';
-import { bookingTimeline, demoCurrency, setPlanFor, type BookingPlan, type RequestPlan, type SetPlan } from './seed/scenarios';
+import { anchorPendingToWallClock, bookingTimeline, demoCurrency, setPlanFor, type BookingPlan, type RequestPlan, type SetPlan } from './seed/scenarios';
 import {
   insertAddress,
   insertDemoPerson,
@@ -97,7 +97,8 @@ export async function provisionDemoSet(persona: DemoPersona, options: { now?: Da
   const now = options.now ?? new Date();
   const db = getDb();
   const catalog = await loadDemoCatalog(db);
-  const plan = setPlanFor(persona, now);
+  // A live provisioning has no `options.now`, so the wall clock IS `now` and the plan is unchanged.
+  const plan = anchorPendingToWallClock(setPlanFor(persona, now), now, options.now ? new Date() : now);
   const setId = randomUUID();
 
   // Pre-generated ids: the storage keys and the refund idempotency keys must exist before the transaction.

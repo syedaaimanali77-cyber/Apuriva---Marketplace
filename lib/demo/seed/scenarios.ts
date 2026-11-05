@@ -425,3 +425,22 @@ export function providerSetPlan(now: Date): SetPlan {
 export function setPlanFor(persona: DemoPersona, now: Date): SetPlan {
   return persona === 'customer' ? customerSetPlan(now) : providerSetPlan(now);
 }
+
+/**
+ * Re-anchors every `pending` booking (and so its whole `bookingTimeline`) to the real clock, `wallClockNow`.
+ * Spec 021 AC-9's expiry sweep judges a `pending` booking by `created_at` against the database clock, never
+ * against the plan's `now`. Without this, a set planned for an earlier `now` (the tests' noon `stableNow`)
+ * would be born already past the 30-minute window and be failed by any sweep that runs. Every other row
+ * keeps the plan's `now`. When `wallClockNow` is `now`, as in every live provisioning, the plan is returned
+ * unchanged.
+ */
+export function anchorPendingToWallClock(plan: SetPlan, now: Date, wallClockNow: Date): SetPlan {
+  const shift = wallClockNow.getTime() - now.getTime();
+  if (shift === 0) return plan;
+  return {
+    ...plan,
+    bookings: plan.bookings.map((booking) =>
+      booking.status === 'pending' ? { ...booking, bookedAt: new Date(booking.bookedAt.getTime() + shift) } : booking,
+    ),
+  };
+}

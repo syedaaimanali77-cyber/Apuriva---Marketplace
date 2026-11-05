@@ -1,7 +1,7 @@
 # Spec: Demo Mode & Seed Data
 
 **File:** `docs/specs/2026-08-28-045-demo-mode-seed-data.md`
-**Status:** Draft — implemented; focused suites re-verified locally 2026-10-27 (§10); **no clean full-suite pass established**; **not ready for a hosted demo**: DEP-1 is unresolved, so on any hosted server (`NODE_ENV=production`) provisioning refuses with the sandbox adapters' own refusal.
+**Status:** Draft — implemented; focused suites re-verified locally 2026-11-05 (§10); **no clean full-suite pass established**; **not ready for a hosted demo**: DEP-1 is unresolved, so on any hosted server (`NODE_ENV=production`) provisioning refuses with the sandbox adapters' own refusal.
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §110–§113, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §16, [docs/workflow.md](../workflow.md); specs 005 (sessions, mandatory admin MFA), 009 (admin roles), 010 (catalog seed), 021/024 (payment and payout adapters), 026 (notification channels), 033 (AI adapter), 039 (audit), 040 (analytics), 041 (feature flags, `APP_ENV`). See §8.
@@ -485,7 +485,7 @@ completeness (all required states represented) is the acceptance bar, not editor
 
 ---
 
-## 10. Implementation notes and verification (2026-10-15; re-verified 2026-10-27)
+## 10. Implementation notes and verification (2026-10-15; re-verified 2026-11-05)
 
 **Corrections made while implementing, each settled by an owning spec or the repository, not invented:**
 
@@ -512,66 +512,74 @@ completeness (all required states represented) is the acceptance bar, not editor
   - AC-5's deletion check in the reset suite: another file deleted its own `cron_job_heartbeats` rows mid-reset.
 
   Both now judge only what the provisioning itself did. They check the statements it issued (`capturedWrites` in `lib/demo/demo-test-support.ts`), and the reset suite still attributes updates by the provisioning transaction's `xmin`. The reset suite has a deterministic regression test: an outside connection deletes a row during the reset and is not counted, while a delete through the suite's own pool is caught.
+- **`pending` bookings follow the real clock.** Spec 021 AC-9 expires a `pending` booking 30 minutes after its `created_at`, judged by the database clock.
+  - **The defect:** the coverage and payments suites provision for a fixed noon (`stableNow()`), so that availability states stay clear of midnight. That wrote each set's `pending` booking hours in the past, so it was eligible for the sweep from the moment it was created. `lib/payments/sweep.integration.test.ts` then failed it whenever it ran after those suites.
+  - **The fix:** `anchorPendingToWallClock` (`lib/demo/seed/scenarios.ts`) moves only `pending` bookings, together with their request and offer timeline, to the real provisioning instant. Every other row keeps the plan clock.
+  - **Live provisioning is unchanged:** `/demo/login` and `/demo/reset` pass no `now`, so their plan is returned as is.
+  - **Spec 021's code and tests are unchanged.**
+  - **Regression tests:**
+    - `lib/demo/seed/scenarios.test.ts` (unit);
+    - `lib/demo/seed/sweep-isolation.integration.test.ts`, which provisions both personas for a `now` a day in the past and checks them against the sweep's own predicate and window. It fails with the fix disabled.
 
 **Verification (local, isolated `apuriva_test` database, on a clean checkout of the branch):**
 
-| Check | Result (2026-10-27) |
+| Check | Result |
 |---|---|
-| Spec 045 suites (19 files, 125 tests): unit, integration, component, scripts, route-level e2e, and the feature-flag suites with the X-6 edits | **pass**, run with one worker |
-| `tsc --noEmit` | pass |
-| `eslint .` | 0 errors; no warnings in Spec 045 files |
-| `check:schema-money-lint`, `check:no-workspace` | pass |
-| `check:schema-checksum` | fails on a Windows CRLF checkout only. The committed `0001_baseline_schema.sql` blob matches the recorded hash, and Spec 045 does not touch the file. |
-| `check:env` | **fails**: `REVIEW_WINDOW_DAYS` (spec 029, `lib/reviews/limits.ts`) is missing from `.env.example`. Already missing at this spec's base `642b42e`; not a Spec 045 variable. |
-| `check:openapi-drift` | **fails**: spec 010's admin subcategory routes use `{id}` in `app/api/v1/**` and `{categoryId}` in the registry. Both demo routes match the registry. |
+| Spec 045 suites (21 files, 130 tests): unit, integration, component, scripts, route-level e2e, the feature-flag suites with the X-6 edits, and the two sweep-isolation regression suites | **pass**, run with one worker (2026-11-05) |
+| The two reproduced sequences, run with one worker in forced order (2026-11-05) | `coverage` then `sweep`: 21 of 21 pass (previously 2 extra rows). Demo `payments` then `sweep`: 15 of 15 pass (previously 1 extra row). |
+| `lib/payments/sweep.integration.test.ts` alone | 8 of 8 pass (2026-11-05) |
+| `tsc --noEmit` | pass (2026-11-05) |
+| `eslint` | changed files: no errors or warnings (2026-11-05). `eslint .` (2026-10-27): 0 errors, and no warnings in Spec 045 files. |
+| `check:schema-money-lint`, `check:no-workspace` | pass (2026-10-27) |
+| `check:schema-checksum` | (2026-10-27) fails on a Windows CRLF checkout only. The committed `0001_baseline_schema.sql` blob matches the recorded hash, and Spec 045 does not touch the file. |
+| `check:env` | (2026-10-27) **fails**: `REVIEW_WINDOW_DAYS` (spec 029, `lib/reviews/limits.ts`) is missing from `.env.example`. Already missing at this spec's base `642b42e`; not a Spec 045 variable. |
+| `check:openapi-drift` | (2026-10-27) **fails**: spec 010's admin subcategory routes use `{id}` in `app/api/v1/**` and `{categoryId}` in the registry. Both demo routes match the registry. |
 | Coverage of `lib/demo/**` (statements / branches / functions / lines) | 93.9% / 85.8% / 96.2% / 97.1%, measured 2026-10-15 and not re-measured |
 
-**Full suite.** Two complete runs, each with `vitest run --maxWorkers=2` and the database up. **No clean full-suite pass has been established.**
+**Full suite.** Two complete runs, each with `vitest run --maxWorkers=2` and the database up. **No clean full-suite pass has been established, and neither run is at the current commit.** Earlier versions of this section miscounted both runs and blamed the slow run on machine load; the corrected findings follow.
 
-- **At `f076c8e` (2026-10-27/28):** 591 files and 4,754 tests, with 19 tests failing in 12 files. The run took 2.9 hours under heavy machine load, against about 1 hour for the earlier run. **No Spec 045, demo or e2e test failed**, including the AC-5 reset test.
-  - **Listed in `test/known-failures.json` (7 tests):**
+- **At `f076c8e` (2026-10-27/28):** 591 files and 4,754 tests, with 19 tests failing in 12 files. The run took 2.9 hours because **the machine was asleep for about two of them**: the Windows power log shows standby from 22:14 and sleep until 00:11.
+  - **Listed in `test/known-failures.json` (6 tests):**
     - `lib/db/concurrency.integration.test.ts` (2 tests)
     - `lib/db/migrations.integration.test.ts`
     - `lib/db/schema-coverage.test.ts`
     - `lib/db/schema-lint.test.ts`
     - `app/explore/[category]/[service]/page.test.tsx`
-  - **Not listed and not verified (12 tests):**
+  - **Not listed (13 tests), investigated one by one (2026-10-31).** Every file passes when run alone with one worker: 7 files, 70 tests.
 
-    | File | Owner | Failing tests | How they failed |
-    |---|---|---|---|
-    | `app/api/v1/requests/negotiation.integration.test.ts` | spec 019 | 6 | 60-second timeouts, failed sign-ups, a missing `429` |
-    | `lib/ai-assistant/activity.integration.test.ts` | spec 034 | 2 | timeout, failed sign-up |
-    | `app/api/v1/admin/roles.integration.test.ts` | spec 009 | 1 | |
-    | `lib/bookings/evidence.integration.test.ts` | spec 028 | 1 | timeout |
-    | `lib/feature-flags/environment-isolation.integration.test.ts` | spec 041 | 1 | |
-    | `lib/payments/sweep.integration.test.ts` | spec 021 | 1 | its idempotency check failed 29 other bookings on the second sweep |
-    | `lib/reviews/routes.integration.test.ts` | spec 029 | 1 | |
+    | File | Owner | Tests | Classification | Evidence |
+    |---|---|---|---|---|
+    | `lib/payments/sweep.integration.test.ts` | spec 021 | 1 | **Confirmed Spec 045 fixture defect, fixed** (see "`pending` bookings follow the real clock") | Reproduced every time with one worker: `coverage` then `sweep` gave 2 extra rows, and demo `payments` then `sweep` gave 1. The sweep processed 29 rows in the full run; the other 26 cannot be identified because the database is reset after each run. |
+    | `lib/reviews/routes.integration.test.ts` | spec 029 | 1 | **Reproduced at the base commit `642b42e`, without Spec 045 code** (it is not in `known-failures.json`) | Fails with one worker after other suites' flagged reviews, with no demo files, and identically at `642b42e`. The queue is oldest-first with 20 per page. Demo files followed by `routes` passed. |
+    | `app/api/v1/requests/negotiation.integration.test.ts` | spec 019 | 6 | **Sleep-related timeouts; the follow-on failures are unconfirmed** | The "404" test took 5,271 s, and the sleep from 22:43:59 to 00:11:44 was 5,265 s. Freezing the process for 70 s reproduced the "201" timeout. The other four (failed sign-ups, a missing `429`) follow the timeouts and were not reproduced. |
+    | `lib/ai-assistant/activity.integration.test.ts` | spec 034 | 2 | **Timeout, then a failed sign-up; unconfirmed** | One test took 44 s against a 15 s limit. |
+    | `lib/bookings/evidence.integration.test.ts` | spec 028 | 1 | **Timeout; unconfirmed** | 192 s against a 60 s limit. |
+    | `app/api/v1/admin/roles.integration.test.ts` | spec 009 | 1 | **Suspected race; not reproduced** | The revoke returns `204` only if a second `super_admin` exists at that moment. Two 2-worker runs passed. Demo code refuses `super_admin`. |
+    | `lib/feature-flags/environment-isolation.integration.test.ts` | spec 041 | 1 | **Suspected race; not reproduced** | It read `urdu-locale` as on in `staging`. The i18n suites set it under an advisory lock this suite does not take. Two 2-worker runs passed. Spec 045 does not touch `urdu-locale`. |
 
-  - **Not attributed to Spec 045 or ruled out.** None of these was rerun alone. Spec 045 does not modify their files. Two are worth noting:
-    - The feature-flag suite is in an area Spec 045 edits (X-6, the `demo-mode` flag).
-    - The extra bookings the sweep picked up may include demo-seeded `pending` bookings.
-
-    Both passed in the `ee18ded` run.
 - **At `ee18ded` (2026-10-23):** 591 files and 4,753 tests, with 13 tests failing in 9 files.
-  - The same 7 listed failures.
-  - 6 unlisted failures, each of which passed when its file was rerun alone with one worker:
-    - the AC-5 reset test (fixed as noted above);
+  - The same 6 listed failures.
+  - 7 unlisted failures, each of which passed when its file was rerun alone with one worker:
+    - the AC-5 reset test (fixed in `f076c8e`);
     - `lib/payments/protection-window` (3 tests);
     - `lib/payments/sweep` (2 tests);
     - `lib/reviews/routes` (1 test).
 
+    These were not investigated further. One later run (2026-10-31) did order all demo files before `protection-window` and `routes`, and passed.
+- **Residual risk in the sweep test.** Its "leave a fresh booking alone" check counts every `pending` booking in the shared test database older than 30 minutes, whichever spec's fixture wrote it. Demo sets provisioned on the real clock (login, reset, e2e) still age into that window after about 27 minutes, as other specs' unpaid fixture bookings do. So a run long enough, or a sleep long enough, can still trip it. That check belongs to spec 021's test and is not changed here.
+
 | AC | Status | Evidence |
 |---|---|---|
 | AC-1 | **Pass (local)** | `app/api/v1/demo/login/route.integration.test.ts`, `e2e/demo-mode.spec.ts` |
-| AC-2 | **Pass (local)** | `lib/demo/seed/coverage.integration.test.ts`; request statuses as noted above |
+| AC-2 | **Pass (local)** | `lib/demo/seed/coverage.integration.test.ts`; request statuses as noted above; `lib/demo/seed/sweep-isolation.integration.test.ts` (each set keeps a `pending` booking, never past spec 021's expiry window) |
 | AC-3 | **Pass** | `app/_components/DemoModeBanner.test.tsx`, `lib/demo/identity.test.ts` |
 | AC-4 | **Pass locally; blocked for a hosted demo (DEP-1)** | `lib/demo/seed/payments.integration.test.ts`, `lib/demo/boundary.test.ts` |
 | AC-5 | **Pass (local)** | `app/api/v1/demo/reset/route.integration.test.ts`, including the parallel-deletion regression test |
 | AC-6 | **Pass locally; blocked for a hosted demo (DEP-1)** | `lib/demo/identity.test.ts`, `lib/demo/boundary.test.ts`, the coverage suite's zero-delivery check |
 | AC-7 | **Pass** | `app/api/v1/demo/guards.integration.test.ts`, `lib/demo/guards.test.ts` |
 
-The status stays **Draft**. Spec 045's implementation and local verification are complete, with its focused suites passing. Two things remain open:
+The status stays **Draft**. Spec 045's implementation is complete and its focused suites pass (21 files, 130 tests). The one full-suite failure traced to Spec 045, its demo fixtures and the payment expiry sweep, is fixed. Two things remain open:
 
-- **A clean full-suite pass** is still outstanding.
+- **A clean full-suite pass** is still outstanding. The other unlisted failures above are either confirmed at the base commit or unconfirmed, and none is attributed to Spec 045.
 - **DEP-1 is an external blocker** owned by specs 021, 024, 026 and 033, and not resolved by this spec. Until those specs approve it, AC-4 and AC-6 cannot be met on a hosted deployment.
 
