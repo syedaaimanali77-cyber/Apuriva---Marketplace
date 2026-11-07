@@ -33,6 +33,17 @@ afterAll(async () => {
   await getPool().end();
 });
 
+/**
+ * The booking's optimistic-lock version. Every transition bumps it, so an unchanged version proves a
+ * sweep run changed nothing on THIS booking. The sweep's own counts are database-wide: other suites'
+ * unpaid bookings age past the window during a long run, and a concurrent sweep in another test file
+ * may process a row first (`FOR UPDATE SKIP LOCKED`). So these tests assert on their own booking.
+ */
+async function bookingVersion(bookingId: string): Promise<number> {
+  const [row] = await queryRows<{ version: number }>(getDb(), sql`SELECT version FROM bookings WHERE id = ${bookingId}`);
+  return row!.version;
+}
+
 describe.skipIf(!dbReachable)('pending-payment expiry sweep (spec 021 AC-9)', { timeout: SUITE_TIMEOUT_MS }, () => {
   beforeEach(() => {
     usePaymentIntegration();
@@ -60,14 +71,15 @@ describe.skipIf(!dbReachable)('pending-payment expiry sweep (spec 021 AC-9)', { 
     const { booking } = await createBooking(scenario.customer.userId, randomUUID(), createBookingBody(scenario.offerId));
 
     expect(await bookingStatus(booking.id)).toBe('pending');
-    // Not yet expired: the sweep must leave a fresh booking strictly alone.
-    expect((await runPaymentSweep()).bookingsFailed).toBe(0);
+    // Not yet expired: the sweep must leave a fresh booking strictly alone — status AND version.
+    const freshVersion = await bookingVersion(booking.id);
+    await runPaymentSweep();
     expect(await bookingStatus(booking.id)).toBe('pending');
+    expect(await bookingVersion(booking.id)).toBe(freshVersion);
 
     await backdateBookingCreation(booking.id, 31);
-    const result = await runPaymentSweep();
+    await runPaymentSweep();
 
-    expect(result.bookingsFailed).toBe(1);
     expect(await bookingStatus(booking.id)).toBe('failed');
     expect(SLOT_RELEASING_BOOKING_STATUSES).toContain('failed');
   });
@@ -128,8 +140,14 @@ describe.skipIf(!dbReachable)('pending-payment expiry sweep (spec 021 AC-9)', { 
     const { booking } = await createBooking(scenario.customer.userId, randomUUID(), createBookingBody(scenario.offerId));
     await backdateBookingCreation(booking.id, 31);
 
-    expect((await runPaymentSweep()).bookingsFailed).toBe(1);
-    expect((await runPaymentSweep()).bookingsFailed).toBe(0);
+    await runPaymentSweep();
+    expect(await bookingStatus(booking.id)).toBe('failed');
+    const failedVersion = await bookingVersion(booking.id);
+
+    // The retry changes nothing on this booking: same status, same version, still one failure row.
+    await runPaymentSweep();
+    expect(await bookingStatus(booking.id)).toBe('failed');
+    expect(await bookingVersion(booking.id)).toBe(failedVersion);
 
     const failures = (await bookingHistory(booking.id)).filter((row) => row.to_status === 'failed');
     expect(failures).toHaveLength(1);
