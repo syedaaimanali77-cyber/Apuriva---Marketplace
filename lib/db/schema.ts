@@ -142,13 +142,21 @@ export const users = pgTable(
     /** Spec 042 §4 (AC-5, AC-7): the explicitly chosen UI locale; `NULL` = never chosen. The CHECK is
      * shape-only — membership in `SUPPORTED_LOCALES` is validated in the application. */
     locale: text('locale'),
+    /** Spec 045 §4: the row-level demo marker. The `_demo` database is the isolation boundary (§3.1);
+     * this is the second marker the reset and reseed guards read (§3.5). */
+    isDemo: boolean('is_demo').notNull().default(false),
+    /** Spec 045 §4: groups the users of one provisioned demo set. No FK and no table: a set has no
+     * attributes of its own. Only a demo user may carry one (`users_demo_set_ck`). */
+    demoSetId: uuid('demo_set_id'),
   },
   (t) => [
     index('users_data_export_file_asset_id_idx').on(t.dataExportFileAssetId),
     uniqueIndex('users_data_export_request_id_uq').on(t.dataExportRequestId),
+    index('users_demo_set_idx').on(t.demoSetId).where(sql`${t.demoSetId} is not null`),
     check('users_lifecycle_status_ck', sql`${t.lifecycleStatus} in ('active','restricted','suspended','banned','deletion_pending','deleted')`),
     check('users_data_export_status_ck', sql`${t.dataExportStatus} is null or ${t.dataExportStatus} in ('pending','processing','ready','failed')`),
     check('users_locale_shape_ck', sql`${t.locale} is null or (${t.locale} ~ '^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$' and char_length(${t.locale}) <= 35)`),
+    check('users_demo_set_ck', sql`${t.demoSetId} is null or ${t.isDemo}`),
   ],
 );
 
@@ -160,6 +168,13 @@ export const customerProfiles = pgTable(
       .notNull()
       .unique()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /**
+     * The customer's display name (Account → Profile). The column has existed since migration 0003; it is
+     * declared here, not re-created. `NULL` = not set. Trimmed, at most 60 characters, no control characters
+     * — validated in the application (lib/account/profile.ts). Shown to the counterparty in messaging and
+     * booking lists; never a phone number or email.
+     */
+    displayName: text('display_name'),
     /** Spec 014 §4/§7 AC-7: opt out of home-feed personalization. Stops using history for
      * recommendations (falls back to `curated_popular`); does not itself delete the underlying
      * history — deletion is spec 008's separate, explicit flow. */

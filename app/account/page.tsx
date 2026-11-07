@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 import Link from 'next/link';
 import { Alert, Badge, Button, DirectionalIcon, ErrorState, Icon, Skeleton } from '@/components';
+import { DemoResetAction } from '@/app/_components/DemoResetAction';
 import { LocaleSwitcher } from '@/app/_components/LocaleSwitcher';
 import { useLocale } from '@/app/_components/LocaleProvider';
 import { branding } from '@/lib/config/branding';
@@ -26,15 +27,21 @@ interface SettingsDestination {
   href?: string;
 }
 
-// Profile and Preferences have no page yet (no route, no spec); they're listed honestly as
-// "Coming soon" rows rather than links that would 404.
+// A destination without a page yet is listed honestly as a "Coming soon" row rather than a link that would 404.
 const SETTINGS_DESTINATIONS: SettingsDestination[] = [
-  { id: 'profile', title: 'account.destinations.profile.title', description: 'account.destinations.profile.description', icon: 'user' },
+  {
+    id: 'profile',
+    title: 'account.destinations.profile.title',
+    description: 'account.destinations.profile.description',
+    icon: 'user',
+    href: '/account/profile',
+  },
   {
     id: 'preferences',
     title: 'account.destinations.preferences.title',
     description: 'account.destinations.preferences.description',
     icon: 'settings',
+    href: '/account/preferences',
   },
   {
     id: 'addresses',
@@ -232,6 +239,9 @@ export default function AccountPage() {
       {/* Spec 042 §5.2: the signed-in language switcher (persists `users.locale`). Renders nothing while only
           one locale is available, i.e. while `urdu-locale` is off. */}
       <LocaleSwitcher mode="account" />
+
+      {/* Spec 045 §5 (X-4): "Reset demo", for a demo user only. */}
+      {user.isDemo ? <DemoResetAction provider={user.hasProviderProfile} /> : null}
 
       <nav className={styles.settings} aria-label={t('account.settingsNav')}>
         <section className={styles.group} aria-labelledby="settings-heading">

@@ -99,11 +99,17 @@ describe.skipIf(!dbReachable)('protection window (spec 021 AC-5/AC-5a/AC-5b/AC-5
     const bookingId = await completedPaidBooking(scenario, 'provider');
 
     await runPaymentSweep();
-    // The default 48-hour window has obviously not elapsed for a booking completed seconds ago.
-    const second = await runPaymentSweep();
-    expect(second.protectionReleased).toBe(0);
+    const held = (await storedPayment(bookingId))!;
+    expect(held.protection_state).toBe('held');
 
-    expect((await storedPayment(bookingId))!.protection_state).toBe('held');
+    // The default 48-hour window has obviously not elapsed for a booking completed seconds ago.
+    // Asserted on THIS payment: the sweep's counts are database-wide, and other suites' elapsed
+    // protections (or a concurrent sweep in another file) move them. An unchanged version proves
+    // the second run released nothing here.
+    await runPaymentSweep();
+    const afterSecond = (await storedPayment(bookingId))!;
+    expect(afterSecond.protection_state).toBe('held');
+    expect(afterSecond.version).toBe(held.version);
     expect(await bookingStatus(bookingId)).toBe('protected');
   });
 
@@ -115,9 +121,8 @@ describe.skipIf(!dbReachable)('protection window (spec 021 AC-5/AC-5a/AC-5b/AC-5
     await runPaymentSweep();
     await backdateProtectionWindow(bookingId, 49);
 
-    const result = await runPaymentSweep();
-    expect(result.protectionReleased).toBe(1);
-    expect(result.protectionDisputed).toBe(0);
+    // Released, not disputed, on THIS payment — the database-wide counts are not this test's to assert.
+    await runPaymentSweep();
 
     expect((await storedPayment(bookingId))!.protection_state).toBe('released');
     expect(await bookingStatus(bookingId)).toBe('settled');
@@ -134,11 +139,15 @@ describe.skipIf(!dbReachable)('protection window (spec 021 AC-5/AC-5a/AC-5b/AC-5
     // 1 hour in, a 2-hour window has NOT elapsed — a 48-hour default would also not have, so
     // backdate past the configured duration but far short of the default to prove which one applies.
     await backdateProtectionWindow(bookingId, 1);
-    expect((await runPaymentSweep()).protectionReleased).toBe(0);
-    expect((await storedPayment(bookingId))!.protection_state).toBe('held');
+    const beforeEarly = (await storedPayment(bookingId))!;
+    await runPaymentSweep();
+    const afterEarly = (await storedPayment(bookingId))!;
+    expect(afterEarly.protection_state).toBe('held');
+    expect(afterEarly.version).toBe(beforeEarly.version);
+    expect(await bookingStatus(bookingId)).toBe('protected');
 
     await backdateProtectionWindow(bookingId, 3);
-    expect((await runPaymentSweep()).protectionReleased).toBe(1);
+    await runPaymentSweep();
     expect((await storedPayment(bookingId))!.protection_state).toBe('released');
     expect(await bookingStatus(bookingId)).toBe('settled');
   });
@@ -156,16 +165,18 @@ describe.skipIf(!dbReachable)('protection window (spec 021 AC-5/AC-5a/AC-5b/AC-5
     registerDisputeGate(async (_tx, id) => ({ open: id === bookingId }));
 
     await backdateProtectionWindow(bookingId, 96);
-    const result = await runPaymentSweep();
+    await runPaymentSweep();
 
-    expect(result.protectionDisputed).toBe(1);
-    expect(result.protectionReleased).toBe(0);
-
-    expect((await storedPayment(bookingId))!.protection_state).toBe('disputed');
+    // Disputed, not released, on THIS payment — the database-wide counts are not this test's to assert.
+    const disputed = (await storedPayment(bookingId))!;
+    expect(disputed.protection_state).toBe('disputed');
     expect(await bookingStatus(bookingId)).toBe('protected');
 
     // And it stays blocked on every subsequent run, however long the window has been over.
-    expect((await runPaymentSweep()).protectionReleased).toBe(0);
+    await runPaymentSweep();
+    const afterRetry = (await storedPayment(bookingId))!;
+    expect(afterRetry.protection_state).toBe('disputed');
+    expect(afterRetry.version).toBe(disputed.version);
     expect(await bookingStatus(bookingId)).toBe('protected');
   });
 

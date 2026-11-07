@@ -33,6 +33,11 @@ for (const key of [...projectEnvKeys, 'DATABASE_URL', 'AUTH_SECRET']) {
   if (value !== undefined) workerEnv[key] = value;
 }
 
+// Automated tests never reach a real, billable AI provider, whatever a developer's `.env` selects for
+// `next dev` (spec 033 §3.4: `AI_PROVIDER` picks the adapter). Pinned here, where only test workers
+// see it; a test that needs another provider still sets `process.env.AI_PROVIDER` itself.
+workerEnv.AI_PROVIDER = 'sandbox';
+
 export default defineConfig({
   plugins: [react()],
   resolve: {

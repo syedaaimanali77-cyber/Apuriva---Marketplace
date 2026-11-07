@@ -4,7 +4,8 @@ import { getUserRoles } from './roles';
 import { recordSecurityEvent } from './security-event';
 import { ensureCustomerProfile } from './profiles';
 
-export type LoginMethod = 'otp' | 'password' | 'oauth_google' | 'oauth_apple';
+/** `demo` — spec 045 X-1: a demo login (`POST /api/v1/demo/login`, `/demo/reset`), recorded on the security event. */
+export type LoginMethod = 'otp' | 'password' | 'oauth_google' | 'oauth_apple' | 'demo';
 
 export interface CompleteLoginResult {
   session: SessionRow;

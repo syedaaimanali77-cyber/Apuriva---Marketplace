@@ -187,7 +187,7 @@ export async function listBookings(
     getDb(),
     sql`SELECT b.id, b.status, b.scheduled_at, b.scheduled_timezone,
                s.name AS service_name,
-               ${mode === 'customer' ? sql`pp.business_name` : sql`NULL::text`} AS counterparty_name,
+               ${mode === 'customer' ? sql`pp.business_name` : sql`cp.display_name`} AS counterparty_name,
                b.price_amount_minor_units, b.price_currency_code,
                COUNT(*) OVER () AS total
           FROM bookings b
