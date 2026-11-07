@@ -4,7 +4,7 @@ Maintained per master specification §129–§130 and spec 046 §3.12 (AC-7). **
 same PR as every spec implementation** — CI's `check:build-status` fails a PR that moves a
 `docs/specs/*` status to `Approved` or `Implemented` without changing it.
 
-_Last updated: 2026-09-29 — Account Profile & Preferences (feature work, not a numbered spec)._
+_Last updated: 2026-11-07 — Spec 045 verification, spec 021 sweep-test isolation, spec 010 OpenAPI placeholder fix._
 
 ## Completed
 
@@ -62,7 +62,8 @@ the externally-verified criteria pass (see **In progress**).
 
 - **Spec 045** — Demo mode and seed data. Implemented; its focused suites pass locally (spec 045 §10), with
   all seven ACs passing against the isolated test database. No clean full-suite pass has been established
-  yet (§10 lists the open failures). **A hosted demo is blocked by its DEP-1:** a
+  yet. The 2026-11-07 run's failures were baseline entries, or files that pass alone, and none was in a
+  Spec 045 file (§10). **A hosted demo is blocked by its DEP-1:** a
   hosted server runs under `NODE_ENV=production`, where every sandbox adapter (payments, payouts,
   notifications, files, AI) refuses to start. Provisioning then fails with that refusal and writes
   nothing, and no real adapter exists. Changing that guard is owned by specs 021/024/026/027/033; neither
@@ -185,10 +186,6 @@ and is not hosted until DEP-1 is resolved.
 
 ## Known bugs
 
-- `check:openapi-drift` reports a mismatch between `lib/api/openapi-registry.ts`
-  (`/admin/categories/{categoryId}/subcategories`) and the route directory
-  (`app/api/v1/admin/categories/[id]/subcategories`). Pre-existing, owned by spec 010; it makes CI's
-  `static` job fail until fixed.
 - `check:env` fails on the committed tree: `lib/reviews/limits.ts` (spec 029) reads
   `REVIEW_WINDOW_DAYS`, whose `.env.example` entry exists only as an uncommitted working-tree change.
   Pre-existing, owned by spec 029; it makes CI's `static` job fail until that entry is committed.

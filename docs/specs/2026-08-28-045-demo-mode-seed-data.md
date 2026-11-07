@@ -1,7 +1,7 @@
 # Spec: Demo Mode & Seed Data
 
 **File:** `docs/specs/2026-08-28-045-demo-mode-seed-data.md`
-**Status:** Draft — implemented; focused suites re-verified locally 2026-11-05 (§10); **no clean full-suite pass established**; **not ready for a hosted demo**: DEP-1 is unresolved, so on any hosted server (`NODE_ENV=production`) provisioning refuses with the sandbox adapters' own refusal.
+**Status:** Draft — implemented; all seven ACs pass locally, re-verified 2026-11-07 (§10); **no clean full-suite pass established**; **not ready for a hosted demo**: DEP-1 is unresolved, so on any hosted server (`NODE_ENV=production`) provisioning refuses with the sandbox adapters' own refusal.
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §110–§113, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §16, [docs/workflow.md](../workflow.md); specs 005 (sessions, mandatory admin MFA), 009 (admin roles), 010 (catalog seed), 021/024 (payment and payout adapters), 026 (notification channels), 027 (file storage and scanning adapters), 033 (AI adapter), 039 (audit), 040 (analytics), 041 (feature flags, `APP_ENV`). See §8.
@@ -487,7 +487,7 @@ completeness (all required states represented) is the acceptance bar, not editor
 
 ---
 
-## 10. Implementation notes and verification (2026-10-15; re-verified 2026-11-05)
+## 10. Implementation notes and verification (2026-10-15; re-verified 2026-11-05 and 2026-11-07)
 
 **Corrections made while implementing, each settled by an owning spec or the repository, not invented:**
 
@@ -570,7 +570,12 @@ completeness (all required states represented) is the acceptance bar, not editor
     - `lib/reviews/routes` (1 test).
 
     These were not investigated further. One later run (2026-10-31) did order all demo files before `protection-window` and `routes`, and passed.
-- **Residual risk in the sweep test.** Its "leave a fresh booking alone" check counts every `pending` booking in the shared test database older than 30 minutes, whichever spec's fixture wrote it. Demo sets provisioned on the real clock (login, reset, e2e) still age into that window after about 27 minutes, as other specs' unpaid fixture bookings do. So a run long enough, or a sleep long enough, can still trip it. That check belongs to spec 021's test and is not changed here.
+- **The sweep tests' database-wide counts (closed 2026-11-07).** Spec 021's sweep, protection-window and concurrency tests asserted the sweep's database-wide counters, which other suites' rows and concurrent sweeps in other files move. They now assert each test's own booking and payment: status, version and history. Production code is unchanged. With the old versions, a parallel run of the reviews and payment suites failed 2 of 3 times ("expected 0 to be 1" at `concurrency:193` and `protection-window:119`). With the new versions, the same run passed 3 of 3 times.
+- **At `b2ec7e8` plus the uncommitted spec 021 test changes above (2026-11-07):** `vitest run --maxWorkers=3`, 589 files and 4,730 tests: 29 tests failed in 14 files, and 5 files never ran because their worker failed to start. **Not a clean pass.** The machine was CPU-bound (4 cores; OneDrive syncing the repository until it was paused mid-run) and was in Modern Standby from 15:39 to 19:02, on battery.
+  - **Listed in `test/known-failures.json` (5 tests in 4 files):** `lib/db/concurrency` (2), `lib/db/migrations`, `lib/db/schema-coverage`, `app/explore/[category]/[service]/page`.
+  - **Every other failing file, and the 5 that never ran, pass when rerun alone with one worker: 15 files, 119 tests.** The failures were timeouts and their follow-on sign-up failures, plus one suspected race in `app/api/v1/admin/feature-flags/access` (super_admin got `403`; not reproduced). The unstarted files include this spec's `lib/demo/migration.integration.test.ts` (6 of 6 alone).
+  - **No failure is in a Spec 045 file:** all 17 demo test files passed in the run, or alone for the one that never started.
+  - `tsc --noEmit` and `next build` pass. `eslint .` reports 0 errors and 45 warnings, none in Spec 045 files. `check:env`, `check:schema-checksum`, `check:schema-money-lint`, `check:no-workspace` and `check:openapi-drift` pass. `check:openapi-drift` passes after spec 010's registry placeholder fix. `check:env` passes only with the uncommitted `.env.example` entry for spec 029's `REVIEW_WINDOW_DAYS`.
 
 | AC | Status | Evidence |
 |---|---|---|
@@ -584,6 +589,6 @@ completeness (all required states represented) is the acceptance bar, not editor
 
 The status stays **Draft**. Spec 045's implementation is complete and its focused suites pass (21 files, 130 tests). The one full-suite failure traced to Spec 045, its demo fixtures and the payment expiry sweep, is fixed. Two things remain open:
 
-- **A clean full-suite pass** is still outstanding. The other unlisted failures above are either confirmed at the base commit or unconfirmed, and none is attributed to Spec 045.
+- **A clean full-suite pass** is still outstanding. The 2026-11-07 run's failures are baseline entries, or files that pass alone, and none is attributed to Spec 045. A clean pass needs a run on mains power with nothing else loading the machine, or CI.
 - **DEP-1 is an external blocker** owned by specs 021, 024, 026, 027 and 033, and not resolved by this spec. Until those specs approve it, AC-4 and AC-6 cannot be met on a hosted deployment.
 
