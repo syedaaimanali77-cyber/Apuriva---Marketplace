@@ -1512,6 +1512,9 @@ function Table({
 }) {
   const padY = density === 'dense' ? 8 : 12;
   return /*#__PURE__*/React.createElement("div", {
+    tabIndex: 0,
+    role: caption ? 'group' : undefined,
+    "aria-label": caption || undefined,
     style: {
       overflowX: 'auto',
       border: '1px solid var(--border-subtle)',

@@ -3,7 +3,11 @@ import React from 'react';
 export function Table({ columns = [], rows = [], caption, density = 'dense', onRowClick, emptyMessage = 'Nothing to show', style }) {
   const padY = density === 'dense' ? 8 : 12;
   return (
-    <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', background: 'var(--surface-card)', ...style }}>
+    <div
+      tabIndex={0}
+      role={caption ? 'group' : undefined}
+      aria-label={caption || undefined}
+      style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', background: 'var(--surface-card)', ...style }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)' }}>
         {caption ? <caption className="apr-visually-hidden">{caption}</caption> : null}
         <thead>
