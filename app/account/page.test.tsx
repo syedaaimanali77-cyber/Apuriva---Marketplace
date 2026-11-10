@@ -141,9 +141,10 @@ describe('AccountPage (spec 006/014 — guest entry point and mode switching)', 
 
     expect(await screen.findByRole('link', { name: /Addresses/ })).toHaveAttribute('href', '/account/addresses');
     expect(screen.getByRole('link', { name: /Privacy & Security/ })).toHaveAttribute('href', '/account/privacy-security');
-    // No page exists for these yet — listed as unavailable, never as links that would 404.
-    expect(screen.queryByRole('link', { name: /Profile/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Preferences/ })).not.toBeInTheDocument();
+    // Account → Profile and Account → Preferences now have pages: real links, never "Coming soon" rows.
+    expect(screen.getByRole('link', { name: /Profile/ })).toHaveAttribute('href', '/account/profile');
+    expect(screen.getByRole('link', { name: /Preferences/ })).toHaveAttribute('href', '/account/preferences');
+    expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
   });
 
   it('never renders placeholder identity data (the /users/me payload has no name or email)', async () => {

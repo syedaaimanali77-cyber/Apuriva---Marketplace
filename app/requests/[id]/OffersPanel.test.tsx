@@ -84,7 +84,11 @@ describe('OffersPanel (spec 018 §5)', () => {
   });
 
   it('the countdown never gates actions: a server-live offer stays acceptable even when the display shows 0', async () => {
-    mockFetch(json(true, { data: [{ ...LIVE, serverNow: '2026-09-14T10:05:00.000Z' }] }));
+    // Every refetch (the panel also reloads on window focus) returns the same server-live offer: with the
+    // default empty fallback, an early reload replaced the list mid-test (CI run #6), which is not what
+    // this test is about.
+    const serverLive = json(true, { data: [{ ...LIVE, serverNow: '2026-09-14T10:05:00.000Z' }] });
+    mockFetch(serverLive).mockResolvedValue(serverLive);
     renderPanel();
     await screen.findByText('Ali Plumbing');
     expect(screen.getAllByTestId('offer-countdown')[0]).toHaveAttribute('data-seconds-remaining', '0');

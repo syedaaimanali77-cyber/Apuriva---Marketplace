@@ -38,6 +38,9 @@ export function withApiRoute(
 
   async function handleWithEnvelope(request: Request, correlationId: string): Promise<NextResponse> {
     try {
+      // The server's ports must be wired in THIS module instance before any handler runs (lib/server-integrations.ts).
+      const { ensureServerIntegrations } = await import('@/lib/server-integrations');
+      await ensureServerIntegrations();
       return await runWithRequestContext({ correlationId }, () => handler(request, correlationId));
     } catch (err) {
       if (err instanceof ApiRouteError) {

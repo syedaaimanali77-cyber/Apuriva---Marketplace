@@ -9,10 +9,11 @@
  *   - an unknown or absent value throws. There is no silent fallback, because falling back to a
  *     sandbox because a variable was mistyped is precisely how a fabricated success reaches
  *     production.
- *   - a sandbox adapter under `NODE_ENV=production` throws (AC-10). A production deployment
+ *   - a sandbox adapter in a production deployment (`APP_ENV=production`, spec 041; DEP-1) throws (AC-10). A production deployment
  *     without a real adapter refuses to take payments rather than pretending one succeeded
  *     (master spec §132.21, §132.22, §133.5).
  */
+import { isProductionDeployment } from '@/lib/feature-flags/environment';
 import { getSandboxPaymentProvider } from './sandbox';
 import type { PaymentProvider } from './types';
 
@@ -75,7 +76,7 @@ export class PaymentProviderUnavailable extends Error {
  * Resolves the configured adapter, or throws `PaymentProviderUnavailable` — which every payment
  * route maps to `503 PAYMENT_PROVIDER_UNAVAILABLE`.
  *
- * Read fresh on every call rather than memoized: tests flip `PAYMENT_PROVIDER` and `NODE_ENV`, and
+ * Read fresh on every call rather than memoized: tests flip `PAYMENT_PROVIDER`, `APP_ENV` and `NODE_ENV`, and
  * a cached provider would make AC-10's guard untestable and, worse, bypassable by whichever request
  * warmed the cache first.
  */
@@ -91,7 +92,7 @@ export function resolvePaymentProvider(): PaymentProvider {
   }
 
   const provider = factory();
-  if (provider.isSandbox && process.env.NODE_ENV === 'production') {
+  if (provider.isSandbox && isProductionDeployment()) {
     // AC-10. The sandbox exists so development and tests have a seam, never so production can
     // report a payment nobody made.
     throw new PaymentProviderUnavailable(

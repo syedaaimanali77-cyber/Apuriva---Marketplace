@@ -55,7 +55,32 @@ class AiSearchIntentInterpreter implements AiIntentInterpreter {
 
 /** A provider returns text; an unparseable or non-object answer is treated as "nothing extracted"
  * rather than an error, so a malformed completion degrades exactly like an unavailable one. */
-function parseIntent(output: string): RawSearchIntent {
+/** An ISO-4217-shaped currency code: three uppercase letters. */
+const CURRENCY_CODE_SHAPE = /^[A-Z]{3}$/;
+
+/**
+ * The currencies the runtime's `Intl` actually knows — the same set every money display in this
+ * repository formats with. A shape-valid but non-existent code ("ABC") is refused. Shape-only if a
+ * runtime ever lacks `Intl.supportedValuesOf`.
+ */
+const KNOWN_CURRENCY_CODES: ReadonlySet<string> | null =
+  typeof Intl.supportedValuesOf === 'function' ? new Set(Intl.supportedValuesOf('currency')) : null;
+
+function isKnownCurrencyCode(value: unknown): value is string {
+  return typeof value === 'string' && CURRENCY_CODE_SHAPE.test(value) && (KNOWN_CURRENCY_CODES === null || KNOWN_CURRENCY_CODES.has(value));
+}
+
+/**
+ * The adapter's `search_intent` output → a `RawSearchIntent`, keeping only fields of the documented
+ * shape. A real model can return anything, so nothing is trusted:
+ *   - malformed JSON or a non-object → `{}`; unknown fields are dropped;
+ *   - `budgetMaxMinorUnits` only as a safe, non-negative INTEGER (money is integer minor units,
+ *     master spec §132 rule 5 — a fractional or negative amount is dropped, never rounded);
+ *   - `currencyCode` only when it is a real ISO-4217 currency AND attached to a kept budget: a currency
+ *     on its own describes nothing.
+ * Exported for tests of model-shaped output; the sandbox's own extraction always satisfies it.
+ */
+export function parseIntent(output: string): RawSearchIntent {
   let parsed: unknown;
   try {
     parsed = JSON.parse(output);
@@ -69,10 +94,11 @@ function parseIntent(output: string): RawSearchIntent {
   if (typeof candidate.serviceNameRaw === 'string') intent.serviceNameRaw = candidate.serviceNameRaw;
   if (typeof candidate.area === 'string') intent.area = candidate.area;
   if (typeof candidate.date === 'string') intent.date = candidate.date;
-  if (typeof candidate.budgetMaxMinorUnits === 'number' && Number.isFinite(candidate.budgetMaxMinorUnits)) {
-    intent.budgetMaxMinorUnits = candidate.budgetMaxMinorUnits;
+  const budget = candidate.budgetMaxMinorUnits;
+  if (typeof budget === 'number' && Number.isSafeInteger(budget) && budget >= 0) {
+    intent.budgetMaxMinorUnits = budget;
+    if (isKnownCurrencyCode(candidate.currencyCode)) intent.currencyCode = candidate.currencyCode;
   }
-  if (typeof candidate.currencyCode === 'string') intent.currencyCode = candidate.currencyCode;
   return intent;
 }
 

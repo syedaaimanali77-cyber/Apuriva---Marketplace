@@ -4,8 +4,9 @@
  *
  * Selected by `FILE_SCANNER` (default `sandbox`). An unknown name throws rather than falling back:
  * a mistyped variable must never silently downgrade to a scanner that detects nothing. A sandbox
- * under `NODE_ENV=production` throws for the same reason.
+ * in a production deployment (`APP_ENV=production`, spec 041; DEP-1) throws for the same reason.
  */
+import { isProductionDeployment } from '@/lib/feature-flags/environment';
 import { createSandboxFileScanner } from './sandbox';
 import type { FileScanner } from './types';
 import { FileScannerUnavailable } from './types';
@@ -37,7 +38,7 @@ export function resolveFileScanner(): FileScanner {
     throw new FileScannerUnavailable(`${FILE_SCANNER_ENV_VAR}="${configured}" is not a known file scanner.`);
   }
   const scanner = factory();
-  if (process.env.NODE_ENV === 'production' && scanner.isSandbox) {
+  if (isProductionDeployment() && scanner.isSandbox) {
     throw new FileScannerUnavailable(
       `The "${configured}" file scanner is a sandbox and must never run in production. Configure a real malware scanner.`,
     );

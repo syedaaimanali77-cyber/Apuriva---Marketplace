@@ -3,9 +3,11 @@
  * Nothing here names a vendor: swapping providers is an `AI_PROVIDER` change, not a code change
  * (AC-2), and no consumer can learn which provider answered it (AC-1).
  */
-import type { AI_TASKS } from '@/lib/db/schema';
+import type { AiTask } from '@/lib/types/ai';
 
-export type AiTask = (typeof AI_TASKS)[number];
+/** Re-exported, not re-derived: `lib/types/ai.ts` owns the union, the way `lib/types/bookings.ts`
+ *  owns `BookingStatus`. Domain code keeps importing it from `lib/ai`. */
+export type { AiTask };
 
 /**
  * Who the call is attributed to, for rate limiting, quota and abuse accounting.

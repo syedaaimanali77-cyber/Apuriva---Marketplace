@@ -38,6 +38,13 @@ request; admins have mandatory MFA; step-up re-authentication is enforced for se
 | AC-6 | **Given** a logged-in session **When** the user attempts a sensitive action (e.g. change payout method, per spec 024) **Then** step-up re-authentication is required even though the session is otherwise valid |
 | AC-7 | **Given** any authentication attempt **When** it succeeds or fails **Then** the server is the sole authority on the outcome — no client-side flag can mark a session as authenticated |
 
+**AC-5 amendment (2026-11-11): first-login TOTP enrolment.** AC-5 made admin MFA mandatory but shipped no way to enrol an authenticator, so an admin provisioned without a TOTP secret (spec 045 §3.9's evaluator, or any real admin) could never complete a login: `POST /auth/mfa/verify` had nothing to check. The MFA step now begins with enrolment for such an admin, inside the MFA-pending session the password created:
+- the login response carries the additive `mfaEnrollmentRequired: true`;
+- `POST /api/v1/auth/mfa/enrollment` (partial session, CSRF, rate-limited, admin only, refused `409` once enrolled) returns a fresh secret as the manual key and an `otpauth://` URL, plus a session-bound, encrypted enrolment token that lapses after 10 minutes. **Nothing is stored yet;**
+- `POST /api/v1/auth/mfa/verify` with the first code and that token stores the secret (`totp_secret_encrypted`, `mfa_enrolled_at`) only when the code verifies, and only if no authenticator was enrolled meanwhile; then the session is MFA-satisfied.
+
+MFA stays mandatory, no operator ever sees or shares a secret, and an enrolled authenticator can never be replaced from a password-only session. Security events: `auth.mfa_enrollment_started`, `auth.mfa_enrolled`. Tests: `app/api/v1/auth/mfa-enrollment.integration.test.ts`, `lib/auth/mfa-enrollment.test.ts`, `app/(auth)/login/page.test.tsx`.
+
 ---
 
 ## 3. API contract

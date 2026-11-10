@@ -185,12 +185,12 @@ describe.skipIf(!dbReachable)('payment concurrency (spec 021 §3, AC-7)', { time
     await runPaymentSweep();
     await backdateProtectionWindow(booking.id, 49);
 
-    const results = await race(runPaymentSweep(), runPaymentSweep());
-    const released = results
-      .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof runPaymentSweep>>> => r.status === 'fulfilled')
-      .reduce((total, r) => total + r.value.protectionReleased, 0);
+    // Asserted on THIS booking, not on the two runs' summed `protectionReleased`: that count is
+    // database-wide, so other suites' elapsed protections inflate it, and a concurrent sweep in
+    // another test file may release this row first (`FOR UPDATE SKIP LOCKED`) and leave both of
+    // these runs at 0. "Released once, settled once" is proven by the row and its history.
+    await race(runPaymentSweep(), runPaymentSweep());
 
-    expect(released).toBe(1);
     expect((await storedPayment(booking.id))!.protection_state).toBe('released');
     expect(await bookingStatus(booking.id)).toBe('settled');
 

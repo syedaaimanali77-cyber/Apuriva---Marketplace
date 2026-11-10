@@ -66,3 +66,133 @@ describe('form primitives (spec 002 AC-2 — keyboard operable)', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 });
+
+// Spec 002 AC-2 with spec 043 D-7: the focused element itself must carry the visible indicator (a computed
+// outline or box-shadow), so the design system's --ring-focus sits on the <input>/<select>, not a wrapper.
+describe('form primitives (spec 002 AC-2 — focus is visibly indicated on the focused control)', () => {
+  it('Input draws --ring-focus on the focused <input> itself, and removes it on blur', async () => {
+    const user = userEvent.setup();
+    render(<Input aria-label="City" />);
+    const input = screen.getByLabelText('City');
+    expect(input.style.boxShadow).toBe('none');
+    await user.tab();
+    expect(input).toHaveFocus();
+    expect(input.style.boxShadow).toBe('var(--ring-focus)');
+    expect(input.parentElement!.style.boxShadow).toBe('');
+    expect(input.parentElement!.style.border).toContain('var(--field-border-focus)');
+    await user.tab();
+    expect(input.style.boxShadow).toBe('none');
+  });
+
+  it('an invalid Input keeps its error border and shows --ring-error on the focused <input>', async () => {
+    const user = userEvent.setup();
+    render(<Input aria-label="Phone" invalid />);
+    const input = screen.getByLabelText('Phone');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    await user.tab();
+    expect(input.style.boxShadow).toBe('var(--ring-error)');
+    expect(input.parentElement!.style.border).toContain('var(--field-border-error)');
+  });
+
+  it('Input still calls the consumer onFocus/onBlur, without losing the ring', async () => {
+    const user = userEvent.setup();
+    const onFocus = vi.fn();
+    const onBlur = vi.fn();
+    render(<Input aria-label="City" onFocus={onFocus} onBlur={onBlur} />);
+    const input = screen.getByLabelText('City');
+    await user.tab();
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    expect(input.style.boxShadow).toBe('var(--ring-focus)');
+    await user.tab();
+    expect(onBlur).toHaveBeenCalledTimes(1);
+    expect(input.style.boxShadow).toBe('none');
+  });
+
+  it('Input icons sit over the input padding, so the <input> spans the whole field', () => {
+    render(<Input aria-label="Area" iconLeft="map-pin" iconRight="x" />);
+    const input = screen.getByLabelText('Area');
+    expect(input.style.width).toBe('100%');
+    expect(input.style.paddingInlineStart).toBe('36px');
+    expect(input.style.paddingInlineEnd).toBe('36px');
+  });
+
+  it('Input renders its prefix beside the text, clear of the typed value', () => {
+    render(<Input aria-label="Budget" prefix="Rs." />);
+    const input = screen.getByLabelText('Budget');
+    expect(screen.getByText('Rs.')).toBeInTheDocument();
+    // jsdom has no layout (the prefix measures 0px), so only the fixed padding and gap are asserted.
+    expect(input.style.paddingInlineStart).toBe('20px');
+  });
+
+  it('Select draws --ring-focus on the focused <select> itself, and removes it on blur', async () => {
+    const user = userEvent.setup();
+    render(<Select aria-label="City" options={['Lahore', 'Karachi']} />);
+    const select = screen.getByLabelText('City');
+    expect(select.style.boxShadow).toBe('none');
+    await user.tab();
+    expect(select).toHaveFocus();
+    expect(select.style.boxShadow).toBe('var(--ring-focus)');
+    expect(select.parentElement!.style.boxShadow).toBe('');
+    await user.tab();
+    expect(select.style.boxShadow).toBe('none');
+  });
+
+  it('an invalid Select keeps its error border and aria-invalid while showing the focus ring', async () => {
+    const user = userEvent.setup();
+    const onFocus = vi.fn();
+    render(<Select aria-label="City" options={['Lahore']} invalid onFocus={onFocus} />);
+    const select = screen.getByLabelText('City');
+    expect(select).toHaveAttribute('aria-invalid', 'true');
+    await user.tab();
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    expect(select.style.boxShadow).toBe('var(--ring-focus)');
+    expect(select.parentElement!.style.border).toContain('var(--field-border-error)');
+  });
+});
+
+// The same rule for the choice controls: an opacity-0 native input with a decorative box beside it showed no focus
+// to keyboard users (spec 043 found it on /requests/new). The native input is now the visible control.
+describe('form primitives (spec 002 AC-2 — choice controls show focus on the focused input)', () => {
+  it('Radio: the focused native radio is visible and draws --ring-focus', async () => {
+    const user = userEvent.setup();
+    const onFocus = vi.fn();
+    render(
+      <RadioGroup legend="Budget">
+        <Radio name="budget" label="Fixed amount" checked onChange={() => undefined} onFocus={onFocus} />
+        <Radio name="budget" label="Open to offers" checked={false} onChange={() => undefined} />
+      </RadioGroup>,
+    );
+    const fixed = screen.getByRole('radio', { name: 'Fixed amount' });
+    expect(fixed.style.opacity).toBe('');
+    expect(fixed.style.appearance).toBe('none');
+    expect(fixed.style.border).toContain('var(--action-primary-bg)');
+    expect(screen.getByRole('radio', { name: 'Open to offers' }).style.border).toContain('var(--field-border)');
+    await user.tab();
+    expect(fixed).toHaveFocus();
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    expect(fixed.style.boxShadow).toBe('var(--ring-focus)');
+    await user.tab();
+    expect(fixed.style.boxShadow).toBe('none');
+  });
+
+  it('Checkbox: the focused native checkbox is visible, draws --ring-focus, and keeps its checked fill', async () => {
+    const user = userEvent.setup();
+    render(<Checkbox label="Bring materials" checked onChange={() => undefined} />);
+    const checkbox = screen.getByRole('checkbox', { name: 'Bring materials' });
+    expect(checkbox.style.opacity).toBe('');
+    expect(checkbox.style.appearance).toBe('none');
+    expect(checkbox.style.background).toBe('var(--action-primary-bg)');
+    await user.tab();
+    expect(checkbox).toHaveFocus();
+    expect(checkbox.style.boxShadow).toBe('var(--ring-focus)');
+    await user.tab();
+    expect(checkbox.style.boxShadow).toBe('none');
+  });
+
+  it('Checkbox: an indeterminate box keeps the filled state and sets the native indeterminate flag', () => {
+    render(<Checkbox label="Select all" checked={false} indeterminate onChange={() => undefined} />);
+    const checkbox = screen.getByRole('checkbox', { name: 'Select all' }) as HTMLInputElement;
+    expect(checkbox.indeterminate).toBe(true);
+    expect(checkbox.style.background).toBe('var(--action-primary-bg)');
+  });
+});

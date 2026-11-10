@@ -79,3 +79,49 @@ export async function seedMinimalRequest(client: PoolClient, initialStatus: stri
   );
   return requestRows[0]!.id;
 }
+
+/**
+ * Runs `run` and returns every data-changing SQL statement this worker's pool issued meanwhile — a precise,
+ * parallel-safe "wrote nothing" check (another test file's writes happen in another worker's pool, so a global
+ * row count would be racy). Both pool-level queries and statements on a checked-out transaction client are seen.
+ */
+export async function capturedWrites(run: () => Promise<unknown>): Promise<string[]> {
+  const pool = getPool();
+  const statements: string[] = [];
+  const textOf = (query: unknown) => (typeof query === 'string' ? query : String((query as { text?: unknown })?.text ?? ''));
+  const record = (query: unknown) => statements.push(textOf(query));
+  const wrapped = new WeakSet<object>();
+  const wrap = <C extends { query: (...args: never[]) => unknown }>(client: C): C => {
+    if (!wrapped.has(client)) {
+      wrapped.add(client);
+      const original = client.query.bind(client) as (...args: unknown[]) => unknown;
+      client.query = ((query: unknown, ...rest: unknown[]) => {
+        if (recording) record(query);
+        return original(query, ...rest);
+      }) as never;
+    }
+    return client;
+  };
+  let recording = true;
+  const originalConnect = pool.connect.bind(pool) as (...args: unknown[]) => unknown;
+  // pg's own `pool.query` checks a client out with the CALLBACK form of `connect`; drizzle's transactions use the
+  // promise form. Both are forwarded unchanged, with the client's `query` observed. Patched by hand rather than
+  // with `vi.spyOn`, because this module is also imported outside Vitest (browser/a11y/seed.ts via tsx).
+  const pooled = pool as unknown as { connect: unknown };
+  const hadOwnConnect = Object.prototype.hasOwnProperty.call(pooled, 'connect');
+  const ownConnect = pooled.connect;
+  pooled.connect = ((callback?: (err: Error | undefined, client: never, done: never) => void) => {
+    if (typeof callback === 'function') {
+      return originalConnect((err: Error | undefined, client: never, done: never) => callback(err, client ? wrap(client) : client, done));
+    }
+    return (originalConnect() as Promise<never>).then((client) => wrap(client));
+  }) as never;
+  try {
+    await run();
+  } finally {
+    recording = false;
+    if (hadOwnConnect) pooled.connect = ownConnect;
+    else delete pooled.connect;
+  }
+  return statements.filter((text) => /^\s*(insert|update|delete|truncate)\b/i.test(text));
+}

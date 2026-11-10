@@ -4,8 +4,7 @@
  * executor call at ANY risk tier, even with a real-looking executor registered; never in history.
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { sql } from 'drizzle-orm';
-import { getDb } from '@/lib/db';
+import { capturedWrites } from '@/lib/db/test-support';
 import {
   action,
   aiControl,
@@ -148,11 +147,10 @@ describe.skipIf(!dbReachable)('spec 034 temporary conversations (integration)', 
   });
 
   it('writes nothing to any spec 034 table, globally', async () => {
-    const tables = ['ai_conversations', 'ai_messages', 'ai_memories', 'ai_actions'];
-    const count = async () =>
-      Promise.all(tables.map(async (t) => ((await getDb().execute(sql.raw(`SELECT count(*)::int AS n FROM ${t}`))).rows[0] as { n: number }).n));
-    const before = await count();
-    await temporaryTurn([{ role: 'user', body: 'Nothing should change' }]);
-    expect(await count()).toEqual(before);
+    // Judged on every data-changing statement the turn itself issued, for ANY user or row — not on global row
+    // counts, which other test files change while running in parallel (CI run #5 saw 57 vs 56).
+    const tables = /\b(ai_conversations|ai_messages|ai_memories|ai_actions)\b/i;
+    const writes = await capturedWrites(() => temporaryTurn([{ role: 'user', body: 'Nothing should change' }]));
+    expect(writes.filter((statement) => tables.test(statement))).toEqual([]);
   });
 });

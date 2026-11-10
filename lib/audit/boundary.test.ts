@@ -62,8 +62,10 @@ describe('spec 039 boundaries', () => {
     expect(code(join(ROOT, 'lib', 'audit', 'mcp-sink.ts'))).toMatch(/McpAuditSink/);
   });
 
-  it('instrumentation.ts registers the durable integration (X-4)', () => {
-    expect(code(join(ROOT, 'instrumentation.ts'))).toMatch(/import\('@\/lib\/audit\/register'\)[\s\S]*registerAuditIntegration\(\)/);
+  // The composition root moved from instrumentation.ts to lib/server-integrations.ts (both instrumentation and the
+  // route wrappers call it); the assertion is unchanged.
+  it('the composition root registers the durable integration (X-4)', () => {
+    expect(code(join(ROOT, 'lib', 'server-integrations.ts'))).toMatch(/import\('@\/lib\/audit\/register'\)[\s\S]*registerAuditIntegration\(\)/);
   });
 
   it('withApiRoute runs every handler inside the request context (X-1)', () => {

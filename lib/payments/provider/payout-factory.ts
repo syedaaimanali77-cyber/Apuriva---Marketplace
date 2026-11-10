@@ -2,10 +2,11 @@
  * Spec 024 §3.2 — payout-rail selection, mirroring `resolvePaymentProvider()` exactly.
  *
  * `PAYOUT_PROVIDER` is read fresh on every call (never memoized). An absent or unknown value throws
- * with no silent fallback, and a sandbox adapter under `NODE_ENV=production` throws — so a
+ * with no silent fallback, and a sandbox adapter in a production deployment (`APP_ENV=production`, spec 041; DEP-1) throws — so a
  * deployment without a real rail refuses payouts instead of reporting one nobody made
  * (master spec §132.21, §132.22, §133.5).
  */
+import { isProductionDeployment } from '@/lib/feature-flags/environment';
 import type { PayoutProvider } from './payout-types';
 import { getSandboxPayoutProvider } from './sandbox-payout';
 
@@ -35,7 +36,7 @@ export function resolvePayoutProvider(): PayoutProvider {
   }
 
   const provider = factory();
-  if (provider.isSandbox && process.env.NODE_ENV === 'production') {
+  if (provider.isSandbox && isProductionDeployment()) {
     throw new PayoutProviderUnavailable(
       `The "${provider.name}" payout rail is a sandbox and must never run in production. Configure a real payout rail.`,
     );

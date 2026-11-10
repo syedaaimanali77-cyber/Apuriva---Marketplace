@@ -41,6 +41,9 @@ describe('GET /api/v1/cron/account-deletion-sweep', () => {
     const body = await res.json();
     expect(body.status).toBe('ok');
     expect(body.processed).toBeGreaterThanOrEqual(1);
+    // Spec 023 AC-10: the same scheduled run also minimises resolved no-show evidence and reports it.
+    expect(typeof body.noShowEvidenceMinimized).toBe('number');
+    expect(body.noShowEvidenceMinimized).toBeGreaterThanOrEqual(0);
 
     const [row] = await getDb().select().from(users).where(eq(users.id, userId));
     expect(row!.lifecycleStatus).toBe('deleted');

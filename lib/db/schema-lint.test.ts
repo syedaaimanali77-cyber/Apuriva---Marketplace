@@ -72,6 +72,21 @@ describe('schema lint (spec 003)', () => {
     const ALLOWED_JSONB_COLUMNS: Record<string, string[]> = {
       // Spec 005 §4: variable per-event-type detail, never queried/filtered on directly.
       security_events: ['metadata'],
+      // Spec 010 §4: a service's variable data (e.g. typical duration ranges) — registered on the
+      // `services` entry under spec 017 below, since the table can have only one key here. A
+      // catalog suggestion's proposed `metadata` has the same shape and is copied onto the service
+      // on approval. Both are read back whole and never queried or filtered on in SQL.
+      catalog_suggestions: ['metadata'],
+      // Spec 011 §4: a `ServiceField`'s `select` choice list and its per-`type` validation rules,
+      // whose shape genuinely differs per field `type` — checked in application code
+      // (`lib/service-page/fields.ts`), read back whole and never queried or filtered on in SQL.
+      service_fields: ['options', 'validation'],
+      // Spec 011 §4: a service requirement's detail, whose shape differs per `kind`
+      // (media/duration/buffer/verification). `kind` itself is a real text column with a CHECK.
+      service_requirements: ['detail'],
+      // Spec 011 §4: a package's "what's included" display list — read back whole and never queried
+      // or filtered on in SQL. Price and currency are real relational columns.
+      service_packages: ['included_items'],
       // Spec 012 §4: geo hierarchy (city/area/country) — descriptive, never queried/filtered on.
       locations: ['geo_hierarchy'],
       // Spec 012 §4: structured address fields — descriptive, never queried/filtered on.
@@ -90,7 +105,7 @@ describe('schema lint (spec 003)', () => {
       // weights. Both are a fixed nine-key factor->integer map read back whole and validated in
       // application code (lib/matching/weights.ts); never queried or filtered on in SQL. The
       // queryable part of matching config (`matching_pool_size`) is a real integer column.
-      services: ['matching_weights'],
+      services: ['metadata', 'matching_weights'],
       matching_suggestions: ['suggested_weights'],
       // Spec 017 §4: the per-factor scoring breakdown (AC-2/AC-6) — a fixed nine-key
       // factor->{normalized,weight,available} map, read back whole for admin explainability and
@@ -130,6 +145,10 @@ describe('schema lint (spec 003)', () => {
       // its own CHECK, precisely because it IS core/queryable data (AC-5). Never exported.
       reviews: ['flag_signals'],
       review_responses: ['flag_signals'],
+      // Spec 034 §3.9/§4: one confirmed preference's value — a fixed shape per allow-listed key,
+      // validated at write time in `lib/ai-assistant/memory-keys.ts` and read back whole. The
+      // queryable part (`key`) is a real text column with its own CHECK and a unique index.
+      ai_memories: ['value'],
       // Spec 040 §4: an analytics event's properties — ids, enums, booleans and counts only, checked
       // against each event type's exact key allow-list in `lib/analytics/events.ts`. Never free text.
       // The queryable parts (`event_type`, `occurred_at`) are real columns with their own index.

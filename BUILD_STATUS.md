@@ -4,7 +4,7 @@ Maintained per master specification §129–§130 and spec 046 §3.12 (AC-7). **
 same PR as every spec implementation** — CI's `check:build-status` fails a PR that moves a
 `docs/specs/*` status to `Approved` or `Implemented` without changing it.
 
-_Last updated: 2026-09-29 — spec 044 (Frontend Platform Quality: PWA, performance, SEO)._
+_Last updated: 2026-11-07 — Spec 045 verification, spec 021 sweep-test isolation, spec 010 OpenAPI placeholder fix._
 
 ## Completed
 
@@ -24,6 +24,7 @@ the externally-verified criteria pass (see **In progress**).
 | 033–036 | AI assistant, conversation/memory, MCP architecture and tool catalog |
 | 037–042 | Admin operations, moderation/fraud, audit logging, analytics, feature flags, i18n |
 | 046 | CI (`.github/workflows/ci.yml`), deploy workflows, `withCronRoute` + `cron_job_heartbeats`, `/api/v1/health/detailed`, `logEvent` and correlation IDs, the `ops-health-check` monitor, runbooks in `docs/operations/`, this file |
+| Account Profile & Preferences (feature, not a numbered spec) | `/account/profile` — the customer display name (`customer_profiles.display_name`, the migration-0003 column now declared in the schema) and, in provider mode, the business name, both editable (trimmed, ≤ 60 characters, any script, no control characters, `expectedVersion`); email and phone read-only with verified state. `GET/PATCH /api/v1/users/me/profile`, `GET/PATCH /api/v1/providers/me/profile`. `/account/preferences` — a hub reusing the existing language (042), marketing consent (026), Ask Apuriva suggestions (034) and home personalization (014) APIs. The customer display name now reaches the provider's booking list and the booking conversation (specs 020/025 contracts). No migration. |
 
 ## In progress
 
@@ -59,10 +60,13 @@ the externally-verified criteria pass (see **In progress**).
 
 ## Blocked
 
-- **Spec 045** — Demo mode and seed data. **Blocked by its DEP-1:** a hosted demo runs under
-  `NODE_ENV=production`, where every sandbox adapter (payments, payouts, notifications, files, AI)
-  refuses to start, and no real adapter exists. Changing that guard is owned by specs
-  021/024/026/027/033; spec 046 does not alter it.
+- **Spec 045** — Demo mode and seed data. Implemented; its focused suites pass locally (spec 045 §10), with
+  all seven ACs passing against the isolated test database. No clean full-suite pass has been established
+  yet. The 2026-11-07 run's failures were baseline entries, or files that pass alone, and none was in a
+  Spec 045 file (§10). **DEP-1 is resolved in code (2026-11-10)** by specs 021/024/026/027/033: every sandbox adapter refuses only
+  a production deployment (spec 041 `isProductionDeployment()`, keyed on `APP_ENV`, failing closed), so a
+  hosted staging or demo deployment with `APP_ENV=staging` runs the sandboxes. A hosted demo is still
+  to be provisioned and verified (DEP-2). The status stays Draft.
 
 ## Tested
 
@@ -81,8 +85,9 @@ the externally-verified criteria pass (see **In progress**).
 
 ## Known limitations
 
-- **No production adapters.** Every sandbox adapter refuses `NODE_ENV=production`; staging and
-  production answer each affected domain's documented `503` until specs 021/024/026/027/033 add real
+- **No production adapters.** Every sandbox adapter refuses a production deployment (`APP_ENV=production`,
+  or unset under `NODE_ENV=production`; DEP-1, 2026-11-10). Staging (`APP_ENV=staging`) runs the sandboxes;
+  production answers each affected domain's documented `503` until specs 021/024/026/027/033 add real
   adapters. `/api/v1/health/detailed` reports `sandbox_in_production`.
 - **File storage** is `local` only; Vercel's filesystem is ephemeral, so production needs spec 027's
   durable object-storage adapter.
@@ -94,7 +99,7 @@ the externally-verified criteria pass (see **In progress**).
 
 ## Next recommended task
 
-The Account Profile & Preferences feature (not a numbered spec). For spec 044: the icon artwork (DEP-2)
+For spec 044: the icon artwork (DEP-2)
 and the performance remediation in the owning specs (§3.7). For spec 043: spec 002 to regenerate the design
 tokens with AA values and move the field primitives' focus ring onto the focused control; then the
 manual NVDA/VoiceOver sign-offs.
@@ -138,12 +143,12 @@ failing file was then re-run alone on the spec 046 tree and on the previous comm
 
 - **33 files passed alone** — timeouts from that run's CPU contention, not defects; not listed.
 - **15 files / 19 tests failed alone on both trees** — pre-existing and owned elsewhere; these are the
-  baseline's 19 entries:
+  baseline's 19 entries (18 since 2026-11-10: the `schema-lint` entry was removed when spec 003's jsonb allow-list entries were committed):
 
 | Owner | Tests | Cause |
 |---|---|---|
 | spec 042 (`formatMoney`) | 12, in money-display tests of specs 021–024, 026, 033, 037, 042 | **environment**: Node 22's ICU/CLDR data gives PKR 0 fraction digits (`PKR 150,000`); Node 25 gives 2 (`PKR 1,500.00`) |
-| spec 003 | 5 (`schema-coverage`, `migrations`, `concurrency`, `schema-lint`) | stale table lists / fixtures, and jsonb allow-list entries not yet committed (spec 041 §8) |
+| spec 003 | 4 (`schema-coverage`, `migrations`, `concurrency`) | stale table lists / fixtures |
 | spec 011 | 1 (service page "Ask Apuriva" empty state) | ambiguous text query: the label renders twice |
 | spec 007 | 1 (`seen-state` localStorage failure) | **environment**: Node 25 has a native `localStorage`, Node 22 does not |
 
@@ -174,14 +179,13 @@ integration, service-worker rules, offline components, and the untouched layout 
 
 ## Demo credentials
 
-None — per-visitor sessions; admin evaluators provisioned by operator (spec 045, which is blocked).
+None — `/demo` provisions a fresh per-visitor set (spec 045). Admin evaluators are provisioned with
+`npx tsx scripts/demo-create-admin.ts --email <email> --role <role>`, using a one-time password and MFA.
+This works only on a `_demo` database with `DEMO_MODE_ENABLED=true` and `APP_ENV` other than production,
+and is not hosted until DEP-1 is resolved.
 
 ## Known bugs
 
-- `check:openapi-drift` reports a mismatch between `lib/api/openapi-registry.ts`
-  (`/admin/categories/{categoryId}/subcategories`) and the route directory
-  (`app/api/v1/admin/categories/[id]/subcategories`). Pre-existing, owned by spec 010; it makes CI's
-  `static` job fail until fixed.
 - `check:env` fails on the committed tree: `lib/reviews/limits.ts` (spec 029) reads
   `REVIEW_WINDOW_DAYS`, whose `.env.example` entry exists only as an uncommitted working-tree change.
   Pre-existing, owned by spec 029; it makes CI's `static` job fail until that entry is committed.

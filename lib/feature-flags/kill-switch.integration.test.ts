@@ -10,17 +10,19 @@ import { isDatabaseReachable, restoreStoredFlags, storedFlag, useFlagEnvironment
 
 /**
  * Spec 041 AC-4 / §3.7 — a kill switch turned off stops its feature for the NEXT request: no deploy,
- * no restart, no process-local cache. Worker runs as `production` with `ai-assistant` and
+ * no restart, no process-local cache. Worker runs as `staging` with `ai-assistant` and
  * `ai-conversational-assistant` (no other spec 041 file changes those pairs); the sandbox AI provider
- * is used so a success is a real completion, not a configuration error.
+ * is used so a success is a real completion, not a configuration error. Not `production`: there, DEP-1
+ * (spec 041 `isProductionDeployment`) correctly refuses every sandbox adapter. A kill switch behaves
+ * identically in every environment, so this proves AC-4 for each.
  */
 const dbReachable = await isDatabaseReachable();
 
 describe.skipIf(!dbReachable)('kill switches take effect immediately (spec 041 AC-4)', { timeout: 120_000 }, () => {
-  useFlagEnvironment('production');
+  useFlagEnvironment('staging');
   restoreStoredFlags([
-    ['ai-assistant', 'production'],
-    ['ai-conversational-assistant', 'production'],
+    ['ai-assistant', 'staging'],
+    ['ai-conversational-assistant', 'staging'],
   ]);
   const savedProvider = process.env.AI_PROVIDER;
   let superAdmin: Awaited<ReturnType<typeof adminWithRole>>;
@@ -38,9 +40,9 @@ describe.skipIf(!dbReachable)('kill switches take effect immediately (spec 041 A
   });
 
   async function set(key: 'ai-assistant' | 'ai-conversational-assistant', enabled: boolean, userId: string): Promise<void> {
-    const current = await storedFlag(key, 'production');
+    const current = await storedFlag(key, 'staging');
     if (current.enabled === enabled) return;
-    await toggleFeatureFlag(userId, key, { environment: 'production', enabled, expectedVersion: current.version, reason: `AC-4 ${key} ${enabled}` });
+    await toggleFeatureFlag(userId, key, { environment: 'staging', enabled, expectedVersion: current.version, reason: `AC-4 ${key} ${enabled}` });
   }
 
   it('ai-assistant off: the very next completeAi() throws AiUnavailableError; back on: it completes', async () => {

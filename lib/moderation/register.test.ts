@@ -70,8 +70,9 @@ describe('spec 038 — lightweight composition-root registration', () => {
     await expect(getPayoutHoldGate()({} as never, 'p1')).resolves.toEqual({ held: false });
   });
 
-  it('instrumentation.ts imports the lightweight module, and it never statically imports the action engine', () => {
-    const instrumentation = code('instrumentation.ts');
+  // The composition root moved from instrumentation.ts to lib/server-integrations.ts; the assertions are unchanged.
+  it('the composition root imports the lightweight module, and it never statically imports the action engine', () => {
+    const instrumentation = code('lib/server-integrations.ts');
     expect(instrumentation).toMatch(/import\(['"]@\/lib\/moderation\/register['"]\)/);
     expect(instrumentation).not.toMatch(/import\(['"]@\/lib\/moderation['"]\)/);
 
