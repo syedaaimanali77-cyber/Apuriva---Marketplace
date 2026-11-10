@@ -1,7 +1,7 @@
 # Spec: Demo Mode & Seed Data
 
 **File:** `docs/specs/2026-08-28-045-demo-mode-seed-data.md`
-**Status:** Draft — implemented; all seven ACs pass locally, re-verified 2026-11-07 (§10); **no clean full-suite pass established**; **DEP-1 resolved in code 2026-11-10** by its owning specs (sandboxes refuse only a production deployment, `APP_ENV=production`); **a hosted demo is not yet deployed or verified** (DEP-2).
+**Status:** Draft — implemented; all seven ACs pass locally, re-verified 2026-11-07 (§10); **no clean full-suite pass established**; **DEP-1 resolved in code 2026-11-10** by its owning specs (sandboxes refuse only a production deployment, `APP_ENV=production`); **the hosted demo passes 6 of 6 journeys in a real browser on the production build** (2026-11-11, §10); **not yet run on a real hosting account** (DEP-2: account actions by the owner).
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §110–§113, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §16, [docs/workflow.md](../workflow.md); specs 005 (sessions, mandatory admin MFA), 009 (admin roles), 010 (catalog seed), 021/024 (payment and payout adapters), 026 (notification channels), 027 (file storage and scanning adapters), 033 (AI adapter), 039 (audit), 040 (analytics), 041 (feature flags, `APP_ENV`). See §8.
@@ -577,18 +577,37 @@ completeness (all required states represented) is the acceptance bar, not editor
   - **No failure is in a Spec 045 file:** all 17 demo test files passed in the run, or alone for the one that never started.
   - `tsc --noEmit` and `next build` pass. `eslint .` reports 0 errors and 45 warnings, none in Spec 045 files. `check:env`, `check:schema-checksum`, `check:schema-money-lint`, `check:no-workspace` and `check:openapi-drift` pass. `check:openapi-drift` passes after spec 010's registry placeholder fix. `check:env` passes only with the uncommitted `.env.example` entry for spec 029's `REVIEW_WINDOW_DAYS`.
 
+**Hosted-demo verification (2026-11-11).** The production build served exactly as a deployment serves it (the standalone `server.js`, `NODE_ENV=production`) and configured as a demo deployment (§3.1: `APP_ENV=staging`, `DEMO_MODE_ENABLED=true`, a `_demo` database prepared by the real `scripts/demo-reseed.ts`, all six sandbox adapters), driven by Chromium. A second server from the same build runs with `APP_ENV=production`. Command: `npm run build && npx playwright test -c playwright.demo.config.ts` (`browser/demo/demo.hosted-demo.ts`). **6 of 6 pass:**
+
+| Journey | What is verified |
+|---|---|
+| Guest | `/demo` entry page with both personas; banner visible |
+| Customer | One click to a signed-in demo session, with no signup (AC-1). Every seeded person is "(Demo)", with an `.invalid` email and no phone (AC-3/AC-6). Bookings, requests, explore, account and notifications pages render. A confirmed booking shows "Payment confirmed by the payment provider". Paying the pending booking goes through spec 021's real authorize route to the sandbox and returns its documented `422 PAYMENT_REQUIRES_ACTION`, with the payment left `requires_action` (AC-4). Every payment row of the set is `provider_name = 'sandbox'`; the inbox has notifications and `notification_deliveries` is 0 (AC-6). |
+| Provider | Dashboard, requests, schedule and earnings render. A portfolio placeholder stored by the local adapter and scanned `clean` is served through a signed URL as a real PNG (AC-2, spec 027 storage and scanning). |
+| Reset | "Reset demo" provisions a new set, replaces the session, and leaves the old set's bookings untouched (AC-5). |
+| Admin evaluator (§3.9) | `scripts/demo-create-admin.ts` provisions an `operations_admin`; the evaluator signs in, enrols an authenticator through spec 005's first-login enrolment, proves it with a TOTP code and reaches `/admin` (D-2: no admin session without MFA). |
+| `APP_ENV=production` | `/demo` shows "Demo is not available", there is no banner, and `POST /api/v1/demo/login` returns `403 DEMO_NOT_AVAILABLE_IN_PRODUCTION` with no user row written (AC-7, DEP-1). |
+
+**Defects found by this run and fixed, each with a regression test:**
+- **The admin evaluator could never sign in** (§3.9). Spec 005 made admin MFA mandatory but shipped no enrolment step. Fixed under spec 005 (`d67a2f8`, first-login TOTP enrolment).
+- **`demo-reseed` could not initialise a new, empty `_demo` database**, the first deploy of any demo environment. Its guard queried a `users` table that did not exist yet. Fixed in `lib/demo/operator.ts` (`3a6b7e9`).
+- **In the production build, no port registered in `instrumentation.ts` reached the route handlers.** `register()` ran, but routes saw every port inert: portfolio upload `422 FILE_CONTEXT_NOT_AVAILABLE`, a ready file `404`. This is platform-wide, not demo-specific. The composition root moved to `lib/server-integrations.ts`, which the route wrappers also call (`3be5705`).
+
+**What a VERCEL-hosted demo would still lack:** the `local` file adapter writes to the instance's own `/tmp`. On Vercel's multi-instance functions, a placeholder stored by one instance may be requested from another and answer `404`. A single long-running server (the repository's Docker image) has no such gap; Vercel needs spec 027's durable object-storage adapter.
+
 | AC | Status | Evidence |
 |---|---|---|
-| AC-1 | **Pass (local)** | `app/api/v1/demo/login/route.integration.test.ts`, `e2e/demo-mode.spec.ts` |
+| AC-1 | **Pass** (local and hosted-demo browser run) | `app/api/v1/demo/login/route.integration.test.ts`, `e2e/demo-mode.spec.ts`, `browser/demo/demo.hosted-demo.ts` |
 | AC-2 | **Pass (local)** | `lib/demo/seed/coverage.integration.test.ts`; request statuses as noted above; `lib/demo/seed/sweep-isolation.integration.test.ts` (each set keeps a `pending` booking, never past spec 021's expiry window) |
 | AC-3 | **Pass** | `app/_components/DemoModeBanner.test.tsx`, `lib/demo/identity.test.ts` |
-| AC-4 | **Pass locally**; the hosted-demo path is covered by the `APP_ENV=staging`, `NODE_ENV=production` case; not yet verified on a deployment (DEP-2) | `lib/demo/seed/payments.integration.test.ts`, `lib/demo/boundary.test.ts` |
+| AC-4 | **Pass** (local and hosted-demo browser run); not yet run on a real hosting account (DEP-2) | `lib/demo/seed/payments.integration.test.ts`, `lib/demo/boundary.test.ts` |
 | AC-5 | **Pass (local)** | `app/api/v1/demo/reset/route.integration.test.ts`, including the parallel-deletion regression test |
-| AC-6 | **Pass locally**; not yet verified on a deployment (DEP-2) | `lib/demo/identity.test.ts`, `lib/demo/boundary.test.ts`, the coverage suite's zero-delivery check |
+| AC-6 | **Pass** (local and hosted-demo browser run); not yet run on a real hosting account (DEP-2) | `lib/demo/identity.test.ts`, `lib/demo/boundary.test.ts`, the coverage suite's zero-delivery check |
 | AC-7 | **Pass** | `app/api/v1/demo/guards.integration.test.ts`, `lib/demo/guards.test.ts` |
 
 The status stays **Draft**. Spec 045's implementation is complete and its focused suites pass (21 files, 130 tests). The one full-suite failure traced to Spec 045, its demo fixtures and the payment expiry sweep, is fixed. Two things remain open:
 
 - **A clean full-suite pass** is still outstanding. The 2026-11-07 run's failures are baseline entries, or files that pass alone, and none is attributed to Spec 045. A clean pass needs a run on mains power with nothing else loading the machine, or CI.
-- **DEP-1 is resolved in code (2026-11-10)** by its owning specs. **A hosted demo deployment (DEP-2) is still to be provisioned and verified.**
+- **DEP-1 is resolved in code (2026-11-10)** by its owning specs, and verified on the production build in the hosted-demo browser run (2026-11-11).
+- **DEP-2, a real hosted deployment, needs account actions** (a host, a `_demo` database and its configuration) that only the repository owner can take. Spec 045 stays open until the same journeys pass on it.
 
