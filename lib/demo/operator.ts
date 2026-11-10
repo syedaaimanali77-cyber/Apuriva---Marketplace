@@ -26,9 +26,25 @@ export class DemoOperatorRefusal extends Error {
   }
 }
 
-/** §3.5 — the database must contain demo users only. A real account found here is never deleted by a tool. */
+/**
+ * §3.5 — the database must contain demo users only. A real account found here is never deleted by a tool.
+ *
+ * A brand-new, still EMPTY `_demo` database (the first deploy of a demo environment) has no `users` table yet:
+ * it holds no user at all, so it counts 0 and the reseed may initialise it. A database migrated only up to
+ * before 0039 has users but no `is_demo` column: every one of them is a real account, so all of them count.
+ */
 export async function countNonDemoUsers(db: Executor = getDb()): Promise<number> {
-  const [row] = await queryRows<{ n: number }>(db, sql`SELECT count(*)::int AS n FROM users WHERE is_demo = false`);
+  const [shape] = await queryRows<{ has_users: boolean; has_is_demo: boolean }>(
+    db,
+    sql`SELECT to_regclass('public.users') IS NOT NULL AS has_users,
+               EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'is_demo') AS has_is_demo`,
+  );
+  if (!shape!.has_users) return 0;
+  const [row] = await queryRows<{ n: number }>(
+    db,
+    shape!.has_is_demo ? sql`SELECT count(*)::int AS n FROM users WHERE is_demo = false` : sql`SELECT count(*)::int AS n FROM users`,
+  );
   return row!.n;
 }
 
