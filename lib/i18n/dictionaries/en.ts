@@ -437,6 +437,13 @@ export const en = {
       almostThere: 'Almost there',
       verifyTitle: 'Verify it’s you',
       verifySubtitle: 'Enter the code from your authenticator app to finish signing in.',
+      // Spec 005 AC-5 — first-login TOTP enrolment for an admin who has never enrolled.
+      enrolTitle: 'Set up two-factor authentication',
+      enrolSubtitle: 'Admin accounts need an authenticator app. Add this account to your app with the setup key below, then enter the 6-digit code it shows.',
+      enrolKeyLabel: 'Setup key',
+      enrolOpenApp: 'Open in authenticator app',
+      enrolFailed: 'We could not start two-factor setup.',
+      enrolRetry: 'Try again',
       authenticatorCode: 'Authenticator code',
       verify: 'Verify',
       welcomeBack: 'Welcome back',

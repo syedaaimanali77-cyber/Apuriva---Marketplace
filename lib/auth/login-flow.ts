@@ -1,5 +1,5 @@
 import type { SessionDto } from '@/lib/types/auth';
-import { createSession, isAdminUser, type SessionRow } from './session';
+import { createSession, hasEnrolledTotp, isAdminUser, type SessionRow } from './session';
 import { getUserRoles } from './roles';
 import { recordSecurityEvent } from './security-event';
 import { ensureCustomerProfile } from './profiles';
@@ -52,6 +52,8 @@ export async function completeLogin(
     sessionId: session.id,
     expiresAt: session.expiresAt.toISOString(),
     mfaRequired: !session.mfaSatisfied,
+    // Spec 005 AC-5: an admin who has never enrolled starts the MFA step with enrolment (additive field).
+    ...(isAdmin ? { mfaEnrollmentRequired: !(await hasEnrolledTotp(userId)) } : {}),
     roles,
   };
 

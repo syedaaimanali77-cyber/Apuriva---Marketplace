@@ -49,6 +49,15 @@ export async function isAdminUser(userId: string): Promise<boolean> {
   return row !== undefined;
 }
 
+/** Spec 005 AC-5 — whether this admin has an enrolled (confirmed) TOTP authenticator. */
+export async function hasEnrolledTotp(userId: string): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ secret: adminProfiles.totpSecretEncrypted })
+    .from(adminProfiles)
+    .where(eq(adminProfiles.userId, userId));
+  return Boolean(row?.secret);
+}
+
 export type SessionValidationResult =
   | { valid: true; session: SessionRow }
   | { valid: false; reason: 'not_found' | 'revoked' | 'expired' };

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Button, FormField, Input, OtpInput } from '@/components';
 import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MfaEnrollmentDto } from '@/lib/types/auth';
 import { AuthShell } from '../_components/AuthShell';
 import styles from '../auth.module.css';
 
@@ -80,6 +81,10 @@ export default function LoginPage() {
   const [mfaCode, setMfaCode] = useState('');
   const [mfaError, setMfaError] = useState<string | null>(null);
   const [verifyingMfa, setVerifyingMfa] = useState(false);
+  // AC-5: an admin who has never enrolled sets up an authenticator first (first-login enrolment).
+  const [enrollmentRequired, setEnrollmentRequired] = useState(false);
+  const [enrollment, setEnrollment] = useState<MfaEnrollmentDto | null>(null);
+  const [enrollmentError, setEnrollmentError] = useState<string | null>(null);
 
   async function handleSendOtp() {
     setPhoneError(null);
@@ -140,15 +145,32 @@ export default function LoginPage() {
     }
     if (result.data.mfaRequired) {
       setMfaPending(true);
+      if (result.data.mfaEnrollmentRequired) {
+        setEnrollmentRequired(true);
+        await startEnrollment();
+      }
       return;
     }
     router.push('/');
   }
 
+  async function startEnrollment() {
+    setEnrollmentError(null);
+    const result = await postJsonWithCsrf('/api/v1/auth/mfa/enrollment', {});
+    if (!result.ok) {
+      setEnrollmentError(errorText(result.error?.code, result.error?.message, t('auth.login.enrolFailed')));
+      return;
+    }
+    setEnrollment(result.data as MfaEnrollmentDto);
+  }
+
   async function handleMfaVerify(code: string) {
     setMfaError(null);
     setVerifyingMfa(true);
-    const result = await postJsonWithCsrf('/api/v1/auth/mfa/verify', { code });
+    const result = await postJsonWithCsrf(
+      '/api/v1/auth/mfa/verify',
+      enrollment ? { code, enrollmentToken: enrollment.enrollmentToken } : { code },
+    );
     setVerifyingMfa(false);
     if (!result.ok) {
       setMfaError(errorText(result.error?.code, result.error?.message, t('auth.login.mfaWrong')));
@@ -172,9 +194,30 @@ export default function LoginPage() {
         <>
           <div>
             <span className={styles.eyebrow}>{t('auth.login.almostThere')}</span>
-            <h1 className={styles.title}>{t('auth.login.verifyTitle')}</h1>
-            <p className={styles.subtitle}>{t('auth.login.verifySubtitle')}</p>
+            <h1 className={styles.title}>{t(enrollmentRequired ? 'auth.login.enrolTitle' : 'auth.login.verifyTitle')}</h1>
+            <p className={styles.subtitle}>{t(enrollmentRequired ? 'auth.login.enrolSubtitle' : 'auth.login.verifySubtitle')}</p>
           </div>
+          {enrollmentRequired && enrollmentError ? (
+            <Alert tone="error">
+              {enrollmentError}{' '}
+              <Button variant="ghost" size="sm" onClick={startEnrollment}>
+                {t('auth.login.enrolRetry')}
+              </Button>
+            </Alert>
+          ) : null}
+          {enrollmentRequired && enrollment ? (
+            <div className={styles.enrolment}>
+              <span className={styles.enrolmentLabel} id="mfa-setup-key-label">
+                {t('auth.login.enrolKeyLabel')}
+              </span>
+              <code className={styles.setupKey} aria-labelledby="mfa-setup-key-label" data-testid="mfa-setup-key">
+                {enrollment.secret}
+              </code>
+              <a className={styles.footerLink} href={enrollment.otpauthUrl}>
+                {t('auth.login.enrolOpenApp')}
+              </a>
+            </div>
+          ) : null}
           <form
             className={styles.form}
             onSubmit={(e) => {

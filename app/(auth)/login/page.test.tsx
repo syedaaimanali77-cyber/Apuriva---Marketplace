@@ -82,6 +82,38 @@ describe('LoginPage (spec 005 §5 UI states)', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it('AC-5: an admin who has never enrolled sets up an authenticator first, and the first code completes it', async () => {
+    const user = userEvent.setup();
+    const reply = (data: unknown) => ({ ok: true, json: async () => ({ data, correlationId: 'x' }) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        reply({ userId: 'u1', sessionId: 's1', expiresAt: '2030-01-01T00:00:00.000Z', mfaRequired: true, mfaEnrollmentRequired: true, roles: ['admin'] }),
+      )
+      .mockResolvedValueOnce(
+        reply({ secret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP', otpauthUrl: 'otpauth://totp/Apuriva:admin%40example.com?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP', enrollmentToken: 'enrol-token', expiresAt: '2030-01-01T00:10:00.000Z' }),
+      )
+      .mockResolvedValueOnce(reply({ userId: 'u1', sessionId: 's1', expiresAt: '2030-01-01T00:00:00.000Z', mfaRequired: false, roles: ['admin'] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<LoginPage />);
+    await user.click(screen.getByRole('tab', { name: 'Email' }));
+    await user.type(screen.getByLabelText(/^Email/), 'admin@example.com');
+    await user.type(screen.getByLabelText(/^Password/), 'correct horse battery staple');
+    await user.click(screen.getByRole('button', { name: 'Log in' }));
+
+    expect(await screen.findByRole('heading', { name: 'Set up two-factor authentication' })).toBeInTheDocument();
+    expect(await screen.findByTestId('mfa-setup-key')).toHaveTextContent('JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP');
+    expect(screen.getByRole('link', { name: 'Open in authenticator app' })).toHaveAttribute('href', expect.stringMatching(/^otpauth:\/\/totp\//));
+    expect(fetchMock.mock.calls[1]![0]).toBe('/api/v1/auth/mfa/enrollment');
+
+    await user.type(screen.getByLabelText('Authenticator code'), '123456');
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/'));
+    const [url, init] = fetchMock.mock.calls[2]!;
+    expect(url).toBe('/api/v1/auth/mfa/verify');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ code: '123456', enrollmentToken: 'enrol-token' });
+  });
+
   it('the phone tab is the default (primary path per §1)', () => {
     render(<LoginPage />);
     expect(screen.getByRole('tab', { name: 'Phone' })).toHaveAttribute('aria-selected', 'true');

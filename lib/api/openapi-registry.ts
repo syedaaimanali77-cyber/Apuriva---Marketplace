@@ -25,7 +25,8 @@ export const OPENAPI_ROUTES: OpenApiRouteEntry[] = [
   { method: 'POST', path: '/auth/login', summary: 'Log in with email + password', tags: ['auth'] },
   { method: 'POST', path: '/auth/oauth/google', summary: 'Complete Google OAuth login', tags: ['auth'] },
   { method: 'POST', path: '/auth/oauth/apple', summary: 'Complete Apple OAuth login', tags: ['auth'] },
-  { method: 'POST', path: '/auth/mfa/verify', summary: 'Complete an MFA-pending admin login', tags: ['auth'] },
+  { method: 'POST', path: '/auth/mfa/enrollment', summary: 'Start first-login TOTP enrolment for an un-enrolled admin (nothing stored until verify)', tags: ['auth'] },
+  { method: 'POST', path: '/auth/mfa/verify', summary: 'Complete an MFA-pending admin login; with an enrollmentToken, also confirms first-login enrolment', tags: ['auth'] },
   { method: 'POST', path: '/auth/logout', summary: 'Invalidate the current session', tags: ['auth'] },
   { method: 'POST', path: '/auth/step-up', summary: 'Issue a step-up token for a sensitive action', tags: ['auth'] },
   // Spec 045 X-8 — demo mode. Both refuse outside a demo environment (403 DEMO_NOT_AVAILABLE_IN_PRODUCTION / DEMO_MODE_DISABLED).

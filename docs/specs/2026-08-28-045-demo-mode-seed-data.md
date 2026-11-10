@@ -290,6 +290,8 @@ regardless of the flag.
     cannot toggle developer flags, including `demo-mode` itself.
   - The evaluator signs in through the normal login and **enrols and uses MFA exactly as spec 005
     requires**. No MFA secret is generated, shared or skipped by the script.
+  - **Corrected 2026-11-11:** spec 005 had no enrolment step, so this evaluator could never complete a
+    login. Spec 005's AC-5 amendment adds first-login TOTP enrolment, which is the path this account now uses.
 
 ---
 
