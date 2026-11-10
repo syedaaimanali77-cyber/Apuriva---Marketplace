@@ -8,6 +8,13 @@
  * outside both, is what keeps the dependency one-directional in production as well as in tests.
  */
 export async function register(): Promise<void> {
+  // Node only. Next compiles this file for BOTH runtimes, but every registration below wires Node
+  // server modules (pg, node:crypto, …) and APURIVA has no Edge route or middleware to register
+  // them for. `NEXT_RUNTIME` is inlined at build time, so the Edge build drops this whole import
+  // graph instead of recompiling the entire server for Edge on every change (the documented pattern:
+  // node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/instrumentation.md).
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+
   const { registerPaymentIntegration } = await import('@/lib/payments');
   registerPaymentIntegration();
 
