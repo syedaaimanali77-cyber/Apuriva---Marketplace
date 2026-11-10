@@ -47,6 +47,9 @@ const ALLOWED_IMPORTS = new Set([
   '@/lib/i18n/dictionaries/en',
   '@/lib/i18n/translate',
   '@/lib/i18n/server',
+  // DEP-1 (2026-11-10): spec 041's environment identity, the shared rule deciding where a sandbox
+  // channel adapter may run. Infrastructure, not a producing spec's domain.
+  '@/lib/feature-flags/environment',
 ]);
 
 describe('notifications source guard (spec 026 §6)', () => {

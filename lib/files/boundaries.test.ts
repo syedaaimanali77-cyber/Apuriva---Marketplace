@@ -50,6 +50,9 @@ const ALLOWED_IMPORTS = new Set([
   // Spec 009's permission resolution + audit helper, for the audited admin read path.
   '@/lib/admin-rbac/audit',
   '@/lib/admin-rbac/permissions',
+  // DEP-1 (2026-11-10): spec 041's environment identity, the shared rule deciding where a sandbox
+  // storage or scanner adapter may run. Infrastructure, not a producing spec's domain.
+  '@/lib/feature-flags/environment',
 ]);
 
 describe('files source guard (spec 027 §6)', () => {
