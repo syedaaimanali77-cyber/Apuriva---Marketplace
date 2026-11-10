@@ -1,7 +1,7 @@
 # Spec: Demo Mode & Seed Data
 
 **File:** `docs/specs/2026-08-28-045-demo-mode-seed-data.md`
-**Status:** Draft — implemented; all seven ACs pass locally, re-verified 2026-11-07 (§10); **no clean full-suite pass established**; **DEP-1 resolved in code 2026-11-10** by its owning specs (sandboxes refuse only a production deployment, `APP_ENV=production`); **the hosted demo passes 6 of 6 journeys in a real browser on the production build** (2026-11-11, §10); **not yet run on a real hosting account** (DEP-2: account actions by the owner).
+**Status:** Draft — implemented; all seven ACs pass locally, re-verified 2026-11-07 (§10); **the full suite passes in CI** (run #10 at `93858b4`, Node 22; only failures already listed in `test/known-failures.json`); **DEP-1 resolved in code 2026-11-10** by its owning specs (sandboxes refuse only a production deployment, `APP_ENV=production`); **the hosted demo passes 6 of 6 journeys in a real browser on the production build** (2026-11-11, §10); **not yet run on a real hosting account** (DEP-2: account actions by the owner).
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §110–§113, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §16, [docs/workflow.md](../workflow.md); specs 005 (sessions, mandatory admin MFA), 009 (admin roles), 010 (catalog seed), 021/024 (payment and payout adapters), 026 (notification channels), 027 (file storage and scanning adapters), 033 (AI adapter), 039 (audit), 040 (analytics), 041 (feature flags, `APP_ENV`). See §8.
@@ -607,7 +607,7 @@ completeness (all required states represented) is the acceptance bar, not editor
 
 The status stays **Draft**. Spec 045's implementation is complete and its focused suites pass (21 files, 130 tests). The one full-suite failure traced to Spec 045, its demo fixtures and the payment expiry sweep, is fixed. Two things remain open:
 
-- **A clean full-suite pass** is still outstanding. The 2026-11-07 run's failures are baseline entries, or files that pass alone, and none is attributed to Spec 045. A clean pass needs a run on mains power with nothing else loading the machine, or CI.
+- **The full suite passes in CI** (run #10 at `93858b4`, 2026-11-11, Linux, Node 22): every test job, `build`, `browser` and `a11y`. Only `perf` fails, on spec 044's documented page-load (LCP) budget. One Spec 024 race test (`lib/payouts/concurrency`) failed once, in run #9, and passed in run #10 and 3 of 3 times locally. It does not touch Spec 045 code.
 - **DEP-1 is resolved in code (2026-11-10)** by its owning specs, and verified on the production build in the hosted-demo browser run (2026-11-11).
 - **DEP-2, a real hosted deployment, needs account actions** (a host, a `_demo` database and its configuration) that only the repository owner can take. Spec 045 stays open until the same journeys pass on it.
 
