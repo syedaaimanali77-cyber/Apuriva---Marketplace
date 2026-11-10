@@ -1,0 +1,61 @@
+/*
+ * Spec 034 §5 — Ask Apuriva placement. Tokens only (app/styles/apuriva-tokens.css). The panel is the
+ * design system's AiAssistantPanel: "a drawer on mobile, a side panel on desktop … never a bottom-nav
+ * tab". It carries no logo of its own (CLAUDE.md branding rule) — the panel's own header is the AI
+ * surface's identity, not a second brand placement.
+ */
+
+.launcher {
+  position: fixed;
+  inset-inline-end: var(--space-6);
+  inset-block-end: var(--space-6);
+  z-index: var(--z-sticky);
+}
+
+.panel {
+  position: fixed;
+  inset-inline-end: var(--space-6);
+  inset-block-end: var(--space-6);
+  z-index: var(--z-drawer);
+  width: min(420px, calc(100vw - 2 * var(--space-6)));
+  height: min(640px, calc(100vh - 2 * var(--space-6)));
+  display: grid;
+  box-shadow: var(--shadow-overlay);
+  border-radius: var(--radius-xl);
+}
+
+@media (max-width: 640px) {
+  .launcher {
+    inset-inline-end: var(--space-4);
+    inset-block-end: var(--space-4);
+  }
+
+  /* A drawer on mobile: full width, anchored to the bottom edge. */
+  .panel {
+    inset-inline: 0;
+    inset-block-end: 0;
+    width: 100vw;
+    height: min(85vh, calc(100vh - var(--space-8)));
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+}
+
+.modeRow {
+  padding-inline: var(--space-5);
+}
+
+.suggestions {
+  padding: var(--space-3) var(--space-5);
+  background: var(--ai-surface);
+  border-block-start: 1px solid var(--ai-border);
+}
+
+.turn {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.status {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

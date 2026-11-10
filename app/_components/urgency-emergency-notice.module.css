@@ -1,0 +1,40 @@
+/*
+ * Spec 030 AC-6 — the marketplace-not-emergency disclosure.
+ *
+ * Built entirely on APURIVA Design System tokens: the warning status pair, the standard spacing
+ * and radius scales, and the semantic text tokens. No raw hex, no arbitrary sizes, and no new
+ * token — this composes what `apuriva-tokens.css` already defines.
+ *
+ * DELIBERATELY NOT SMALL PRINT. AC-6 requires the notice be visible rather than buried, so the body
+ * sits at the normal body size, not `--text-xs`, and the block carries real padding rather than
+ * being squeezed under the control.
+ */
+
+.notice {
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
+  border: 1px solid var(--status-warning-fg);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* For a host that already provides the card treatment. */
+.inline {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  color: var(--status-warning-fg);
+}
+
+.heading {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.body {
+  font-size: var(--text-base);
+  color: var(--text-body);
+  line-height: var(--leading-relaxed);
+}

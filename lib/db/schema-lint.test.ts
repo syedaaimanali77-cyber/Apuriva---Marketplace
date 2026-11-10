@@ -65,12 +65,113 @@ describe('schema lint (spec 003)', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('AC-5: no jsonb column exists on any baseline table yet (feature-specific, owned by later specs)', () => {
+  it('AC-5: every jsonb column is an explicitly reviewed, documented exception — never a silent addition', () => {
+    // Each entry here is a later spec's owning-spec-approved use of jsonb for a genuinely
+    // variable, service-specific attribute (AC-5) — not core/queryable/relationship data. Adding
+    // a jsonb column anywhere else fails this test until it's deliberately added here too.
+    const ALLOWED_JSONB_COLUMNS: Record<string, string[]> = {
+      // Spec 005 §4: variable per-event-type detail, never queried/filtered on directly.
+      security_events: ['metadata'],
+      // Spec 010 §4: a service's variable data (e.g. typical duration ranges) — registered on the
+      // `services` entry under spec 017 below, since the table can have only one key here. A
+      // catalog suggestion's proposed `metadata` has the same shape and is copied onto the service
+      // on approval. Both are read back whole and never queried or filtered on in SQL.
+      catalog_suggestions: ['metadata'],
+      // Spec 011 §4: a `ServiceField`'s `select` choice list and its per-`type` validation rules,
+      // whose shape genuinely differs per field `type` — checked in application code
+      // (`lib/service-page/fields.ts`), read back whole and never queried or filtered on in SQL.
+      service_fields: ['options', 'validation'],
+      // Spec 011 §4: a service requirement's detail, whose shape differs per `kind`
+      // (media/duration/buffer/verification). `kind` itself is a real text column with a CHECK.
+      service_requirements: ['detail'],
+      // Spec 011 §4: a package's "what's included" display list — read back whole and never queried
+      // or filtered on in SQL. Price and currency are real relational columns.
+      service_packages: ['included_items'],
+      // Spec 012 §4: geo hierarchy (city/area/country) — descriptive, never queried/filtered on.
+      locations: ['geo_hierarchy'],
+      // Spec 012 §4: structured address fields — descriptive, never queried/filtered on.
+      addresses: ['structured'],
+      // Spec 015 §4: a request's answer to one `ServiceField`, whose type is genuinely variable
+      // per that field's own `type` (text/select/number/boolean/media). Read back as a whole to
+      // rebuild `RequestDto.fieldValues`; never queried or filtered on.
+      request_field_values: ['value'],
+      // Spec 016 §4: a provider's `cities` coverage list — a short, unordered set of names
+      // compared case-insensitively in application code (`lib/location/service-area.ts`), read
+      // back whole and never queried or filtered on in SQL. The queryable parts of a service area
+      // (mode, radius, centre address) are real relational columns precisely because they ARE
+      // core/queryable data (AC-5).
+      provider_service_areas: ['cities'],
+      // Spec 017 4: the per-service ranking-weight override and an AI suggestion's proposed
+      // weights. Both are a fixed nine-key factor->integer map read back whole and validated in
+      // application code (lib/matching/weights.ts); never queried or filtered on in SQL. The
+      // queryable part of matching config (`matching_pool_size`) is a real integer column.
+      services: ['metadata', 'matching_weights'],
+      matching_suggestions: ['suggested_weights'],
+      // Spec 017 §4: the per-factor scoring breakdown (AC-2/AC-6) — a fixed nine-key
+      // factor->{normalized,weight,available} map, read back whole for admin explainability and
+      // never queried or filtered on in SQL. `score_micros` (the queryable/sortable part) is a
+      // real integer column precisely because it IS core/queryable data.
+      request_provider_matches: ['score_breakdown'],
+      // Spec 018 §4: an offer's "what's included" — a bounded list (≤ 20) of short display strings,
+      // read back whole and never queried or filtered on in SQL. Price, currency and every timer
+      // column are real relational columns precisely because they ARE core/queryable data.
+      offers: ['included_items'],
+      // Spec 023 §4: a cancellation policy's tier ladder and its allowed provider options — a
+      // variable-length, nested structure validated as a whole at write time by
+      // `validateCancellationPolicyConfig` and read back whole by resolution. Never queried or
+      // filtered on in SQL; the queryable parts of a policy version (its validity interval, which
+      // the `policy_versions_no_overlap_ex` exclusion constraint actually indexes) are real
+      // timestamptz columns precisely because they ARE core/queryable data (AC-5).
+      policy_versions: ['config'],
+      // Spec 023 §4: the RESOLVED ladder snapshotted for one booking — the same shape as above, and
+      // immutable once written, which is what makes a booking's terms unalterable (AC-1).
+      policy_acceptances: ['accepted_config'],
+      // Spec 023 §4: a no-show report's evidence bundle — booking timing, the booking's own status
+      // history and whether communications exist. Read back whole for one Trust & Safety reviewer,
+      // never queried or filtered on, and deliberately minimisable to `{}` by the retention sweep
+      // (AC-10). The queryable parts of a report (status, outcome, respond_by_at, location_signal)
+      // are real columns, which is why the reliability count and the sweep can index them.
+      no_show_reports: ['evidence'],
+      // Spec 026 §4: a user's per-category outbound channel map — seven categories × three channels, read
+      // back whole and validated at write time by `validateCategoryChannelMap()`; never queried or filtered
+      // on in SQL. As 21 boolean columns it would need a migration per new category (AC-5).
+      notification_preferences: ['categories'],
+      // Spec 026 §4: a notification's template variables (ids, amounts, statuses) — kept with the row it
+      // rendered, never queried, never exported, and emptied on account deletion.
+      notifications: ['params'],
+      // Spec 029 §4: the rule-based flag signal CODES that produced a `flagged` status — a short,
+      // closed-vocabulary array read back whole by the moderation queue and never queried or
+      // filtered on in SQL. The queryable part of moderation (`status`) is a real text column with
+      // its own CHECK, precisely because it IS core/queryable data (AC-5). Never exported.
+      reviews: ['flag_signals'],
+      review_responses: ['flag_signals'],
+      // Spec 034 §3.9/§4: one confirmed preference's value — a fixed shape per allow-listed key,
+      // validated at write time in `lib/ai-assistant/memory-keys.ts` and read back whole. The
+      // queryable part (`key`) is a real text column with its own CHECK and a unique index.
+      ai_memories: ['value'],
+      // Spec 040 §4: an analytics event's properties — ids, enums, booleans and counts only, checked
+      // against each event type's exact key allow-list in `lib/analytics/events.ts`. Never free text.
+      // The queryable parts (`event_type`, `occurred_at`) are real columns with their own index.
+      analytics_events: ['properties'],
+      // Spec 036 §4: a tool call's minimal REDACTED input and its outcome summary (resource type, id,
+      // status) — IDs, enums, minor units + currency, timestamps, booleans and free-text field names
+      // only. Read back whole for the AI data export; never queried or filtered on in SQL.
+      ai_tool_calls: ['input_params', 'output_summary'],
+      // Spec 039 §4 (X-5): the append-only audit record. `actor_roles` is a JSON array of role names
+      // (the repository has no array columns); `before_value`/`after_value` are the changed values
+      // exactly as the calling module recorded them; `approval_chain` is spec 009's chain as given.
+      // All are read back whole — the queryable parts (resource, event type, target, correlation id,
+      // approval reference) are real indexed columns.
+      audit_logs: ['actor_roles', 'before_value', 'after_value', 'approval_chain'],
+    };
+
     const offenders: string[] = [];
     for (const { config } of tables) {
       for (const column of config.columns) {
         if (column.columnType === 'PgJsonb' || column.columnType === 'PgJson') {
-          offenders.push(`${config.name}.${column.name}`);
+          if (!(ALLOWED_JSONB_COLUMNS[config.name] ?? []).includes(column.name)) {
+            offenders.push(`${config.name}.${column.name}`);
+          }
         }
       }
     }

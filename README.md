@@ -17,13 +17,45 @@ There is no monorepo: one `package.json`, one deployable app, no workspace tooli
 ```bash
 npm install
 cp .env.example .env      # fill in local values if you change any defaults
-docker compose up -d      # starts local Postgres on localhost:5432
+docker compose up -d postgres   # starts local Postgres on localhost:5432
 npm run db:migrate        # applies migrations (none yet — schema starts in spec 003)
 npm run dev                # starts the app at http://localhost:3000
 ```
 
 Health check: `GET http://localhost:3000/api/v1/health` — returns process status, DB
 connectivity, and build/version metadata.
+
+## Running the whole stack in Docker
+
+`docker compose up --build` starts both services and serves the complete application at
+<http://localhost:3000> — no `npm` command in a terminal. Stop any local `next dev` first: it
+holds port 3000.
+
+```bash
+docker compose up --build
+```
+
+| Service | What it is |
+|---|---|
+| `postgres` | PostgreSQL 16, persisted in the `apuriva-postgres-data` volume |
+| `apuriva` | The single Next.js application — frontend pages *and* the `app/api/v1/**` API routes |
+
+There is one application container, not a frontend and a backend: Apuriva is one Next.js app.
+Compose waits for Postgres to report healthy, then the container's entrypoint runs
+`npm run db:migrate` and starts the server. Drizzle records applied migrations, so restarting the
+container re-applies nothing; a failed migration aborts startup rather than serving an application
+against a schema it does not match.
+
+Configuration comes from your own `.env` (gitignored, documented by `.env.example`), which is
+optional — no secret is committed or baked into the image. Compose overrides `DATABASE_URL` to
+`postgresql://apuriva:apuriva@postgres:5432/apuriva`, because inside the container `localhost` is
+the container itself. A real deployment supplies its own `DATABASE_URL`, secrets and provider
+credentials through the deployment environment.
+
+Note that the container runs with `NODE_ENV=production`, under which the sandbox payment, payout,
+notification and AI adapters and the local file-storage adapter deliberately refuse to run. A
+production deployment must supply real adapters before those features work. Scheduled jobs are
+driven by Vercel Cron (`vercel.json`) and do not run in Compose.
 
 ## Scripts
 

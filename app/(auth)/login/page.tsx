@@ -1,0 +1,394 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Alert, Button, FormField, Input, OtpInput } from '@/components';
+import { useLocale } from '@/app/_components/LocaleProvider';
+import type { MfaEnrollmentDto } from '@/lib/types/auth';
+import { AuthShell } from '../_components/AuthShell';
+import styles from '../auth.module.css';
+
+interface ApiErrorBody {
+  code: string;
+  message: string;
+  errors?: { field: string; message: string }[];
+}
+
+async function postJson(url: string, body: unknown): Promise<{ ok: boolean; data?: any; error?: ApiErrorBody }> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  return res.ok ? { ok: true, data: json.data } : { ok: false, error: json as ApiErrorBody };
+}
+
+function fieldError(errors: ApiErrorBody['errors'], field: string): string | undefined {
+  return errors?.find((e) => e.field === field)?.message;
+}
+
+/** The CSRF cookie (spec 005 §3) is deliberately not httpOnly — the client reads it to echo back. */
+function readCsrfCookie(): string | undefined {
+  return document.cookie.split('; ').find((row) => row.startsWith('apuriva_csrf='))?.split('=')[1];
+}
+
+async function postJsonWithCsrf(url: string, body: unknown): Promise<{ ok: boolean; data?: any; error?: ApiErrorBody }> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-csrf-token': readCsrfCookie() ?? '' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  return res.ok ? { ok: true, data: json.data } : { ok: false, error: json as ApiErrorBody };
+}
+
+/**
+ * Spec 005 §5. Phone+OTP is the primary path (Pakistan-market expectation, §1); email+password
+ * is the fallback. Google/Apple are rendered per the UI states description but disabled — spec
+ * 005 §8 risk #1's decision ships only a sandbox OAuth adapter server-side (no real provider
+ * credentials exist in this environment for a real browser redirect flow).
+ *
+ * Visual presentation only lives in this file and `../_components/AuthShell.tsx` /
+ * `../auth.module.css` — every handler, API call, and validation rule below is unchanged from
+ * the original implementation.
+ */
+export default function LoginPage() {
+  const { t, errorText } = useLocale();
+  const router = useRouter();
+  const [mode, setMode] = useState<'phone' | 'password'>('phone');
+
+  // Phone + OTP
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
+
+  // Email + password
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [genericError, setGenericError] = useState<string | null>(null);
+
+  // AC-5: admin login pending its second factor.
+  const [mfaPending, setMfaPending] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaError, setMfaError] = useState<string | null>(null);
+  const [verifyingMfa, setVerifyingMfa] = useState(false);
+  // AC-5: an admin who has never enrolled sets up an authenticator first (first-login enrolment).
+  const [enrollmentRequired, setEnrollmentRequired] = useState(false);
+  const [enrollment, setEnrollment] = useState<MfaEnrollmentDto | null>(null);
+  const [enrollmentError, setEnrollmentError] = useState<string | null>(null);
+
+  async function handleSendOtp() {
+    setPhoneError(null);
+    setSendingOtp(true);
+    const result = await postJson('/api/v1/auth/otp/request', { phoneNumber });
+    setSendingOtp(false);
+    if (!result.ok) {
+      setPhoneError(
+        fieldError(result.error?.errors, 'phoneNumber') ?? errorText(result.error?.code, result.error?.message, t('auth.login.somethingWrong')),
+      );
+      return;
+    }
+    setRequestId(result.data.requestId);
+    setAttemptsLeft(5);
+  }
+
+  async function handleVerifyOtp(code: string) {
+    if (!requestId) return;
+    setOtpError(null);
+    setVerifyingOtp(true);
+    const result = await postJson('/api/v1/auth/otp/verify', { requestId, code });
+    setVerifyingOtp(false);
+    if (!result.ok) {
+      if (result.error?.code === 'RATE_LIMITED') {
+        setOtpError(t('auth.login.tooManyAttempts'));
+        setAttemptsLeft(0);
+      } else if (result.error?.code === 'OTP_EXPIRED') {
+        setOtpError(t('auth.login.otpExpired'));
+      } else {
+        setAttemptsLeft((n) => (n === null ? null : Math.max(0, n - 1)));
+        setOtpError(
+          `${t('auth.login.otpWrong')} ${attemptsLeft !== null ? t('auth.login.attemptsLeft', { count: Math.max(0, (attemptsLeft ?? 1) - 1) }) : ''}`,
+        );
+      }
+      return;
+    }
+    router.push('/');
+  }
+
+  async function handlePasswordLogin() {
+    setEmailError(null);
+    setPasswordError(null);
+    setGenericError(null);
+    setLoggingIn(true);
+    const result = await postJson('/api/v1/auth/login', { email, password });
+    setLoggingIn(false);
+    if (!result.ok) {
+      const missingEmail = fieldError(result.error?.errors, 'email');
+      const missingPassword = fieldError(result.error?.errors, 'password');
+      if (missingEmail || missingPassword) {
+        setEmailError(missingEmail ?? null);
+        setPasswordError(missingPassword ?? null);
+        return;
+      }
+      // AC-3: never reveal whether the email exists — one generic message either way.
+      setGenericError(t('auth.login.failed'));
+      return;
+    }
+    if (result.data.mfaRequired) {
+      setMfaPending(true);
+      if (result.data.mfaEnrollmentRequired) {
+        setEnrollmentRequired(true);
+        await startEnrollment();
+      }
+      return;
+    }
+    router.push('/');
+  }
+
+  async function startEnrollment() {
+    setEnrollmentError(null);
+    const result = await postJsonWithCsrf('/api/v1/auth/mfa/enrollment', {});
+    if (!result.ok) {
+      setEnrollmentError(errorText(result.error?.code, result.error?.message, t('auth.login.enrolFailed')));
+      return;
+    }
+    setEnrollment(result.data as MfaEnrollmentDto);
+  }
+
+  async function handleMfaVerify(code: string) {
+    setMfaError(null);
+    setVerifyingMfa(true);
+    const result = await postJsonWithCsrf(
+      '/api/v1/auth/mfa/verify',
+      enrollment ? { code, enrollmentToken: enrollment.enrollmentToken } : { code },
+    );
+    setVerifyingMfa(false);
+    if (!result.ok) {
+      setMfaError(errorText(result.error?.code, result.error?.message, t('auth.login.mfaWrong')));
+      return;
+    }
+    router.push('/');
+  }
+
+  return (
+    <AuthShell
+      footer={
+        <>
+          {t('auth.login.noAccount')}{' '}
+          <a href="/register" className={styles.footerLink}>
+            {t('auth.login.register')}
+          </a>
+        </>
+      }
+    >
+      {mfaPending ? (
+        <>
+          <div>
+            <span className={styles.eyebrow}>{t('auth.login.almostThere')}</span>
+            <h1 className={styles.title}>{t(enrollmentRequired ? 'auth.login.enrolTitle' : 'auth.login.verifyTitle')}</h1>
+            <p className={styles.subtitle}>{t(enrollmentRequired ? 'auth.login.enrolSubtitle' : 'auth.login.verifySubtitle')}</p>
+          </div>
+          {enrollmentRequired && enrollmentError ? (
+            <Alert tone="error">
+              {enrollmentError}{' '}
+              <Button variant="ghost" size="sm" onClick={startEnrollment}>
+                {t('auth.login.enrolRetry')}
+              </Button>
+            </Alert>
+          ) : null}
+          {enrollmentRequired && enrollment ? (
+            <div className={styles.enrolment}>
+              <span className={styles.enrolmentLabel} id="mfa-setup-key-label">
+                {t('auth.login.enrolKeyLabel')}
+              </span>
+              <code className={styles.setupKey} aria-labelledby="mfa-setup-key-label" data-testid="mfa-setup-key">
+                {enrollment.secret}
+              </code>
+              <a className={styles.footerLink} href={enrollment.otpauthUrl}>
+                {t('auth.login.enrolOpenApp')}
+              </a>
+            </div>
+          ) : null}
+          <form
+            className={styles.form}
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleMfaVerify(mfaCode);
+            }}
+          >
+            <FormField label={t('auth.login.authenticatorCode')} htmlFor="mfa-code" error={mfaError ?? undefined}>
+              <OtpInput
+                id="mfa-code"
+                value={mfaCode}
+                onChange={setMfaCode}
+                onComplete={handleMfaVerify}
+                invalid={Boolean(mfaError)}
+                disabled={verifyingMfa}
+              />
+            </FormField>
+            <Button type="submit" variant="primary" size="lg" fullWidth loading={verifyingMfa} disabled={mfaCode.length !== 6}>
+              {t('auth.login.verify')}
+            </Button>
+          </form>
+        </>
+      ) : (
+        <>
+          <div>
+            <span className={styles.eyebrow}>{t('auth.login.welcomeBack')}</span>
+            <h1 className={styles.title}>{t('auth.login.title')}</h1>
+            <p className={styles.subtitle}>{t('auth.login.subtitle')}</p>
+          </div>
+
+          <div role="tablist" aria-label={t('auth.login.method')} className={styles.segmented}>
+            <Button
+              role="tab"
+              aria-selected={mode === 'phone'}
+              variant={mode === 'phone' ? 'primary' : 'ghost'}
+              fullWidth
+              className={styles.segmentedButton}
+              onClick={() => setMode('phone')}
+            >
+              {t('auth.login.phone')}
+            </Button>
+            <Button
+              role="tab"
+              aria-selected={mode === 'password'}
+              variant={mode === 'password' ? 'primary' : 'ghost'}
+              fullWidth
+              className={styles.segmentedButton}
+              onClick={() => setMode('password')}
+            >
+              {t('auth.email')}
+            </Button>
+          </div>
+
+          {mode === 'phone' ? (
+            <form
+              className={styles.form}
+              onSubmit={(e) => {
+                e.preventDefault();
+                requestId ? handleVerifyOtp(otpCode) : handleSendOtp();
+              }}
+            >
+              <FormField label={t('auth.login.phoneNumber')} htmlFor="phone" error={phoneError ?? undefined} required>
+                <Input
+                  id="phone"
+                  type="tel"
+                  size="lg"
+                  iconLeft="phone"
+                  autoComplete="tel"
+                  placeholder={t('auth.login.phonePlaceholder')}
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  invalid={Boolean(phoneError)}
+                  disabled={Boolean(requestId)}
+                />
+              </FormField>
+
+              {requestId ? (
+                <FormField
+                  label={t('auth.login.verificationCode')}
+                  htmlFor="otp"
+                  help={otpError ? undefined : t('auth.login.codeHelp')}
+                  error={otpError ?? undefined}
+                >
+                  <OtpInput
+                    id="otp"
+                    value={otpCode}
+                    onChange={setOtpCode}
+                    onComplete={handleVerifyOtp}
+                    invalid={Boolean(otpError)}
+                    disabled={verifyingOtp || attemptsLeft === 0}
+                  />
+                </FormField>
+              ) : null}
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                fullWidth
+                loading={requestId ? verifyingOtp : sendingOtp}
+                disabled={requestId ? otpCode.length !== 6 || attemptsLeft === 0 : phoneNumber.length === 0}
+              >
+                {requestId ? t('auth.login.verifyCode') : t('auth.login.sendCode')}
+              </Button>
+            </form>
+          ) : (
+            <form
+              className={styles.form}
+              onSubmit={(e) => {
+                e.preventDefault();
+                handlePasswordLogin();
+              }}
+            >
+              <FormField label={t('auth.email')} htmlFor="email" error={emailError ?? undefined} required>
+                <Input
+                  id="email"
+                  type="email"
+                  size="lg"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  invalid={Boolean(emailError)}
+                />
+              </FormField>
+              <FormField label={t('auth.password')} htmlFor="password" error={passwordError ?? undefined} required>
+                <Input
+                  id="password"
+                  type="password"
+                  size="lg"
+                  iconLeft="lock"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  invalid={Boolean(passwordError)}
+                />
+              </FormField>
+              {genericError ? <Alert tone="error">{genericError}</Alert> : null}
+              <Button type="submit" variant="primary" size="lg" fullWidth loading={loggingIn}>
+                {t('auth.login.submit')}
+              </Button>
+            </form>
+          )}
+
+          <div className={styles.divider}>
+            <hr className={styles.dividerLine} />
+            <span className={styles.dividerLabel}>{t('auth.or')}</span>
+            <hr className={styles.dividerLine} />
+          </div>
+
+          <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+            <Button
+              variant="secondary"
+              size="lg"
+              fullWidth
+              disabled
+              title={t('auth.googleUnavailable')}
+            >
+              {t('auth.google')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              fullWidth
+              disabled
+              title={t('auth.appleUnavailable')}
+            >
+              {t('auth.apple')}
+            </Button>
+          </div>
+        </>
+      )}
+    </AuthShell>
+  );
+}

@@ -1,0 +1,67 @@
+/*
+ * Spec 019 §5 — offer comparison. A DS `Table` at ≥ 769px, stacked DS `OfferCard`s below. Every value is
+ * an APURIVA Design System token from app/styles/apuriva-tokens.css.
+ */
+
+.tableView {
+  display: block;
+  overflow-x: auto;
+}
+
+.stackView {
+  display: none;
+  gap: var(--space-4);
+}
+
+@media (max-width: 768px) {
+  .tableView {
+    display: none;
+  }
+
+  .stackView {
+    display: grid;
+  }
+}
+
+.headerCell {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.reasons {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reason {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+}
+
+.items {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+}
+
+.muted {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.revisedFrom {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.backLink {
+  color: var(--text-link);
+}

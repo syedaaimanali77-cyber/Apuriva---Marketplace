@@ -1,0 +1,4 @@
+# Spec 046 §3.4 — gitleaks findings reviewed and confirmed NOT to be secrets. One exact fingerprint
+# (commit:file:rule:line) per line; never a path or rule wildcard, so a real secret is still caught.
+# A fixed UUID used as an MCP idempotency-key test fixture (spec 036), matched by the generic-api-key heuristic:
+5185181e601cf4cd8c17d87838ea756e426e9682:lib/mcp-tools/privacy.integration.test.ts:generic-api-key:23

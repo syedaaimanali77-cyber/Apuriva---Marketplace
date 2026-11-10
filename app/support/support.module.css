@@ -1,0 +1,152 @@
+/*
+ * Spec 032 §5 — the customer/provider support surface.
+ *
+ * APURIVA Design System tokens only: spacing, radius, typography and semantic colour aliases from
+ * `app/styles/apuriva-tokens.css`. No raw hex, no arbitrary sizes, no new token, and no new
+ * design-system primitive. Per CLAUDE.md's branding rule these pages carry no logo of their own —
+ * the global AppHeader is the one brand placement.
+ *
+ * Deliberately the same visual language as `safety-report.module.css`: a support screen and a
+ * safety screen are the same kind of moment for the person using them, and §7 rules out any
+ * premium redesign here.
+ */
+
+.page {
+  max-width: var(--container-narrow);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  display: grid;
+  align-content: start;
+  gap: var(--space-5);
+}
+
+.title {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-heading);
+}
+
+.body {
+  font-size: var(--text-base);
+  color: var(--text-body);
+  line-height: var(--leading-relaxed);
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.label {
+  display: block;
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--field-label);
+}
+
+.help {
+  font-size: var(--text-sm);
+  color: var(--text-subtle);
+}
+
+/* The assistant panel. It is visually secondary to the escalation action below it on purpose. */
+.assistant {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.assistantAnswer {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--ai-surface);
+  color: var(--text-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  white-space: pre-wrap;
+}
+
+/*
+ * The human path. It sits OUTSIDE the assistant panel and is never disabled, so it is present
+ * before, during and after any AI call — AC-1.
+ */
+.escalation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-subtle);
+}
+
+/* The ticket thread. Oldest first, so it reads as a record rather than a chat feed. */
+.thread {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.message {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+}
+
+/* An official reply is visually distinct — but it is never attributed to a named individual. */
+.messageFromSupport {
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+.messageAuthor {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.messageBody {
+  margin-top: var(--space-2);
+  font-size: var(--text-base);
+  color: var(--text-body);
+  line-height: var(--leading-relaxed);
+  white-space: pre-wrap;
+}
+
+.messageTime {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-subtle);
+}
+
+.composer {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.ticketList {
+  display: grid;
+  gap: var(--space-3);
+}

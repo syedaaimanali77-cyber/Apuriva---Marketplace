@@ -6,7 +6,28 @@
  * `docs/specs/2026-08-28-041-feature-flags-platform-configuration.md` is where these become
  * runtime-configurable instead of hardcoded here.
  */
-export type RateLimitDomain = 'auth' | 'search' | 'messaging' | 'ai' | 'mcp' | 'payment' | 'security' | 'default';
+export type RateLimitDomain =
+  | 'auth'
+  | 'search'
+  | 'home'
+  | 'requests'
+  | 'messaging'
+  | 'ai'
+  | 'mcp'
+  | 'payment'
+  | 'security'
+  | 'location'
+  | 'availability'
+  | 'matching'
+  | 'offers'
+  | 'bookings'
+  | 'files'
+  | 'reviews'
+  | 'safety'
+  | 'disputes'
+  | 'support'
+  | 'moderation'
+  | 'default';
 
 export interface RateLimitRule {
   limit: number;
@@ -16,11 +37,62 @@ export interface RateLimitRule {
 export const RATE_LIMIT_DEFAULTS: Record<RateLimitDomain, RateLimitRule> = {
   auth: { limit: 10, windowMs: 60_000 },
   search: { limit: 60, windowMs: 60_000 },
+  // Spec 014 §3: the single most-visited screen (guest-accessible) — same order of magnitude as
+  // 'search', which it's built on top of.
+  home: { limit: 60, windowMs: 60_000 },
+  // Spec 015 §3: the customer's own request create/read surface. A write path deserves a tighter
+  // budget than the shared 'default' 100/60s, the same reasoning 'search'/'payment' already use.
+  requests: { limit: 30, windowMs: 60_000 },
   messaging: { limit: 30, windowMs: 60_000 },
   ai: { limit: 20, windowMs: 60_000 },
   mcp: { limit: 30, windowMs: 60_000 },
   payment: { limit: 10, windowMs: 60_000 },
   security: { limit: 5, windowMs: 60_000 },
+  // Spec 012 §3: geocode/reverse-geocode reach a paid external vendor per call — its own budget
+  // rather than sharing 'default', same reasoning as 'search'/'payment'.
+  location: { limit: 60, windowMs: 60_000 },
+  // Spec 016 §3: the provider's own schedule/service-area surface plus the guest-readable
+  // availability summary — its own budget rather than sharing 'default', the same reasoning
+  // spec 014 used for 'home' and spec 015 for 'requests'.
+  availability: { limit: 60, windowMs: 60_000 },
+  // Spec 017 §3: a provider write surface (accept/decline, admin weight configuration) — the
+  // same 30/60s budget spec 015 chose for 'requests', its closest analogue.
+  matching: { limit: 30, windowMs: 60_000 },
+  // Spec 018 §3: offer create/read/decide — the same write-surface budget as 'requests'/'matching'.
+  offers: { limit: 30, windowMs: 60_000 },
+  // Spec 020 §3: booking creation and the lifecycle/completion transitions — a transactional write
+  // surface, so the same 30/60s budget 'requests'/'matching'/'offers' already use rather than the
+  // looser shared 'default'. It also bounds AC-2's alternatives disclosure per caller.
+  bookings: { limit: 30, windowMs: 60_000 },
+  // Spec 027 §3: upload-url/finalize/delete and the signed-content fetch. These calls RESERVE
+  // storage and ISSUE credentials, so they get the same write-surface budget specs 015/017/018/020
+  // chose rather than the looser shared 'default'. `GET /files/{id}/content` uses this domain too,
+  // keyed by the user id the signed link is bound to.
+  files: { limit: 30, windowMs: 60_000 },
+  // Spec 029 §3: review submission, the provider response, reporting and the moderation routes —
+  // the same write-surface budget specs 015/017/018/020/027 chose rather than the looser shared
+  // 'default'. `GET /providers/{id}/reviews` uses this domain too, keyed by `hashRequestIp()` for a
+  // guest, so the public list cannot be scraped at 'default' speed. The per-user 20-reports/24h cap
+  // in `lib/reviews/report.ts` bounds sustained volume on top of this rate budget.
+  reviews: { limit: 30, windowMs: 60_000 },
+  // Spec 030 §3: blocking, safety reporting and the Trust & Safety admin routes — the same
+  // write-surface budget specs 015/017/018/020/027/029 chose. Deliberately NOT looser for the
+  // admin queue: a safety surface is exactly where an enumeration attempt should be bounded.
+  safety: { limit: 30, windowMs: 60_000 },
+  // Spec 031 §3: opening a dispute, evidence linkage, the dispute thread, appeals and the Trust &
+  // Safety dispute routes — the same write-surface budget specs 015/017/018/020/027/029/030 chose
+  // rather than the looser shared 'default'. It also bounds the message thread per caller on top
+  // of `MAX_DISPUTE_MESSAGES`, which bounds it per dispute.
+  disputes: { limit: 30, windowMs: 60_000 },
+  // Spec 032 §3: raising a ticket, the support thread, attachments and every admin support route —
+  // the same write-surface budget specs 015/017/018/020/027/029/030/031 chose rather than the
+  // looser shared 'default'. It also bounds the thread per caller on top of `MAX_SUPPORT_MESSAGES`,
+  // which bounds it per ticket. The AI assistant route deliberately uses the 'ai' domain instead,
+  // so assistant traffic can never consume the budget a user needs to reach a human.
+  support: { limit: 30, windowMs: 60_000 },
+  // Spec 038 §3.13: every moderation, fraud-signal and appeal route — the same write-surface budget
+  // the safety/disputes/support domains chose.
+  moderation: { limit: 30, windowMs: 60_000 },
   default: { limit: 100, windowMs: 60_000 },
 };
 

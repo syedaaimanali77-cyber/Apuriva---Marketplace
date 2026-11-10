@@ -26,6 +26,9 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# personal downloads accidentally saved inside the repo
+Downloads/
+
 # editors
 .vscode/*
 !.vscode/extensions.json

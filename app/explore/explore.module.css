@@ -1,0 +1,76 @@
+/*
+ * Spec 011 §5 — the service-detail page (`/explore/[category]/[service]`). Built on the APURIVA
+ * Design System's own tokens, same approach as app/admin/admin.module.css. Per CLAUDE.md's
+ * branding rule, the page carries no logo/header of its own.
+ *
+ * The Explore browse pages (`/explore`, `/explore/[category]`) have their own module,
+ * explore-browse.module.css; only the rules service detail actually uses remain here.
+ */
+
+.page {
+  max-width: var(--container-wide);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+/* Spec 011 §5 — category and service page additions. */
+
+.section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.heroRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.fieldPreviewList {
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-body);
+  font-size: var(--text-sm);
+}
+
+.requirementNote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-brand-subtle);
+  color: var(--text-body);
+  font-size: var(--text-sm);
+}
+
+.requirementNote svg {
+  margin-top: 2px;
+  color: var(--teal-600);
+}

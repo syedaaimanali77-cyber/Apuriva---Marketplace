@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Container entrypoint must keep LF endings or the Alpine shebang breaks.
+docker-entrypoint.sh text eol=lf

@@ -1,0 +1,5 @@
+{
+  "//": "Spec 044 (initial JS): declares the modules in components/ side-effect-free (stylesheets excepted), so the bundler can skip the unused re-exports of the components/index.ts barrel instead of shipping every component on every route. None of these modules does anything at import time beyond declaring components. Scoped to this folder only; the root package.json is untouched.",
+  "private": true,
+  "sideEffects": ["*.css"]
+}

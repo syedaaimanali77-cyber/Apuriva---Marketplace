@@ -20,7 +20,12 @@
     "check:openapi-drift": "tsx scripts/check-openapi-drift.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx lib/db/migrate.ts",
-    "db:rollback": "tsx lib/db/rollback.ts"
+    "db:rollback": "tsx lib/db/rollback.ts",
+    "lint": "eslint .",
+    "check:migration-pairing": "tsx scripts/check-migration-pairing.ts",
+    "check:no-workspace": "tsx scripts/check-no-workspace.ts",
+    "check:build-status": "tsx scripts/check-build-status.ts",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "next": "^16.3.4",
@@ -28,9 +33,13 @@
     "react-dom": "^19.2.8",
     "pg": "^8.23.0",
     "drizzle-orm": "^0.45.2",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "openai": "^7.23.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@lhci/cli": "^0.15.1",
+    "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
@@ -39,7 +48,10 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^6.1.1",
+    "@vitest/coverage-v8": "^4.1.11",
     "drizzle-kit": "^0.31.10",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.4",
     "jsdom": "^27.4.0",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",

@@ -19,5 +19,7 @@ export interface ApiError {
   code: string; // SCREAMING_SNAKE_CASE, stable
   message: string;
   errors?: { field: string; message: string }[];
+  /** Optional, code-specific machine-readable context (e.g. spec 019 `OFFER_SUPERSEDED.currentOfferId`). */
+  details?: Record<string, unknown>;
   correlationId: string;
 }

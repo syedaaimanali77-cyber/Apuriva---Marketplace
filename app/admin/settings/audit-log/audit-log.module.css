@@ -1,0 +1,76 @@
+/* Spec 039 §5 — audit log page. Tokens only (app/styles/apuriva-tokens.css). */
+
+.filters {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  align-items: end;
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.detail {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.meta dt {
+  color: var(--text-muted);
+}
+
+.meta dd {
+  margin: 0;
+  color: var(--text-body);
+  overflow-wrap: anywhere;
+}
+
+.values {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.valueTitle {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-heading);
+}
+
+/* Before/after rendered as formatted JSON (D-10). The design system has no monospace token, so the
+   system sans face is kept; `pre` preserves the indentation that makes the structure readable. */
+.json {
+  margin: 0;
+  padding: var(--space-3);
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}

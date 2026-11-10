@@ -1,0 +1,141 @@
+/*
+ * Spec 021 §5 — the payment screen.
+ *
+ * Every value is an APURIVA Design System token from app/styles/apuriva-tokens.css; no hex, font
+ * size, radius, shadow or spacing is written by hand, and no new token is introduced. The screen is
+ * composed from the existing primitives in @/components and only lays them out. Per CLAUDE.md's
+ * branding rule it carries no logo or brand header of its own — the nav shell provides the one
+ * placement. Home and the global design system are untouched.
+ */
+
+.page {
+  max-width: var(--container-content);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-12);
+  display: grid;
+  gap: var(--space-6);
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: var(--space-5) var(--space-4) var(--space-8);
+    gap: var(--space-5);
+  }
+}
+
+.head {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-15);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-brand);
+}
+
+.eyebrowLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.eyebrowLink:hover {
+  color: var(--text-link-hover);
+  text-decoration: underline;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+@media (max-width: 640px) {
+  .title {
+    font-size: var(--text-2xl);
+  }
+}
+
+.subtitle {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.summaryRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.summaryLabel {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.summaryValue {
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.status {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.adjustmentList {
+  display: grid;
+  gap: var(--space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.adjustmentReason {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+}
+
+.protection {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+}

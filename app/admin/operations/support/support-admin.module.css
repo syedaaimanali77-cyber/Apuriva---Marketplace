@@ -1,0 +1,116 @@
+/*
+ * Spec 032 §5 — the admin support workspace.
+ *
+ * Route-local, so the shared `app/admin/admin.module.css` is not modified by this spec: it belongs
+ * to spec 014 and is used by every other admin screen. Only the classes this workspace genuinely
+ * needs beyond it live here.
+ *
+ * APURIVA Design System tokens only, from `app/styles/apuriva-tokens.css`. No raw hex, no arbitrary
+ * sizes, no new token, no new primitive, and no premium redesign — §7 rules that out, and this
+ * screen deliberately reads like the safety and dispute workspaces beside it.
+ */
+
+.body {
+  font-size: var(--text-base);
+  color: var(--text-body);
+  line-height: var(--leading-relaxed);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-subtle);
+}
+
+.label {
+  display: block;
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--field-label);
+}
+
+.help {
+  font-size: var(--text-sm);
+  color: var(--text-subtle);
+}
+
+/*
+ * Internal notes. Visually distinct AND explicitly labelled, because the one mistake that matters
+ * on this screen is an admin believing a note was visible to the customer, or the reverse.
+ */
+.internalPanel {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+.internalBanner {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.note {
+  margin-top: var(--space-3);
+  font-size: var(--text-base);
+  color: var(--text-body);
+  white-space: pre-wrap;
+}
+
+.thread {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.message {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+}
+
+.messageFromSupport {
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+.messageAuthor {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-heading);
+}
+
+.messageBody {
+  margin-top: var(--space-2);
+  font-size: var(--text-base);
+  color: var(--text-body);
+  line-height: var(--leading-relaxed);
+  white-space: pre-wrap;
+}
+
+/* The AI summary. Labelled a suggestion, and placed BELOW the requester's own words. */
+.aiSummary {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--ai-surface);
+  color: var(--text-body);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  white-space: pre-wrap;
+}
+
+.contextLink {
+  font-size: var(--text-sm);
+}

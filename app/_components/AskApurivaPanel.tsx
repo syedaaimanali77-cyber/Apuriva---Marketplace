@@ -1,0 +1,349 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { AiAssistantLauncher, AiAssistantPanel } from '@/components/AiAssistantPanel';
+import { AiConfirmationCard } from '@/components/AiConfirmationCard';
+import { AiMessage } from '@/components/AiMessage';
+import { AiSuggestedActions } from '@/components/AiSuggestedActions';
+import { AiToolApproval } from '@/components/AiToolApproval';
+import { ErrorState } from '@/components/ErrorState';
+import { Switch } from '@/components/Switch';
+import { useAuthGate } from '@/lib/auth-gate/use-auth-gate';
+import type {
+  AiActionDto,
+  AiConversationDto,
+  AiMemoryProposalDto,
+  AiMessageDto,
+  AiMessageRole,
+  AiPendingConfirmationDto,
+  AiProactiveSuggestionDto,
+  AiTemporaryReplyDto,
+} from '@/lib/types/ai-assistant';
+import type { MessageKey } from '@/lib/i18n/dictionaries/en';
+import { aiMutation, isAiUnavailable, newIdempotencyKey, readAiResponse, type AiApiResult } from './ask-apuriva-client';
+import { useLocale } from './LocaleProvider';
+import styles from './ask-apuriva.module.css';
+
+/**
+ * §5 — fixed starter prompts. They only PRE-FILL the composer; they are not proactive suggestions.
+ * Spec 042: shown (and pre-filled) in the reader's locale; what the user then sends is their own input.
+ */
+const STARTER_PROMPT_KEYS: MessageKey[] = ['ask.starters.nearMe', 'ask.starters.describe', 'ask.starters.booking'];
+
+type ApprovalState = 'pending' | 'approved' | 'denied' | 'failed';
+
+interface PanelMessage {
+  key: string;
+  role: AiMessageRole;
+  body: string;
+  memoryProposal?: AiMemoryProposalDto;
+  memoryState?: ApprovalState;
+  pendingConfirmation?: AiPendingConfirmationDto;
+  confirmState?: ApprovalState | 'busy';
+  confirmResult?: AiActionDto['result'];
+}
+
+const RESULT_TEXT: Record<AiActionDto['result'], MessageKey> = {
+  succeeded: 'ask.result.succeeded',
+  failed: 'ask.result.failed',
+  pending: 'ask.result.pending',
+};
+
+export interface AskApurivaPanelProps {
+  onClose: () => void;
+}
+
+/**
+ * Spec 034 §5 — the open Ask Apuriva panel, composed from the design system's AI primitives.
+ *
+ * NORMAL mode starts a stored conversation on the first message. TEMPORARY mode (a `Switch` offered
+ * only before a conversation starts) keeps the transcript in this component's state ONLY — never in
+ * `localStorage`/`sessionStorage`/IndexedDB — sends it whole to the stateless temporary-turn route,
+ * renders no memory proposal and no action confirmation, and discards everything when closed.
+ *
+ * Proactive suggestions render in the footer as "Ask Apuriva suggests"; selecting one only
+ * navigates. A guest is routed through spec 007's AuthGate on the first `401`.
+ */
+export function AskApurivaPanel({ onClose }: AskApurivaPanelProps) {
+  const { t } = useLocale();
+  const router = useRouter();
+  const { guard } = useAuthGate();
+
+  const [temporary, setTemporary] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<PanelMessage[]>([]);
+  const [composer, setComposer] = useState('');
+  const [sending, setSending] = useState(false);
+  const [failure, setFailure] = useState<{ kind: 'unavailable' | 'error'; retryText: string } | null>(null);
+  const [suggestions, setSuggestions] = useState<AiProactiveSuggestionDto[]>([]);
+  const keyCounter = useRef(0);
+
+  const nextKey = () => {
+    keyCounter.current += 1;
+    return `m${keyCounter.current}`;
+  };
+
+  // Suggestions are PULLED once, when the panel opens (§3.10). A failure renders nothing.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { redirectedToAuth, response } = await guard({ actionType: 'ask-apuriva' }, () =>
+        fetch('/api/v1/ai/suggestions', { credentials: 'same-origin' }),
+      );
+      if (redirectedToAuth || cancelled) return;
+      const result = await readAiResponse<AiProactiveSuggestionDto[]>(response);
+      if (!cancelled && result.ok) setSuggestions(result.data ?? []);
+    })().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // Runs once per opened panel; `guard` is re-created each render and must not re-trigger it.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const guarded = useCallback(
+    async <T,>(run: () => Promise<Response>): Promise<AiApiResult<T> | null> => {
+      try {
+        const { redirectedToAuth, response } = await guard({ actionType: 'ask-apuriva' }, run);
+        if (redirectedToAuth) return null;
+        return await readAiResponse<T>(response);
+      } catch {
+        return { ok: false, status: 0, error: { code: 'NETWORK_ERROR', message: 'We could not reach the server.' } };
+      }
+    },
+    [guard],
+  );
+
+  async function ensureConversation(retryText: string): Promise<string | null> {
+    if (conversationId) return conversationId;
+    const key = newIdempotencyKey();
+    const created = await guarded<AiConversationDto>(() => fetch('/api/v1/ai/conversations', aiMutation('POST', {}, key)));
+    if (!created) return null;
+    if (!created.ok || !created.data) {
+      setFailure({ kind: isAiUnavailable(created.error) ? 'unavailable' : 'error', retryText });
+      return null;
+    }
+    setConversationId(created.data.id);
+    return created.data.id;
+  }
+
+  async function send(raw?: string) {
+    const text = (raw ?? composer).trim();
+    if (text.length === 0 || sending) return;
+    setFailure(null);
+    setSending(true);
+    const userMessage: PanelMessage = { key: nextKey(), role: 'user', body: text };
+    const transcript = [...messages, userMessage];
+    setMessages(transcript);
+    setComposer('');
+
+    if (temporary) {
+      const turns = transcript.map((m) => ({ role: m.role, body: m.body }));
+      const res = await guarded<AiTemporaryReplyDto>(() => fetch('/api/v1/ai/temporary-turns', aiMutation('POST', { turns })));
+      setSending(false);
+      if (!res) return;
+      if (!res.ok || !res.data) {
+        // The temporary transcript so far stays on screen; only the unanswered turn is withdrawn.
+        setMessages(messages);
+        setFailure({ kind: isAiUnavailable(res.error) ? 'unavailable' : 'error', retryText: text });
+        return;
+      }
+      setMessages([...transcript, { key: nextKey(), role: 'assistant', body: res.data.body }]);
+      return;
+    }
+
+    const id = await ensureConversation(text);
+    if (!id) {
+      setSending(false);
+      setMessages(messages);
+      return;
+    }
+    const res = await guarded<AiMessageDto>(() =>
+      fetch(`/api/v1/ai/conversations/${encodeURIComponent(id)}/messages`, aiMutation('POST', { body: text }, newIdempotencyKey())),
+    );
+    setSending(false);
+    if (!res) return;
+    if (!res.ok || !res.data) {
+      // Nothing was stored for a failed turn (§3.3 step 4), so it is withdrawn here too.
+      setMessages(messages);
+      setFailure({ kind: isAiUnavailable(res.error) ? 'unavailable' : 'error', retryText: text });
+      return;
+    }
+    const reply = res.data;
+    setMessages([
+      ...transcript,
+      {
+        key: nextKey(),
+        role: 'assistant',
+        body: reply.body,
+        memoryProposal: reply.memoryProposal,
+        memoryState: reply.memoryProposal ? 'pending' : undefined,
+        pendingConfirmation: reply.pendingConfirmation,
+        confirmState: reply.pendingConfirmation ? 'pending' : undefined,
+      },
+    ]);
+  }
+
+  function patchMessage(key: string, patch: Partial<PanelMessage>) {
+    setMessages((current) => current.map((m) => (m.key === key ? { ...m, ...patch } : m)));
+  }
+
+  /** The user's EXPLICIT confirmation of a memory proposal — the only way memory is ever written. */
+  async function rememberProposal(message: PanelMessage) {
+    if (!message.memoryProposal || !conversationId) return;
+    const { key, value } = message.memoryProposal;
+    const res = await guarded(() => fetch('/api/v1/ai/memory', aiMutation('POST', { conversationId, key, value })));
+    if (!res) return;
+    patchMessage(message.key, { memoryState: res.ok ? 'approved' : 'failed' });
+  }
+
+  /** The user's EXPLICIT confirmation of a medium/high action — never inferred from message text. */
+  async function confirmAction(message: PanelMessage) {
+    if (!message.pendingConfirmation || !conversationId) return;
+    patchMessage(message.key, { confirmState: 'busy' });
+    const res = await guarded<AiActionDto>(() =>
+      fetch(
+        `/api/v1/ai/conversations/${encodeURIComponent(conversationId)}/confirm`,
+        aiMutation('POST', { confirmationId: message.pendingConfirmation!.confirmationId }, newIdempotencyKey()),
+      ),
+    );
+    if (!res) return;
+    if (!res.ok || !res.data) {
+      patchMessage(message.key, { confirmState: 'failed' });
+      return;
+    }
+    patchMessage(message.key, { confirmState: 'approved', confirmResult: res.data.result });
+  }
+
+  const started = messages.length > 0;
+
+  return (
+    <AiAssistantPanel
+      title={temporary ? t('ask.titleTemporary') : t('ask.title')}
+      subtitle={temporary ? t('ask.temporaryNotice') : t('ask.subtitle')}
+      placeholder={t('ask.placeholder')}
+      composerValue={composer}
+      onComposerChange={(e) => setComposer(e.target.value)}
+      onSend={() => void send()}
+      onClose={onClose}
+      footer={
+        suggestions.length > 0 ? (
+          <div className={styles.suggestions}>
+            <AiSuggestedActions
+              label={t('ask.suggests')}
+              actions={suggestions.map((s) => ({ id: `${s.link.type}:${s.link.id}`, label: s.text }))}
+              onSelect={(action) => {
+                const suggestion = suggestions.find((s) => `${s.link.type}:${s.link.id}` === action.id);
+                if (!suggestion) return;
+                // Navigation ONLY — a suggestion never performs an action (AC-15).
+                router.push(suggestion.link.type === 'booking' ? `/bookings/${suggestion.link.id}` : `/requests/${suggestion.link.id}`);
+              }}
+            />
+          </div>
+        ) : undefined
+      }
+    >
+      {!started ? (
+        <>
+          <div className={styles.modeRow}>
+            <Switch
+              label={t('ask.temporaryLabel')}
+              description={t('ask.temporaryDescription')}
+              checked={temporary}
+              onChange={(next) => setTemporary(next)}
+            />
+          </div>
+          <AiSuggestedActions
+            label={t('ask.tryAsking')}
+            actions={STARTER_PROMPT_KEYS.map((key) => t(key))}
+            onSelect={(action) => setComposer(action.label)}
+          />
+        </>
+      ) : null}
+
+      {messages.map((message) => (
+        <div key={message.key} className={styles.turn}>
+          <AiMessage role={message.role}>{message.body}</AiMessage>
+
+          {!temporary && message.memoryProposal && message.memoryState ? (
+            <AiToolApproval
+              toolLabel={t('ask.rememberLabel')}
+              args={[{ label: t(`aiAccount.memoryKeys.${message.memoryProposal.key}`), value: message.memoryProposal.valueSummary }]}
+              state={message.memoryState}
+              errorMessage={t('ask.rememberFailed')}
+              onApprove={() => void rememberProposal(message)}
+              onDeny={() => patchMessage(message.key, { memoryState: 'denied' })}
+            />
+          ) : null}
+
+          {!temporary && message.pendingConfirmation ? (
+            message.confirmResult ? (
+              <p className={styles.status}>
+                {t('ask.actionResult', { action: message.pendingConfirmation.actionLabel, result: t(RESULT_TEXT[message.confirmResult]) })}
+              </p>
+            ) : message.pendingConfirmation.riskTier === 'high' ? (
+              message.confirmState === 'denied' ? (
+                <p className={styles.status}>{t('ask.notConfirmed', { action: message.pendingConfirmation.actionLabel })}</p>
+              ) : (
+                <AiConfirmationCard
+                  title={message.pendingConfirmation.actionLabel}
+                  riskLevel="high"
+                  parameters={message.pendingConfirmation.parameters}
+                  busy={message.confirmState === 'busy'}
+                  confirmLabel={t('ask.confirm')}
+                  cancelLabel={t('ask.notNow')}
+                  onConfirm={() => void confirmAction(message)}
+                  onCancel={() => patchMessage(message.key, { confirmState: 'denied' })}
+                />
+              )
+            ) : (
+              <AiToolApproval
+                toolLabel={message.pendingConfirmation.actionLabel}
+                args={message.pendingConfirmation.parameters}
+                state={message.confirmState === 'busy' ? 'pending' : (message.confirmState ?? 'pending')}
+                errorMessage={t('ask.actionFailed')}
+                onApprove={() => void confirmAction(message)}
+                onDeny={() => patchMessage(message.key, { confirmState: 'denied' })}
+              />
+            )
+          ) : null}
+        </div>
+      ))}
+
+      {sending ? <AiMessage role="assistant" pending /> : null}
+
+      {failure ? (
+        failure.kind === 'unavailable' ? (
+          <p role="status" className={styles.status}>
+            {t('ask.unavailable')}
+          </p>
+        ) : (
+          <ErrorState
+            compact
+            title={t('ask.sendFailedTitle')}
+            description={t('ask.sendFailedDescription')}
+            onRetry={failure.retryText ? () => void send(failure.retryText) : undefined}
+          />
+        )
+      ) : null}
+    </AiAssistantPanel>
+  );
+}
+
+/**
+ * Spec 034 §5 — the contextual launcher plus the panel it opens. Closing ends the session: a
+ * temporary transcript is discarded with the component state, and the next open starts afresh.
+ */
+export function AskApuriva() {
+  const { t } = useLocale();
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <div className={styles.panel}>
+      <AskApurivaPanel onClose={() => setOpen(false)} />
+    </div>
+  ) : (
+    <div className={styles.launcher}>
+      <AiAssistantLauncher label={t('ask.title')} onClick={() => setOpen(true)} />
+    </div>
+  );
+}

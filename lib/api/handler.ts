@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
+import { runWithRequestContext } from '@/lib/audit/request-context';
 import { getOrCreateCorrelationId } from './correlation-id';
 import { ApiRouteError } from './errors';
 import { apiError } from './response';
 import { logForbiddenAttempt } from './security-log';
+import { logEvent } from '@/lib/observability/log';
 
 /**
  * Composes a Route Handler body with the standard envelope/error handling (spec 004 §3, AC-1
@@ -10,15 +12,36 @@ import { logForbiddenAttempt } from './security-log';
  * `ApiRouteError` (or unexpected error) into the standard `ApiError` envelope — so individual
  * routes only need to `throw` at the point of failure and return their success payload via
  * `apiSuccess`/`apiPaged` (lib/api/response.ts) on the happy path.
+ *
+ * Spec 039 X-1: the handler runs inside a request context holding the same correlation ID, so an
+ * audit entry written anywhere during this request links back to it (spec 039 AC-6) without the ID
+ * being threaded through every service signature.
  */
 export function withApiRoute(
   handler: (request: Request, correlationId: string) => Promise<NextResponse>,
 ): (request: Request) => Promise<NextResponse> {
   return async (request: Request) => {
     const correlationId = getOrCreateCorrelationId(request);
+    const startedAt = Date.now();
+    const res = await handleWithEnvelope(request, correlationId);
+    // Spec 046 §3.9 X-2: one access line per request, correlated by the ID the caller received.
+    // Pathname only — a query string can carry search text or other user input.
+    logEvent('info', 'api.request', {
+      correlationId,
+      method: request.method,
+      path: new URL(request.url).pathname,
+      status: res.status,
+      durationMs: Date.now() - startedAt,
+    });
+    return res;
+  };
 
+  async function handleWithEnvelope(request: Request, correlationId: string): Promise<NextResponse> {
     try {
-      return await handler(request, correlationId);
+      // The server's ports must be wired in THIS module instance before any handler runs (lib/server-integrations.ts).
+      const { ensureServerIntegrations } = await import('@/lib/server-integrations');
+      await ensureServerIntegrations();
+      return await runWithRequestContext({ correlationId }, () => handler(request, correlationId));
     } catch (err) {
       if (err instanceof ApiRouteError) {
         if (err.code === 'FORBIDDEN') {
@@ -32,6 +55,8 @@ export function withApiRoute(
         return apiError(err.code, err.message, correlationId, {
           errors: err.errors,
           retryAfterSeconds: err.retryAfterSeconds,
+          status: err.status,
+          details: err.details,
         });
       }
 
@@ -40,5 +65,5 @@ export function withApiRoute(
       console.error(JSON.stringify({ event: 'api.unhandled_error', correlationId, error: String(err) }));
       return apiError('INTERNAL_ERROR', 'An unexpected error occurred.', correlationId);
     }
-  };
+  }
 }

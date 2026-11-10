@@ -1,0 +1,473 @@
+{
+  "app/(auth)/login/page.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "app/(auth)/register/page.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "app/_components/AskApurivaPanel.test.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "app/_components/MediaPreview.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/_components/OfferCountdown.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/_components/RequestMessageThread.tsx": {
+    "react-hooks/refs": {
+      "count": 3
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "app/account/addresses/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/account/ai-activity/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/account/ai-conversations/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/account/ai-memory/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/account/moderation/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/account/notifications/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/account/privacy-security/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/_components/usePolledResource.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/actions/no-show-reports/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/actions/review-moderation/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/actions/review/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/analytics/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/approvals/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/marketplace/catalog/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react/no-unescaped-entities": {
+      "count": 1
+    }
+  },
+  "app/admin/marketplace/matching/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react/no-unescaped-entities": {
+      "count": 1
+    }
+  },
+  "app/admin/operations/disputes/[id]/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/operations/disputes/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/operations/fraud/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/operations/moderation-appeals/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/operations/payouts/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "app/admin/operations/refunds/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "app/admin/operations/safety/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/operations/support/[id]/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/operations/support/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/roles/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react/no-unescaped-entities": {
+      "count": 1
+    }
+  },
+  "app/admin/settings/ai-usage/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/settings/audit-log/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/settings/feature-flags/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/settings/mcp-tools/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/admin/users/[id]/moderation/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "app/api/v1/auth/mfa.integration.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "app/api/v1/auth/step-up.integration.test.ts": {
+    "@typescript-eslint/no-non-null-asserted-optional-chain": {
+      "count": 1
+    }
+  },
+  "app/api/v1/location/location-test-support.ts": {
+    "@typescript-eslint/no-non-null-asserted-optional-chain": {
+      "count": 1
+    }
+  },
+  "app/api/v1/users/active-mode.integration.test.ts": {
+    "@typescript-eslint/no-non-null-asserted-optional-chain": {
+      "count": 3
+    }
+  },
+  "app/api/v1/users/provider-profile.integration.test.ts": {
+    "@typescript-eslint/no-non-null-asserted-optional-chain": {
+      "count": 1
+    }
+  },
+  "app/bookings/[id]/cancel/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/bookings/[id]/dispute/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/bookings/[id]/no-show/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/bookings/[id]/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/bookings/[id]/payment/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/bookings/[id]/review/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react-hooks/use-memo": {
+      "count": 1
+    }
+  },
+  "app/bookings/_components/BookingConversation.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/bookings/_components/BookingEvidence.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/bookings/_components/BookingMilestones.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/bookings/_components/RefundSection.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/bookings/_components/ReviewSection.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/bookings/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/explore/[category]/[service]/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/explore/[category]/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/explore/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/global-error.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/provider/earnings/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react/no-unescaped-entities": {
+      "count": 1
+    }
+  },
+  "app/provider/earnings/payout-methods/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/provider/requests/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/provider/schedule/bookings/[id]/_components/ReviewResponseSection.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react-hooks/use-memo": {
+      "count": 1
+    }
+  },
+  "app/provider/schedule/bookings/[id]/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/provider/schedule/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/requests/[id]/MessageThread.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/requests/[id]/OffersPanel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/requests/[id]/compare/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/requests/[id]/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/requests/new/[serviceId]/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "app/requests/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/search/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "app/support/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/support/tickets/[id]/page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/SearchBar.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "e2e/safety.spec.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "lib/ai-assistant/ai-assistant-test-support.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "lib/ai-assistant/memory.integration.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "lib/ai-assistant/suggestions.integration.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "lib/auth-gate/use-resumed-action.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "lib/auth/require-mode.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "lib/i18n/i18n-test-support.ts": {
+    "react-hooks/immutability": {
+      "count": 1
+    }
+  },
+  "lib/mcp-tools/catalog.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    }
+  },
+  "lib/mcp/registry.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 14
+    }
+  },
+  "lib/messaging/admin-access.integration.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "lib/messaging/messaging-test-support.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "lib/moderation/moderation-test-support.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "lib/payouts/payouts-test-support.ts": {
+    "react-hooks/immutability": {
+      "count": 5
+    }
+  },
+  "lib/reviews/create-race.integration.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "lib/reviews/routes.integration.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    }
+  },
+  "lib/safety/routes.integration.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  }
+}
