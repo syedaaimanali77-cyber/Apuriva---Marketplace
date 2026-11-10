@@ -143,12 +143,12 @@ failing file was then re-run alone on the spec 046 tree and on the previous comm
 
 - **33 files passed alone** — timeouts from that run's CPU contention, not defects; not listed.
 - **15 files / 19 tests failed alone on both trees** — pre-existing and owned elsewhere; these are the
-  baseline's 19 entries:
+  baseline's 19 entries (18 since 2026-11-10: the `schema-lint` entry was removed when spec 003's jsonb allow-list entries were committed):
 
 | Owner | Tests | Cause |
 |---|---|---|
 | spec 042 (`formatMoney`) | 12, in money-display tests of specs 021–024, 026, 033, 037, 042 | **environment**: Node 22's ICU/CLDR data gives PKR 0 fraction digits (`PKR 150,000`); Node 25 gives 2 (`PKR 1,500.00`) |
-| spec 003 | 5 (`schema-coverage`, `migrations`, `concurrency`, `schema-lint`) | stale table lists / fixtures, and jsonb allow-list entries not yet committed (spec 041 §8) |
+| spec 003 | 4 (`schema-coverage`, `migrations`, `concurrency`) | stale table lists / fixtures |
 | spec 011 | 1 (service page "Ask Apuriva" empty state) | ambiguous text query: the label renders twice |
 | spec 007 | 1 (`seen-state` localStorage failure) | **environment**: Node 25 has a native `localStorage`, Node 22 does not |
 

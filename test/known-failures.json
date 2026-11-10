@@ -93,13 +93,6 @@
       "reason": "Pins the table list / fixture shape as of spec 003; later specs added tables and NOT NULL columns (spec 041 §8 names these as stale). Not edited by spec 046."
     },
     {
-      "file": "lib/db/schema-lint.test.ts",
-      "testName": "schema lint (spec 003) > AC-5: every jsonb column is an explicitly reviewed, documented exception — never a silent addition",
-      "owningSpec": "003",
-      "classification": "pre-existing",
-      "reason": "jsonb columns added by specs 010/011/034 are not yet registered in the committed allow-list (their entries exist only as an uncommitted working-tree change)."
-    },
-    {
       "file": "lib/i18n/format.test.ts",
       "testName": "formatMoney (spec 042 §3.6, AC-3) > always uses the value’s own currency code, whatever the locale",
       "owningSpec": "042",
