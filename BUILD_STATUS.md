@@ -63,11 +63,10 @@ the externally-verified criteria pass (see **In progress**).
 - **Spec 045** — Demo mode and seed data. Implemented; its focused suites pass locally (spec 045 §10), with
   all seven ACs passing against the isolated test database. No clean full-suite pass has been established
   yet. The 2026-11-07 run's failures were baseline entries, or files that pass alone, and none was in a
-  Spec 045 file (§10). **A hosted demo is blocked by its DEP-1:** a
-  hosted server runs under `NODE_ENV=production`, where every sandbox adapter (payments, payouts,
-  notifications, files, AI) refuses to start. Provisioning then fails with that refusal and writes
-  nothing, and no real adapter exists. Changing that guard is owned by specs 021/024/026/027/033; neither
-  spec 045 nor spec 046 alters it. The status stays Draft.
+  Spec 045 file (§10). **DEP-1 is resolved in code (2026-11-10)** by specs 021/024/026/027/033: every sandbox adapter refuses only
+  a production deployment (spec 041 `isProductionDeployment()`, keyed on `APP_ENV`, failing closed), so a
+  hosted staging or demo deployment with `APP_ENV=staging` runs the sandboxes. A hosted demo is still
+  to be provisioned and verified (DEP-2). The status stays Draft.
 
 ## Tested
 
@@ -86,8 +85,9 @@ the externally-verified criteria pass (see **In progress**).
 
 ## Known limitations
 
-- **No production adapters.** Every sandbox adapter refuses `NODE_ENV=production`; staging and
-  production answer each affected domain's documented `503` until specs 021/024/026/027/033 add real
+- **No production adapters.** Every sandbox adapter refuses a production deployment (`APP_ENV=production`,
+  or unset under `NODE_ENV=production`; DEP-1, 2026-11-10). Staging (`APP_ENV=staging`) runs the sandboxes;
+  production answers each affected domain's documented `503` until specs 021/024/026/027/033 add real
   adapters. `/api/v1/health/detailed` reports `sandbox_in_production`.
 - **File storage** is `local` only; Vercel's filesystem is ephemeral, so production needs spec 027's
   durable object-storage adapter.

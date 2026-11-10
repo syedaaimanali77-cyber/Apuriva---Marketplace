@@ -5,9 +5,10 @@
  * Selection is `process.env.NOTIFICATION_CHANNEL_PROVIDER` (default `sandbox`): an environment variable,
  * not a feature flag (spec 041). Two refusals, both hard:
  *   - an unknown value throws — no silent fallback to the sandbox because a variable was mistyped;
- *   - a sandbox adapter under `NODE_ENV=production` throws.
+ *   - a sandbox adapter in a production deployment (`APP_ENV=production`, spec 041; DEP-1) throws.
  * A provider may supply only some channels; a channel it lacks is recorded `skipped` / `no_adapter`.
  */
+import { isProductionDeployment } from '@/lib/feature-flags/environment';
 import type { OutboundChannel } from '@/lib/types/notifications';
 import { getSandboxChannelAdapters } from './sandbox';
 import type { NotificationChannelAdapter } from './types';
@@ -47,7 +48,7 @@ export function resolveNotificationChannelAdapters(): ChannelAdapterSet {
     );
   }
   const adapters = factory();
-  if (process.env.NODE_ENV === 'production' && Object.values(adapters).some((adapter) => adapter?.isSandbox)) {
+  if (isProductionDeployment() && Object.values(adapters).some((adapter) => adapter?.isSandbox)) {
     throw new NotificationChannelProviderUnavailable(
       `The "${configured}" notification channel provider is a sandbox and must never run in production. Configure a real provider.`,
     );

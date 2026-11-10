@@ -56,6 +56,8 @@ response text is ever persisted, and no customer ever learns which provider answ
 
 ---
 
+**DEP-1 amendment (2026-11-10, approved for specs 021, 024, 026, 027 and 033; spec 045 §8).** Wherever this spec says a sandbox adapter is refused "under `NODE_ENV=production`", including AC-2, the trigger is now a **production deployment** as spec 041 defines it: `isProductionDeployment()` in `lib/feature-flags/environment.ts`. That is `APP_ENV=production`, or `APP_ENV` unset under `NODE_ENV=production`, or an invalid `APP_ENV` (fail closed). The refusal itself is unchanged. A hosted staging or demo deployment (`NODE_ENV=production`, `APP_ENV=staging`) may now run the sandbox; production never can. Verified by `lib/feature-flags/production-deployment.test.ts`.
+
 ## 3. API contract
 
 ### 3.1 Module layout (`lib/ai/`)

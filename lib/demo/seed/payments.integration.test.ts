@@ -103,9 +103,15 @@ describe.skipIf(!dbReachable)('spec 045 AC-4 — demo payments come from the san
     expect((await paymentFor('disputed')).protection_state).toBe('disputed');
   });
 
-  it('a hosted server (NODE_ENV=production) still refuses the sandbox: provisioning fails and writes nothing (DEP-1)', async () => {
-    const saved = process.env.NODE_ENV;
-    (process.env as Record<string, string>).NODE_ENV = 'production';
+  /**
+   * DEP-1, resolved 2026-11-10 by its owning specs (021/024/026/027/033): the sandbox refusal is keyed on
+   * spec 041's `APP_ENV`, not `NODE_ENV`. Both cases run as a hosted server does, with `NODE_ENV=production`.
+   */
+  it('a PRODUCTION deployment (APP_ENV=production) still refuses the sandbox: provisioning fails and writes nothing (DEP-1)', async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const saved = { NODE_ENV: env.NODE_ENV, APP_ENV: env.APP_ENV };
+    env.NODE_ENV = 'production';
+    env.APP_ENV = 'production';
     let refusal: unknown;
     try {
       // Every statement this worker issued during the attempt — parallel-safe, unlike a global row count.
@@ -114,8 +120,32 @@ describe.skipIf(!dbReachable)('spec 045 AC-4 — demo payments come from the san
       });
       expect(writes).toEqual([]);
     } finally {
-      (process.env as Record<string, string | undefined>).NODE_ENV = saved;
+      env.NODE_ENV = saved.NODE_ENV;
+      env.APP_ENV = saved.APP_ENV;
     }
     expect(String(refusal)).toMatch(/sandbox and must never run in production/);
+  });
+
+  it('a hosted DEMO deployment (APP_ENV=staging, NODE_ENV=production) provisions through the sandbox adapters (DEP-1)', async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const saved = env.NODE_ENV;
+    env.NODE_ENV = 'production';
+    let hosted: ProvisionedDemoSet;
+    try {
+      expect(env.APP_ENV).toBe('staging');
+      hosted = await provisionDemoSet('customer', { now: stableNow() });
+    } finally {
+      env.NODE_ENV = saved;
+    }
+    const rows = await queryRows<{ provider_name: string; provider_reference: string | null }>(
+      getDb(),
+      sql`SELECT p.provider_name, p.provider_reference FROM payments p
+            JOIN bookings b ON b.id = p.booking_id
+            JOIN customer_profiles cp ON cp.id = b.customer_profile_id
+            JOIN users u ON u.id = cp.user_id
+           WHERE u.demo_set_id = ${hosted.setId}`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.provider_name).toBe('sandbox');
   });
 });

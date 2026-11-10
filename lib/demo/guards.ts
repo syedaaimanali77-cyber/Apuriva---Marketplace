@@ -12,9 +12,10 @@
  * `DEMO_MODE_ENABLED` override skips even that. The flag is read before the database name so a normal
  * deployment with the flag off never logs `demo.misconfigured`; only "flag on, wrong database" does.
  *
- * DEP-1 is NOT handled here and is not worked around: the sandbox payment, payout, notification, file
- * storage/scanning (spec 027) and AI adapters keep refusing under `NODE_ENV=production`, so on a hosted
- * server provisioning fails with those adapters' own documented refusal.
+ * DEP-1 is NOT handled here. Its owning specs resolved it on 2026-11-10: the sandbox payment, payout,
+ * notification, file storage/scanning (spec 027) and AI adapters refuse only in a production deployment
+ * (spec 041 `isProductionDeployment()`, keyed on `APP_ENV`). A hosted demo sets `APP_ENV=staging`, which
+ * condition 1 above also requires; with `APP_ENV=production`, provisioning fails with those adapters' own refusal.
  */
 import { ApiRouteError } from '@/lib/api/errors';
 import { currentFlagEnvironment } from '@/lib/feature-flags/environment';

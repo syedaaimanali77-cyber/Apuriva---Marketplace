@@ -1,7 +1,7 @@
 # Spec: Demo Mode & Seed Data
 
 **File:** `docs/specs/2026-08-28-045-demo-mode-seed-data.md`
-**Status:** Draft — implemented; all seven ACs pass locally, re-verified 2026-11-07 (§10); **no clean full-suite pass established**; **not ready for a hosted demo**: DEP-1 is unresolved, so on any hosted server (`NODE_ENV=production`) provisioning refuses with the sandbox adapters' own refusal.
+**Status:** Draft — implemented; all seven ACs pass locally, re-verified 2026-11-07 (§10); **no clean full-suite pass established**; **DEP-1 resolved in code 2026-11-10** by its owning specs (sandboxes refuse only a production deployment, `APP_ENV=production`); **a hosted demo is not yet deployed or verified** (DEP-2).
 **Author:** Platform team
 **Reviewer:** —
 **Related:** [Apuriva Master Specification](../../Apuriva_Master_Specification%20-%20Copy.md) §110–§113, [Apuriva Architecture](../../Apuriva_Architecture%20-%20Copy.md) §16, [docs/workflow.md](../workflow.md); specs 005 (sessions, mandatory admin MFA), 009 (admin roles), 010 (catalog seed), 021/024 (payment and payout adapters), 026 (notification channels), 027 (file storage and scanning adapters), 033 (AI adapter), 039 (audit), 040 (analytics), 041 (feature flags, `APP_ENV`). See §8.
@@ -95,11 +95,10 @@ Demo mode exists **only** in a dedicated deployment that meets all of the follow
 4. **Sandbox adapters:** `PAYMENT_PROVIDER=sandbox`, `PAYOUT_PROVIDER=sandbox`,
    `NOTIFICATION_CHANNEL_PROVIDER=sandbox`, `AI_PROVIDER=sandbox`, and spec 027's
    `FILE_STORAGE_PROVIDER=local` and `FILE_SCANNER=sandbox`, which provisioning uses to store and scan
-   the portfolio placeholders. **Unresolved:** under the existing guard these refuse on every hosted
-   server (`NODE_ENV=production`). This stays unresolved until specs 021/024/026/027/033 are separately
-   changed and approved (DEP-1); until then, a hosted demo's payment, notification and file-storage
-   calls fail with those adapters' documented refusals. They never fall
-   back to anything else.
+   the portfolio placeholders. **Resolved 2026-11-10 (DEP-1):** specs 021/024/026/027/033 now refuse a sandbox only in a
+   production deployment (spec 041 `isProductionDeployment()`: `APP_ENV=production`, `APP_ENV` unset
+   under `NODE_ENV=production`, or an invalid `APP_ENV`). A hosted demo sets `APP_ENV=staging`, so its
+   sandboxes run; production still refuses them. They never fall back to anything else.
 
 **Production behaviour:** with `APP_ENV=production` every `/demo/*` route answers
 `403 DEMO_NOT_AVAILABLE_IN_PRODUCTION` regardless of the flag, and the `/demo` page renders the
@@ -413,7 +412,7 @@ completeness (all required states represented) is the acceptance bar, not editor
   database.
 - A real payment vendor's test mode. None exists; spec 021 adds a vendor adapter when one is
   contracted, and 045 needs no change then.
-- Changing the adapters' production guard (DEP-1), which belongs to specs 021/024/026/027/033.
+- Changing the adapters' production guard (DEP-1). It belongs to specs 021/024/026/027/033, which changed it on 2026-11-10.
 - Tagging demo data in analytics or audit (D-6).
 
 ---
@@ -424,7 +423,7 @@ completeness (all required states represented) is the acceptance bar, not editor
 
 | # | Dependency | Owner | Status |
 |---|---|---|---|
-| DEP-1 | A hosted, non-production way for the payment, payout, notification, file-storage, file-scanning and AI adapters to run their sandboxes, which today refuse under the `NODE_ENV=production` every hosted server sets: `lib/payments/provider/index.ts`, `lib/payments/provider/payout-factory.ts`, `lib/notifications/channels/index.ts`, `lib/files/storage/index.ts`, `lib/files/scanning/index.ts` and `lib/ai/provider/index.ts`. Provisioning itself calls the payment adapter and spec 027's storage and scanner (the portfolio placeholders). **The mechanism, and whether to provide it at all, is decided by the owning specs**; one option raised during review is keying the refusal on spec 041's `APP_ENV=production`. | specs 021, 024, 026, 027, 033 | **Unresolved. Required for a hosted demo, and not approved.** It must be approved separately through those specs. 045 does not modify, bypass or weaken the existing refusal, and adds no sandbox or payment branch. |
+| DEP-1 | A hosted, non-production way for the payment, payout, notification, file-storage, file-scanning and AI adapters to run their sandboxes, which today refuse under the `NODE_ENV=production` every hosted server sets: `lib/payments/provider/index.ts`, `lib/payments/provider/payout-factory.ts`, `lib/notifications/channels/index.ts`, `lib/files/storage/index.ts`, `lib/files/scanning/index.ts` and `lib/ai/provider/index.ts`. Provisioning itself calls the payment adapter and spec 027's storage and scanner (the portfolio placeholders). **The mechanism, and whether to provide it at all, is decided by the owning specs**; one option raised during review is keying the refusal on spec 041's `APP_ENV=production`. | specs 021, 024, 026, 027, 033 | **Resolved in code 2026-11-10**, approved for the owning specs: the refusal is keyed on spec 041's `isProductionDeployment()` (`APP_ENV`, failing closed), with a dated amendment in each owning spec. `lib/feature-flags/production-deployment.test.ts` covers all six factories. 045 still adds no sandbox or payment branch. |
 | DEP-2 | A hosted demo deployment: `APP_ENV=staging`, a `_demo` database, `DEMO_MODE_ENABLED=true`, the sandbox adapters | spec 046 (hosting) | operational |
 | DEP-3 | The in-flight working-tree changes (spec 033 OpenAI work in `lib/ai/**`, `package.json`, `.env.example`, `instrumentation.ts`) are landed first, because X-2 edits `.env.example` | — | implementation start |
 
@@ -458,7 +457,7 @@ completeness (all required states represented) is the acceptance bar, not editor
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R-1 | DEP-1 is unresolved, so a hosted demo cannot take sandbox payments, store or scan its placeholder images, or dispatch through the sandbox channels | 045 does not work around it. A hosted demo cannot meet AC-4/AC-6 until the owning specs approve DEP-1. This is 045's open dependency. |
+| R-1 | A hosted demo depends on its owning specs' sandbox rule (DEP-1, resolved 2026-11-10) | A demo deployment must set `APP_ENV=staging`; with `APP_ENV=production` or unset, every sandbox refuses and provisioning writes nothing (`lib/demo/seed/payments.integration.test.ts`). |
 | R-2 | Cross-set interaction through live matching | Accepted (§3.3); all accounts are synthetic |
 | R-3 | Demo database growth between reseeds | Nightly and per-deploy reseed |
 | R-4 | Someone enables `DEMO_MODE_ENABLED` on a real staging deployment | The `_demo` database-name guard refuses; `demo.misconfigured` is logged |
@@ -474,8 +473,7 @@ completeness (all required states represented) is the acceptance bar, not editor
   refuses.
 - **Migration order:** `0039` ships with the code. It adds the columns and the flag only, and seeds no
   demo data.
-- **Precondition:** DEP-1 is approved and implemented by its owning specs before a hosted demo is
-  deployed.
+- **Precondition:** DEP-1 is implemented (2026-11-10). The demo deployment sets `APP_ENV=staging` (DEP-2).
 - **Rollback:**
   - turn `demo-mode` off: `/demo/*` refuses on the next request, with no deploy;
   - or revert the deploy;
@@ -582,13 +580,13 @@ completeness (all required states represented) is the acceptance bar, not editor
 | AC-1 | **Pass (local)** | `app/api/v1/demo/login/route.integration.test.ts`, `e2e/demo-mode.spec.ts` |
 | AC-2 | **Pass (local)** | `lib/demo/seed/coverage.integration.test.ts`; request statuses as noted above; `lib/demo/seed/sweep-isolation.integration.test.ts` (each set keeps a `pending` booking, never past spec 021's expiry window) |
 | AC-3 | **Pass** | `app/_components/DemoModeBanner.test.tsx`, `lib/demo/identity.test.ts` |
-| AC-4 | **Pass locally; blocked for a hosted demo (DEP-1)** | `lib/demo/seed/payments.integration.test.ts`, `lib/demo/boundary.test.ts` |
+| AC-4 | **Pass locally**; the hosted-demo path is covered by the `APP_ENV=staging`, `NODE_ENV=production` case; not yet verified on a deployment (DEP-2) | `lib/demo/seed/payments.integration.test.ts`, `lib/demo/boundary.test.ts` |
 | AC-5 | **Pass (local)** | `app/api/v1/demo/reset/route.integration.test.ts`, including the parallel-deletion regression test |
-| AC-6 | **Pass locally; blocked for a hosted demo (DEP-1)** | `lib/demo/identity.test.ts`, `lib/demo/boundary.test.ts`, the coverage suite's zero-delivery check |
+| AC-6 | **Pass locally**; not yet verified on a deployment (DEP-2) | `lib/demo/identity.test.ts`, `lib/demo/boundary.test.ts`, the coverage suite's zero-delivery check |
 | AC-7 | **Pass** | `app/api/v1/demo/guards.integration.test.ts`, `lib/demo/guards.test.ts` |
 
 The status stays **Draft**. Spec 045's implementation is complete and its focused suites pass (21 files, 130 tests). The one full-suite failure traced to Spec 045, its demo fixtures and the payment expiry sweep, is fixed. Two things remain open:
 
 - **A clean full-suite pass** is still outstanding. The 2026-11-07 run's failures are baseline entries, or files that pass alone, and none is attributed to Spec 045. A clean pass needs a run on mains power with nothing else loading the machine, or CI.
-- **DEP-1 is an external blocker** owned by specs 021, 024, 026, 027 and 033, and not resolved by this spec. Until those specs approve it, AC-4 and AC-6 cannot be met on a hosted deployment.
+- **DEP-1 is resolved in code (2026-11-10)** by its owning specs. **A hosted demo deployment (DEP-2) is still to be provisioned and verified.**
 

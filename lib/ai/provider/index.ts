@@ -6,12 +6,13 @@
  * Selection is `process.env.AI_PROVIDER` (default `sandbox`): an environment variable, not a
  * feature flag (spec 041). Two refusals, both hard:
  *   - an unknown value throws — NO silent fallback to the sandbox because a variable was mistyped;
- *   - a sandbox adapter under `NODE_ENV=production` throws, so production can never serve mock
+ *   - a sandbox adapter in a production deployment (`APP_ENV=production`, spec 041; DEP-1) throws, so production can never serve mock
  *     completions.
  *
  * Adding a real provider is one new file in this directory plus one line in `PROVIDERS`. No
  * consuming module changes — that is exactly what AC-2 asserts.
  */
+import { isProductionDeployment } from '@/lib/feature-flags/environment';
 import { AiProviderConfigurationError } from '../errors';
 import { getOpenAiProvider } from './openai';
 import { getSandboxAiProvider } from './sandbox';
@@ -47,7 +48,7 @@ export function resolveAiProvider(): AiProviderAdapter {
     );
   }
   const adapter = factory();
-  if (process.env.NODE_ENV === 'production' && adapter.isSandbox) {
+  if (isProductionDeployment() && adapter.isSandbox) {
     throw new AiProviderConfigurationError(
       `The "${configured}" AI provider is a sandbox and must never run in production. Configure a real provider.`,
     );

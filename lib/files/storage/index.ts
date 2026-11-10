@@ -7,9 +7,10 @@
  * a feature flag (spec 041). Two refusals, both hard:
  *   - an unknown value throws — no silent fallback to the local adapter because a variable was
  *     mistyped, which would quietly store production bytes on an ephemeral disk;
- *   - a sandbox adapter under `NODE_ENV=production` throws.
+ *   - a sandbox adapter in a production deployment (`APP_ENV=production`, spec 041; DEP-1) throws.
  * Either way the caller answers `503 FILE_STORAGE_UNAVAILABLE` and nothing is marked `ready`.
  */
+import { isProductionDeployment } from '@/lib/feature-flags/environment';
 import { createLocalFileStorageAdapter } from './local';
 import type { FileStorageAdapter } from './types';
 import { FileStorageUnavailable } from './types';
@@ -39,7 +40,7 @@ export function resolveFileStorageAdapter(): FileStorageAdapter {
     throw new FileStorageUnavailable(`${FILE_STORAGE_PROVIDER_ENV_VAR}="${configured}" is not a known file storage provider.`);
   }
   const adapter = factory();
-  if (process.env.NODE_ENV === 'production' && adapter.isSandbox) {
+  if (isProductionDeployment() && adapter.isSandbox) {
     throw new FileStorageUnavailable(
       `The "${configured}" file storage adapter is a sandbox and must never run in production. Configure a real object-storage adapter.`,
     );

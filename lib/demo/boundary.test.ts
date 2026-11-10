@@ -66,15 +66,19 @@ describe('spec 045 boundaries', () => {
     expect(FEATURE_FLAG_REGISTRY.filter((f) => f.key === 'demo-mode')).toHaveLength(1);
   });
 
-  it('DEP-1 is not worked around: every adapter factory still refuses its sandbox under NODE_ENV=production', () => {
+  it('DEP-1 is resolved only by the owning specs: every adapter factory refuses its sandbox in a production deployment', () => {
+    // DEP-1 was approved for specs 021/024/026/027/033 on 2026-11-10: the refusal is keyed on spec 041's
+    // `isProductionDeployment()` (`APP_ENV`, failing closed), not on `NODE_ENV`. Spec 045 adds nothing.
     const factories = [
       'lib/payments/provider/index.ts',
       'lib/payments/provider/payout-factory.ts',
       'lib/notifications/channels/index.ts',
+      'lib/files/storage/index.ts',
+      'lib/files/scanning/index.ts',
       'lib/ai/provider/index.ts',
     ];
     for (const file of factories) {
-      expect(code(join(ROOT, file)), file).toMatch(/NODE_ENV === 'production'/);
+      expect(code(join(ROOT, file)), file).toMatch(/isSandbox[^\n]*isProductionDeployment\(\)|isProductionDeployment\(\)[^\n]*isSandbox/);
     }
     for (const file of sourceFiles(join(ROOT, 'lib', 'demo'))) {
       expect(code(file), rel(file)).not.toMatch(/NODE_ENV\s*=/);

@@ -25,3 +25,22 @@ export function currentFlagEnvironment(): FlagEnvironment {
   if (!isFlagEnvironment(raw)) throw new FeatureFlagEnvironmentError(raw);
   return raw;
 }
+
+/**
+ * DEP-1 (spec 045 §8; approved 2026-11-10 for specs 021, 024, 026, 027 and 033): whether this deployment
+ * is PRODUCTION, the one environment where every sandbox adapter must refuse to run.
+ *
+ * Keyed on `APP_ENV` rather than `NODE_ENV`, because every hosted server — staging and a demo
+ * deployment included — runs `NODE_ENV=production`, and only `APP_ENV` tells them apart. It fails
+ * closed:
+ *   - `APP_ENV` unset under `NODE_ENV=production` resolves to `production` (above), so an existing
+ *     production deployment behaves exactly as before;
+ *   - an invalid `APP_ENV` counts as production — a mistyped variable must never let a sandbox run.
+ */
+export function isProductionDeployment(): boolean {
+  try {
+    return currentFlagEnvironment() === 'production';
+  } catch {
+    return true;
+  }
+}
