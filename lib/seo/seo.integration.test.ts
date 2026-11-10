@@ -56,22 +56,32 @@ describe('spec 044 SEO (integration)', () => {
 
   it('sitemap.xml lists exactly /, /explore and the published catalog, from SITE_URL', async () => {
     vi.stubEnv('SITE_URL', SITE);
-    const urls = (await sitemap()).map((entry) => entry.url);
-
-    const expectedCategories = (await getDb().execute(sql`SELECT id FROM categories WHERE status = 'published'`)).rows as Array<{ id: string }>;
-    const expectedServices = (
-      await getDb().execute(sql`
-        SELECT s.id, s.category_id FROM services s JOIN categories c ON c.id = s.category_id
-         WHERE s.status = 'published' AND c.status = 'published'`)
-    ).rows as Array<{ id: string; category_id: string }>;
-    expect(urls.sort()).toEqual(
-      [
+    // The published catalog as URLs. Other test files publish and retire catalog rows in parallel, so it is read
+    // before AND after the sitemap: every URL published in both snapshots must be listed, and nothing published in
+    // neither may be. Only a row that changed DURING the call may go either way (CI run #5: 439 vs 440).
+    const publishedUrls = async () => {
+      const categories = (await getDb().execute(sql`SELECT id FROM categories WHERE status = 'published'`)).rows as Array<{ id: string }>;
+      const services = (
+        await getDb().execute(sql`
+          SELECT s.id, s.category_id FROM services s JOIN categories c ON c.id = s.category_id
+           WHERE s.status = 'published' AND c.status = 'published'`)
+      ).rows as Array<{ id: string; category_id: string }>;
+      return new Set([
         `${SITE}/`,
         `${SITE}/explore`,
-        ...expectedCategories.map((c) => `${SITE}/explore/${c.id}`),
-        ...expectedServices.map((s) => `${SITE}/explore/${s.category_id}/${s.id}`),
-      ].sort(),
-    );
+        ...categories.map((c) => `${SITE}/explore/${c.id}`),
+        ...services.map((s) => `${SITE}/explore/${s.category_id}/${s.id}`),
+      ]);
+    };
+    const before = await publishedUrls();
+    const urls = (await sitemap()).map((entry) => entry.url);
+    const after = await publishedUrls();
+
+    expect(new Set(urls).size, 'no duplicate entries').toBe(urls.length);
+    const missing = [...before].filter((url) => after.has(url) && !urls.includes(url));
+    const unexpected = urls.filter((url) => !before.has(url) && !after.has(url));
+    expect(missing).toEqual([]);
+    expect(unexpected).toEqual([]);
 
     expect(urls).toContain(`${SITE}/explore/${published.id}`);
     expect(urls).toContain(`${SITE}/explore/${published.id}/${liveService.id}`);
