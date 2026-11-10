@@ -66,6 +66,10 @@ export function withCronRoute<R extends Request>(
       return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron secret' } }, { status: 401 });
     }
 
+    // The server's ports must be wired in THIS module instance before the job runs (lib/server-integrations.ts).
+    const { ensureServerIntegrations } = await import('@/lib/server-integrations');
+    await ensureServerIntegrations();
+
     const correlationId = randomUUID();
     return runWithRequestContext({ correlationId }, async () => {
       const startedAt = Date.now();
